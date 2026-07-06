@@ -2,7 +2,7 @@
 
 > Mô-đun **AI local** đọc alert từ **Wazuh SIEM** và giải thích thành **ngôn ngữ tự nhiên**: tóm tắt cảnh báo, giải thích nguyên nhân kích hoạt rule, đánh giá mức nghiêm trọng, gợi ý bước kiểm tra/xử lý.
 
-Đề tài thực tập DDC24. Trọng tâm là **chất lượng AI diễn giải log**, không xây SIEM mới. Repo này là **nguồn thông tin duy nhất (single source of truth)** cho toàn bộ lab — mọi cấu hình, script, tài liệu đều nằm ở đây và chạy lại được.
+Đề tài thực tập Local AI Module for Analyzing and Interpreting SIEM Security Alerts. Trọng tâm là **chất lượng AI diễn giải log**, không xây SIEM mới. Repo này là **nguồn thông tin duy nhất (single source of truth)** cho toàn bộ lab — mọi cấu hình, script, tài liệu đều nằm ở đây và chạy lại được.
 
 ---
 
