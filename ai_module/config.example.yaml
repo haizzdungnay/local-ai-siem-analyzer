@@ -1,0 +1,35 @@
+# Wazuh API + alert reader config
+wazuh:
+  host: "192.168.100.10"
+  port: 55000
+  protocol: "https"
+  user: "wazuh-wui"
+  password: "CHANGE_ME"            # đổi sau khi cài Wazuh
+  verify_ssl: false                 # lab dùng self-signed cert
+
+# Ollama LLM
+ollama:
+  base_url: "http://localhost:11434"
+  model: "qwen2.5:3b"              # đổi qua 7b khi so sánh
+  timeout: 120                      # giây; 7b chậm hơn
+
+# Trích trường chính từ alert (giảm token cho LLM)
+extractor:
+  fields:
+    - "rule.id"
+    - "rule.description"
+    - "rule.level"
+    - "rule.mitre.id"
+    - "rule.mitre.tactic"
+    - "rule.mitre.technique"
+    - "agent.name"
+    - "agent.ip"
+    - "data.srcip"
+    - "full_log"
+
+# RAG
+rag:
+  enabled: true
+  embedding_model: "nomic-embed-text"   # chạy qua Ollama
+  vector_db: "chromadb"                  # hoặc faiss
+  data_dir: "rag_data"                   # chứa rule descriptions + MITRE

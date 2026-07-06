@@ -1,0 +1,12 @@
+# Netplan máy Victim (.20). Copy vào /etc/netplan/01-lab.yaml rồi: sudo netplan apply
+# ens33 = NAT (internet), ens34 = Host-only (lab). Đổi tên card cho khớp máy (ip a).
+network:
+  version: 2
+  ethernets:
+    ens33:
+      dhcp4: yes
+    ens34:
+      dhcp4: no
+      addresses: [192.168.100.20/24]
+      nameservers:
+        addresses: [8.8.8.8, 1.1.1.1]

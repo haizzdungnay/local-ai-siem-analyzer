@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-07-06T10:15:30.000+0700",
+  "rule": {
+    "id": "5712",
+    "level": 10,
+    "description": "SSHD brute force trying to get access to the system.",
+    "mitre": {
+      "id": ["T1110"],
+      "tactic": ["Credential Access"],
+      "technique": ["Brute Force"]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "data": {
+    "srcip": "192.168.100.30",
+    "srcport": "44512",
+    "dstuser": "root"
+  },
+  "full_log": "Jul  6 10:15:30 victim-ubuntu sshd[12345]: Failed password for root from 192.168.100.30 port 44512 ssh2"
+}

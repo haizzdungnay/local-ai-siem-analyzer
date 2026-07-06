@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-07-06T11:22:05.000+0700",
+  "rule": {
+    "id": "550",
+    "level": 7,
+    "description": "Integrity checksum changed.",
+    "mitre": {
+      "id": ["T1565"],
+      "tactic": ["Impact"],
+      "technique": ["Data Manipulation"]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "syscheck": {
+    "path": "/etc/hosts",
+    "event": "modified",
+    "md5_before": "a1b2c3d4e5f6",
+    "md5_after": "f6e5d4c3b2a1",
+    "uname_before": "root",
+    "uname_after": "root"
+  },
+  "full_log": "File '/etc/hosts' checksum changed."
+}

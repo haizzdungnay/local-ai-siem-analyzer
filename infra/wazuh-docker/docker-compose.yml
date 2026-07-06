@@ -1,0 +1,12 @@
+# Wazuh all-in-one (single-node) — placeholder tối giản.
+# Bản chính thức: clone repo wazuh/wazuh-docker (nhánh single-node) rồi override tại đây.
+# Xem scripts/setup/install-wazuh.sh — nó tự clone bản đúng version.
+#
+# ponytail: dùng single-node cho lab. Nâng lên multi-node cluster khi cần HA (không cần cho đề tài).
+#
+# File này giữ chỗ để nhớ: KHÔNG tự viết tay compose Wazuh — dùng bản chính chủ.
+version: "3.9"
+services:
+  placeholder:
+    image: hello-world
+    profiles: ["never"]   # không chạy; nhắc dùng install-wazuh.sh

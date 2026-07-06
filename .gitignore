@@ -1,0 +1,35 @@
+# Gitignore for local-ai-siem-analyzer
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# AI module config (chứa API key)
+ai_module/config.yaml
+
+# RAG vector store (sinh lại được)
+ai_module/rag_data/*.db
+ai_module/rag_data/chroma/
+
+# Ollama models (quá to cho git)
+*.gguf
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes (trên SIEM, không trong repo)
+wazuh-data/

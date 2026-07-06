@@ -1,0 +1,12 @@
+# Netplan máy SIEM (.10). Copy vào /etc/netplan/01-lab.yaml rồi: sudo netplan apply
+# ens33 = NAT (internet), ens34 = Host-only (lab). Đổi tên card cho khớp máy anh (ip a).
+network:
+  version: 2
+  ethernets:
+    ens33:            # NAT — internet, để DHCP tự lo default route
+      dhcp4: yes
+    ens34:            # Host-only — lab, IP tĩnh, KHÔNG đặt gateway (tránh 2 default route)
+      dhcp4: no
+      addresses: [192.168.100.10/24]
+      nameservers:
+        addresses: [8.8.8.8, 1.1.1.1]
