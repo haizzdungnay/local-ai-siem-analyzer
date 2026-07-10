@@ -18,7 +18,8 @@ bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
 **Script:** `scripts/attacks/web-attack.sh`
 **Chạy từ:** Kali (.30)
 **Yêu cầu:** Apache + DVWA cài trên Victim
-**Rule Wazuh dự kiến:** 31xxx (web attack rules)
+**Rule Wazuh dự kiến:** 31xxx
+**Rule Wazuh thực tế:** 31101 (Web server 400 error code) + 31151 (Multiple web server 400 error codes — correlation rule)
 
 ```bash
 bash scripts/attacks/web-attack.sh 192.168.100.20
@@ -38,7 +39,13 @@ sudo cp DVWA/config/config.inc.php.dist DVWA/config/config.inc.php
 **Rule Wazuh dự kiến:**
 - 550: file modified
 - 554: file added/deleted
+**Rule Wazuh thực tế:** 550 (Integrity checksum changed) — xác nhận đúng
 
+⚠️ **Lưu ý quan trọng:** Wazuh FIM mặc định chỉ quét theo lịch (`frequency: 43200` giây = 12 tiếng), KHÔNG phát hiện realtime. Để demo/test nhanh, cần bật giám sát realtime trong `ossec.conf`:
+\`\`\`xml
+<directories realtime="yes">/etc,/usr/bin,/usr/sbin</directories>
+\`\`\`
+Restart agent sau khi sửa: `sudo systemctl restart wazuh-agent`
 ```bash
 sudo bash scripts/attacks/fim-trigger.sh
 ```
