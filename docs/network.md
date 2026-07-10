@@ -29,6 +29,28 @@ Lưu ý quan trọng:
 - Tên card (`ens33`, `ens34`) có thể khác trên máy anh. Chạy `ip a` để xem đúng tên.
 - Kali dùng NetworkManager: GUI → chọn card Host-only → Manual → IP `192.168.100.30/24`.
 
+## ⚠️ Fix bắt buộc: tắt cloud-init ghi đè netplan (Ubuntu Server)
+
+Ubuntu Server dùng **cloud-init**, mặc định sẽ tự sinh lại `/etc/netplan/50-cloud-init.yaml` và ghi đè cấu hình IP tĩnh về DHCP-only **mỗi lần VM reboot**. Nếu không fix, IP tĩnh sẽ mất sau mỗi lần khởi động lại.
+
+Làm **1 lần duy nhất** trên mỗi máy Ubuntu (SIEM, Victim):
+
+```bash
+sudo nano /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+```
+Nội dung:
+```yaml
+network: {config: disabled}
+```
+
+Sau đó xóa file netplan do cloud-init sinh (nếu tồn tại) để tránh xung đột:
+```bash
+sudo rm -f /etc/netplan/50-cloud-init.yaml
+sudo netplan apply
+```
+
+**Lưu ý:** chỉ giữ **đúng 1 file** netplan trong `/etc/netplan/` (ví dụ `01-lab.yaml`). Nhiều file cùng tồn tại có thể đọc theo thứ tự alphabet và đá nhau, gây trạng thái mạng "IP đúng nhưng không route được".
+
 ## Kiểm tra (theo thứ tự)
 ```bash
 # Từ Victim
@@ -44,3 +66,20 @@ curl -k https://192.168.100.10:55000   # → Wazuh API
 # Mọi VM
 ping 8.8.8.8           # → internet qua NAT
 ```
+
+## Troubleshooting: máy thấy được chính nó nhưng không ping thông các máy khác
+
+Nếu 1 VM tự ping được chính nó (`ip a` báo IP đúng dải `192.168.100.0/24`) nhưng **không ping được** 2 máy còn lại — trong khi 2 máy kia vẫn thấy nhau bình thường — nguyên nhân thường là **VMware gán nhầm virtual switch** cho card mạng của riêng VM đó (hay gặp khi đổi Network Adapter trong Settings lúc VM đang chạy).
+
+Cách fix:
+1. Vào **VM → Settings → Network Adapter** (card đang lỗi)
+2. Đổi tạm sang **Bridged** → **Apply**
+3. Đổi lại đúng loại ban đầu (**NAT** hoặc **Custom: VMnet1**) → **Apply**
+4. **Power Off** hẳn VM (không phải `reboot` trong OS) → **Power On** lại
+5. Test ping lại — bước Power Off/Power On là bắt buộc để VMware re-bind card vào đúng vSwitch.
+
+Có thể xác minh nguyên nhân bằng `tcpdump` trước khi fix:
+```bash
+sudo tcpdump -i <card> -n port 67 or port 68 -c 5
+```
+Nếu thấy gói DHCPDISCOVER liên tục gửi đi (interval 3s, 6s, 14s...) mà không có DHCPOFFER phản hồi → xác nhận vấn đề nằm ở VMware, không phải ở cấu hình Ubuntu.
