@@ -3,6 +3,23 @@
 Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog](https://keepachangelog.com/).
 
 ---
+## [1.2.0] — 2026-07-10
+
+Hoàn tất toàn bộ GĐ2 — cả 3 kịch bản sinh cảnh báo đã xác nhận chạy đúng.
+
+### Added
+- Xác nhận thành công 3/3 kịch bản GĐ2: SSH brute-force, Web attack, FIM.
+- **docs/attacks.md** — cập nhật rule ID thực tế quan sát được trên Wazuh 4.9.0, khác với rule dự kiến ban đầu trong tài liệu tham khảo.
+
+### Fixed
+- **FIM không bắn alert dù script chạy đúng** — do Wazuh FIM mặc định chỉ quét theo lịch 12 tiếng/lần, không realtime. Fix bằng cách thêm `realtime="yes"` vào thẻ `<directories>` trong `ossec.conf` của Victim.
+- **DVWA không kết nối được MySQL** — do password trong `config.inc.php` (`kali`) không khớp với password user MySQL đã tạo (`dvwa123`). Fix bằng `ALTER USER` đồng bộ lại password.
+
+### Changed
+- Rule thực tế cho từng kịch bản (xem chi tiết `docs/attacks.md`):
+  - SSH brute-force: **5503** (không phải 5710/5712)
+  - Web attack: **31101/31151** (khớp nhóm 31xxx dự kiến)
+  - FIM: **550** (khớp dự kiến, cần bật realtime)
 
 ## [1.1.0] — 2026-07-10
 
@@ -21,7 +38,6 @@ Hoàn tất GĐ1 (dựng lab SIEM) và kịch bản đầu tiên của GĐ2 (SSH
 ### Changed
 - Xác nhận rule Wazuh thực tế cho kịch bản SSH brute-force trên bản 4.9.0 là **5503** (`PAM: User login failed`), khác với dự kiến ban đầu trong `docs/attacks.md` (5710/5712) — cần cập nhật lại tài liệu này sau khi test xong toàn bộ kịch bản GĐ2.
 
----
 
 ## [1.0.0] — 2026-07-06
 
