@@ -13,7 +13,7 @@ Mỗi VM gắn **2 card mạng** trong VMware:
 | SIEM Wazuh | 192.168.100.10 | DHCP | 6 GB |
 | Victim Ubuntu | 192.168.100.20 | DHCP | 2 GB |
 | Attacker Kali | 192.168.100.30 | DHCP | 2–3 GB |
-| Victim Windows (sau) | 192.168.100.40 | DHCP | 4 GB |
+| Victim Windows | 192.168.100.40 | DHCP | 4 GB |
 
 ## Cấu hình VMware (1 lần)
 1. Edit → Virtual Network Editor (chạy quyền admin).
@@ -77,6 +77,42 @@ Cách fix:
 3. Đổi lại đúng loại ban đầu (**NAT** hoặc **Custom: VMnet1**) → **Apply**
 4. **Power Off** hẳn VM (không phải `reboot` trong OS) → **Power On** lại
 5. Test ping lại — bước Power Off/Power On là bắt buộc để VMware re-bind card vào đúng vSwitch.
+
+## Troubleshooting: Dashboard/Indexer timeout dù container báo "Up"
+
+Nếu truy cập `https://192.168.100.10` bị timeout/không kết nối được, nhưng `docker compose ps` báo cả 3 container `Up X ngày` bình thường, và `ping 192.168.100.10` vẫn thông (loại trừ lỗi mạng tầng ngoài) — nguyên nhân thường nằm ở disk đầy trên SIEM, đôi khi kéo theo Docker bridge network bị hỏng theo.
+
+Cách chẩn đoán theo thứ tự:
+```bash
+# 1. Test TLS trực tiếp trên SIEM (loại trừ mạng ngoài)
+curl -k -v https://localhost:9200 2>&1 | tail -20
+# Nếu thấy "Connection reset by peer" ngay giữa TLS handshake → tiếp bước 2
+
+# 2. Kiểm tra disk
+df -h /
+# Nếu ≥90% → đây là nghi phạm chính
+
+# 3. Tìm thư mục chiếm dung lượng trong queue Manager
+docker exec single-node-wazuh.manager-1 sh -c 'du -sh /var/ossec/queue/* 2>/dev/null | sort -rh'
+```
+
+Nguyên nhân thường gặp là module Vulnerability Detector (`queue/vd_updater` + `queue/vd`) tự tải/cập nhật CVE database định kỳ, không có cơ chế dọn phiên bản cũ — có thể chiếm hàng chục GB sau vài ngày chạy.
+
+Fix:
+```bash
+docker exec single-node-wazuh.manager-1 sh -c 'rm -rf /var/ossec/queue/vd_updater/* /var/ossec/queue/vd/*'
+df -h /   # xác nhận đã giải phóng
+```
+
+Nếu dọn disk xong nhưng vẫn timeout, Docker bridge network có thể đã hỏng. Sau đợt I/O nặng do disk đầy, bridge network đôi khi bị treo dù container vẫn "Up" và tự trả lời OK ở `localhost` bên trong container. Dấu hiệu: `ping <container_IP>` từ host cũng fail (lấy container IP bằng `docker inspect <container> | grep IPAddress`).
+
+Fix bằng cách restart Docker daemon để rebuild lại iptables + bridge:
+```bash
+sudo systemctl restart docker
+```
+Đợi 1-2 phút cho 3 container tự lên lại (nhờ `restart: always` policy), sau đó test lại `curl -k https://localhost:9200`.
+
+Phòng ngừa lâu dài: cân nhắc tắt Vulnerability Detector nếu đề tài không cần tính năng scan lỗ hổng (`<vulnerability-detection><enabled>no</enabled></vulnerability-detection>` trong `ossec.conf` của Manager), tránh lặp lại sự cố disk đầy.
 
 Có thể xác minh nguyên nhân bằng `tcpdump` trước khi fix:
 ```bash
