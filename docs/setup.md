@@ -128,6 +128,56 @@ python main.py --demo                 # test với alert mẫu
 
 ## Bước 8 — Sinh cảnh báo thử
 Xem [`attacks.md`](attacks.md). Nhanh nhất:
+
+## Bước 9 — Windows Victim Setup (mở rộng)
+
+VM Windows 10/11, IP tĩnh Host-only `192.168.100.40`, RAM ≥4GB.
+
+### Set IP tĩnh
+Windows không dùng netplan — set qua giao diện:
+```
+Settings → Network & Internet → Ethernet → chọn đúng card Host-only
+IPv4: 192.168.100.40 / 255.255.255.0
+KHÔNG đặt Default Gateway (để card NAT lo, tránh 2 default route đá nhau — giống nguyên tắc áp dụng cho Ubuntu)
+```
+
+### Cài Wazuh agent
+
+⚠️ **Bắt buộc chạy PowerShell/CMD với quyền Administrator** — nếu không sẽ gặp lỗi:
+```
+Error 1925. You do not have sufficient privileges to complete this installation
+for all users of the machine. Log on as administrator and then retry this installation.
+```
+Dù account hiện tại đã thuộc nhóm Administrators, UAC vẫn chặn nếu terminal không được elevate. Mở PowerShell bằng chuột phải → **"Run as administrator"**.
+
+⚠️ **Bắt buộc khớp version agent với Manager** — Manager lab đang chạy `4.9.0`. Agent version chênh quá xa (ví dụ `4.14.6`) có rủi ro mất tương thích dữ liệu/field. Tải đúng bản:
+```powershell
+Invoke-WebRequest -Uri "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.9.0-1.msi" -OutFile "wazuh-agent-4.9.0-1.msi"
+```
+
+Cài:
+```powershell
+msiexec.exe /i wazuh-agent-4.9.0-1.msi /q WAZUH_MANAGER="192.168.100.10"
+```
+
+Khởi động service:
+```powershell
+NET START WazuhSvc
+```
+
+Verify:
+```powershell
+sc query WazuhSvc
+```
+Phải thấy `STATE: RUNNING`.
+
+Kiểm tra trên Dashboard: **Agents** → agent tên máy Windows (hostname) → trạng thái **Active**.
+
+### Nếu không copy-paste được giữa host và VM
+Cài/reinstall **VMware Tools**: `VM → Install VMware Tools` → chạy `setup64.exe` trong ổ CD ảo vừa mount → cài xong restart VM → bật `VM → Settings → Options → Guest Isolation` → tick **Enable copy and paste** + **Enable drag and drop** → Power Off/Power On lại VM để áp dụng.
+
+### Lưu ý: Windows Home không hỗ trợ nhận kết nối RDP
+Windows 10/11 **Home** chỉ dùng RDP làm client (kết nối ra), không nhận kết nối RDP vào (cần bản Pro/Enterprise). Với lab, dùng trực tiếp cửa sổ VMware Workstation console để thao tác — không cần RDP.
 ```bash
 # Từ Kali (.30)
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
