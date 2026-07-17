@@ -3,6 +3,28 @@
 Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog](https://keepachangelog.com/).
 
 ---
+
+## [1.3.0] — 2026-07-17
+
+Mở rộng infra: thêm Windows victim (`.40`) + Wazuh agent. Fix sự cố nghiêm trọng khiến Dashboard timeout sau nhiều ngày vận hành liên tục.
+
+### Added
+- **Windows victim** (`.40`) — VM Windows 10 Home, IP tĩnh Host-only `192.168.100.40`, cài Wazuh agent `4.9.0`, xác nhận **Active** trên Dashboard.
+- **docs/setup.md** — thêm mục "Windows Victim Setup": cài Wazuh agent bằng `msiexec`, lưu ý bắt buộc chạy quyền Administrator, lưu ý khớp version agent với Manager.
+- **docs/network.md** — cập nhật bảng IP, xác nhận Windows victim đã hoạt động (không còn "bổ sung sau"). Thêm mục troubleshoot mới: "Dashboard/Indexer timeout dù container Up".
+
+### Fixed
+- **Cài Wazuh agent Windows báo `Error 1925: You do not have sufficient privileges`** — do chạy `msiexec` trên PowerShell không có quyền Administrator (dù account đã thuộc nhóm Administrators, UAC vẫn chặn nếu terminal không được elevate). Fix bằng cách mở PowerShell qua "Run as administrator".
+- **Agent Windows cài version `4.14.6` không tương thích với Manager `4.9.0`** — chênh version quá xa (5 minor version) gây rủi ro mất tương thích dữ liệu. Fix bằng cách dùng đúng bản `wazuh-agent-4.9.0-1.msi` khớp Manager.
+- **Dashboard/Indexer timeout (`Connection reset by peer` khi TLS handshake) dù `docker compose ps` báo cả 3 container "Up 5 days"** — nguyên nhân gốc gồm 2 lớp:
+  1. **Disk đầy 90%** — module Vulnerability Detector (`queue/vd_updater` + `queue/vd`) tích lũy tới **34GB** do tải/cập nhật CVE database liên tục không dọn. Fix: `rm -rf` 2 thư mục này (dữ liệu tự tải lại được, không mất gì).
+  2. **Docker bridge network bị hỏng** sau đợt I/O nặng từ sự cố disk đầy — container vẫn tự trả lời OK ở `localhost` bên trong, nhưng hoàn toàn không reachable từ host (`ping` container IP cũng fail), khiến `docker-proxy`/port-publish mất tác dụng dù cấu hình port mapping vẫn đúng. Fix: `sudo systemctl restart docker` để Docker daemon rebuild lại iptables + bridge network.
+- **`UnicodeDecodeError` khi `ai_module` đọc `config.yaml` trên Windows** — Python mặc định mở file theo encoding hệ thống (`cp1252` trên Windows), lỗi với ký tự tiếng Việt/dấu ngoặc kép kiểu "curly". Fix bằng cách chỉ định `encoding="utf-8"` tường minh ở mọi lệnh `open()` đọc file text trong `ai_module/`.
+- **`fetch_alerts_api()` gọi sai endpoint** (`GET /alerts` trên Manager API, port 55000) → luôn trả `404 Not Found`. Nguyên nhân: alert không được lưu trên Manager, mà nằm ở Indexer (OpenSearch). Fix bằng cách query thẳng `POST /wazuh-alerts-*/_search` trên Indexer (port 9200), dùng credentials Indexer thay vì Manager API — cần thêm block `wazuh_indexer` (host/port/user/password) vào `config.yaml`.
+
+### Changed
+- Quy trình đổi lại password Wazuh Indexer khi quên — nhắc lại đúng luồng Docker (hash.sh → `internal_users.yml` → `docker-compose.yml` → xóa volume Indexer → `docker compose up -d`), tương tự Bước 4.5 đã ghi ở `[1.1.0]` nhưng bổ sung lưu ý: cần đợi ~1 phút cho OpenSearch Security plugin init xong sau khi container khởi động lại với volume mới trước khi test — test quá sớm sẽ thấy lỗi `Not yet initialized` gây hiểu nhầm là fail.
+---
 ## [1.2.0] — 2026-07-10
 
 Hoàn tất toàn bộ GĐ2 — cả 3 kịch bản sinh cảnh báo đã xác nhận chạy đúng.
