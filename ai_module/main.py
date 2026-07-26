@@ -1,16 +1,17 @@
 """main.py — Entrypoint mô-đun AI phân tích alert Wazuh.
 
+Đúng theo kế hoạch GĐ3 trong KE_HOACH.md:
+Ollama, trích trường chính, RAG, ép JSON schema
+{summary, root_cause, severity, mitre, next_steps}
+
 Usage:
     python main.py                 # đọc alert mới từ Wazuh API
     python main.py --demo          # chạy với alert mẫu (eval/samples/)
     python main.py --model 7b      # dùng qwen2.5:7b thay vì 3b
-
-Stub: pipeline sẵn, chưa chạy thật. Implement ở GĐ3.
 """
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from reader import load_config, fetch_alerts_api, load_sample_alerts
 from extractor import extract_fields, format_for_llm
@@ -39,17 +40,21 @@ def main():
             print("   Xem eval/samples/sample-ssh-bruteforce.json.example")
             sys.exit(1)
     else:
-        print(f"[*] Đọc {args.limit} alert từ Wazuh API ({cfg['wazuh']['host']})...")
+        print(f"[*] Đọc {args.limit} alert từ Wazuh Indexer ({cfg['wazuh_indexer']['host']}:{cfg['wazuh_indexer']['port']})...")
         alerts = fetch_alerts_api(cfg, limit=args.limit)
 
     # 3. RAG init (nếu bật)
     rag = None
     if cfg.get("rag", {}).get("enabled"):
-        rag = RuleRAG(
-            data_dir=cfg["rag"]["data_dir"],
-            embedding_model=cfg["rag"]["embedding_model"]
-        )
-        # rag.index()  # chỉ chạy lần đầu hoặc khi update data
+        try:
+            rag = RuleRAG(
+                data_dir=cfg["rag"]["data_dir"],
+                embedding_model=cfg["rag"]["embedding_model"],
+                base_url=cfg["ollama"]["base_url"],
+            )
+        except Exception as e:
+            print(f"[!] Không khởi tạo được RAG, chạy tiếp không có RAG context: {e}")
+            rag = None
 
     # 4. Pipeline: extract → RAG → LLM
     for i, alert in enumerate(alerts):
@@ -70,8 +75,9 @@ def main():
             try:
                 results = rag.query(str(rule_id), str(desc))
                 rag_context = rag.format_context(results)
-            except NotImplementedError:
-                rag_context = "(RAG chưa implement)"
+            except Exception as e:
+                rag_context = ""
+                print(f"[!] RAG query lỗi (bỏ qua context): {e}")
 
         # LLM phân tích
         try:
@@ -82,10 +88,9 @@ def main():
                 base_url=cfg["ollama"]["base_url"]
             )
             print(f"\n[AI Analysis]\n{json.dumps(result, ensure_ascii=False, indent=2)}")
-        except NotImplementedError:
-            print("\n[!] LLM chưa implement. Pipeline stub chạy đến đây.")
+        except Exception as e:
+            print(f"\n[!] Lỗi khi gọi LLM: {e}")
             print(f"    Model dự kiến: {model}")
-            print(f"    RAG context: {rag_context[:100]}...")
 
     print(f"\n{'='*60}")
     print(f"Xong {len(alerts)} alert. Model: {model}")
