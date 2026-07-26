@@ -1,10 +1,21 @@
-# Wazuh API + alert reader config
+# Wazuh Manager API (dùng chung protocol/verify_ssl với Indexer bên dưới;
+# port 55000 hiện KHÔNG dùng để lấy alert — giữ lại cho các tác vụ quản lý
+# agent/rule sau này nếu cần)
 wazuh:
   host: "192.168.100.10"
   port: 55000
   protocol: "https"
   user: "wazuh-wui"
   password: "CHANGE_ME"            # đổi sau khi cài Wazuh
+  verify_ssl: false                 # lab dùng self-signed cert
+
+# Wazuh Indexer (OpenSearch) — reader.py lấy alert thật từ đây, không phải
+# từ Manager API ở trên. Thường cùng host với wazuh, khác port.
+wazuh_indexer:
+  host: "192.168.100.10"
+  port: 9200
+  user: "admin"                     # user Indexer — thường KHÁC user Manager API ở trên
+  password: "CHANGE_ME"             # đổi sau khi cài Wazuh
   verify_ssl: false                 # lab dùng self-signed cert
 
 # Ollama LLM
