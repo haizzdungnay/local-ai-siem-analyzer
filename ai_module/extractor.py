@@ -1,7 +1,6 @@
 """extractor.py — Trích ~10 trường chính từ alert JSON.
 
 KHÔNG ném raw JSON vào LLM — giảm token, tăng chính xác.
-Stub: cấu trúc sẵn, chưa chạy thật. Implement ở GĐ3.
 """
 import yaml
 
@@ -45,6 +44,22 @@ def _get_nested(d: dict, dotted_key: str):
     return current
 
 
+# Nhãn hiển thị đẹp cho từng field — thay vì in thẳng "rule.id: 5712",
+# in "Rule: 5712" cho LLM (và người đọc log) dễ hiểu hơn.
+_LABELS = {
+    "rule.id": "Rule",
+    "rule.description": "Description",
+    "rule.level": "Level",
+    "rule.mitre.id": "MITRE ID",
+    "rule.mitre.tactic": "MITRE Tactic",
+    "rule.mitre.technique": "MITRE Technique",
+    "agent.name": "Agent",
+    "agent.ip": "Agent IP",
+    "data.srcip": "Source IP",
+    "full_log": "Log",
+}
+
+
 def format_for_llm(extracted: dict) -> str:
     """Format extracted fields thành text ngắn gọn cho LLM context.
 
@@ -55,8 +70,49 @@ def format_for_llm(extracted: dict) -> str:
         Source IP: 192.168.100.30
         Log: Failed password for root from 192.168.100.30 port 22 ssh2
     """
-    # TODO: implement formatting — bám danh sách trường trong config
     lines = []
+
+    rule_id = extracted.get("rule.id")
+    level = extracted.get("rule.level")
+    desc = extracted.get("rule.description")
+    if rule_id is not None:
+        header = f"Rule: {rule_id}"
+        if level is not None:
+            header += f" (level {level})"
+        if desc:
+            header += f" — {desc}"
+        lines.append(header)
+
+    mitre_id = extracted.get("rule.mitre.id")
+    mitre_tactic = extracted.get("rule.mitre.tactic")
+    if mitre_id or mitre_tactic:
+        mitre_id_str = ", ".join(mitre_id) if isinstance(mitre_id, list) else str(mitre_id or "")
+        mitre_tactic_str = ", ".join(mitre_tactic) if isinstance(mitre_tactic, list) else str(mitre_tactic or "")
+        lines.append(f"MITRE: {mitre_id_str} / {mitre_tactic_str}")
+
+    agent_name = extracted.get("agent.name")
+    agent_ip = extracted.get("agent.ip")
+    if agent_name:
+        agent_line = f"Agent: {agent_name}"
+        if agent_ip:
+            agent_line += f" ({agent_ip})"
+        lines.append(agent_line)
+
+    srcip = extracted.get("data.srcip")
+    if srcip:
+        lines.append(f"Source IP: {srcip}")
+
+    full_log = extracted.get("full_log")
+    if full_log:
+        lines.append(f"Log: {full_log}")
+
+    # Field nào chưa xử lý riêng ở trên (fallback) — tránh mất dữ liệu
+    # nếu config.yaml sau này thêm field mới mà chưa cập nhật hàm này.
+    handled = {"rule.id", "rule.level", "rule.description",
+               "rule.mitre.id", "rule.mitre.tactic", "rule.mitre.technique",
+               "agent.name", "agent.ip", "data.srcip", "full_log"}
     for key, val in extracted.items():
-        lines.append(f"{key}: {val}")
+        if key not in handled:
+            lines.append(f"{_LABELS.get(key, key)}: {val}")
+
     return "\n".join(lines)
