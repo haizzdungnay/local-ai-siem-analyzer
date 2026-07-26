@@ -112,19 +112,16 @@ GUI Network → Manual: IP `192.168.100.30/24` cho card Host-only; card NAT đ�
 | Sửa file quan trọng | edit `/etc/passwd`... | 550 / 554 (FIM) |
 | Recon | `nmap` | tuỳ rule mạng |
 
-### GĐ3 — Mô-đun AI local (LÕI)
-- Ollama trên host: `ollama pull qwen2.5:3b` + `qwen2.5:7b`.
-- Đọc alert: tail `alerts.json` HOẶC query API/OpenSearch.
-- **Trích ~10 trường chính** (rule.id, level, description, srcip, agent, MITRE...) — KHÔNG ném raw JSON.
-- RAG: index mô tả rule Wazuh (`ruleset/rules/*.xml`) + bảng MITRE bằng embedding local (nomic-embed-text) + ChromaDB/FAISS.
-- Ép output JSON schema: `{summary, root_cause, severity, mitre, next_steps[]}`.
+### GĐ3 — Mô-đun AI local (LÕI) — ✅ Hoàn thành (2026-07-26)
+- [x] Ollama trên host: `qwen2.5:7b` (chính) — đã test thêm `CyberCrew/notmythos-8b` (tương đương), `FenkoHQ/Foundation-Sec-8B` (không phù hợp, xem CHANGELOG 1.4.0).
+- [x] Đọc alert: query thẳng Wazuh Indexer (`POST /wazuh-alerts-*/_search`, port 9200) — không dùng Manager API (`.55000`) như dự kiến ban đầu, vì alert không nằm ở đó (xem CHANGELOG 1.3.0).
+- [x] **Trích ~10 trường chính** (rule.id, level, description, srcip, agent, MITRE...) — KHÔNG ném raw JSON.
+- [x] RAG: index mô tả rule Wazuh + bảng MITRE bằng embedding local (`nomic-embed-text`) + ChromaDB — đã test index 19 doc, query chạy thật (không còn stub).
+- [x] Ép output JSON schema: `{summary, root_cause, severity, mitre, next_steps[]}` — có thêm few-shot example + cơ chế fallback khi model không tuân schema.
 
 ### GĐ4 — Đánh giá
-- Chọn 30–50 alert mẫu.
-- So thời gian phân tích tay vs có AI.
-- Chấm chất lượng giải thích thang 1–5 (đúng nguyên nhân? gợi ý hữu ích?).
-- So sánh `3b` vs `7b`: chất lượng + tốc độ → 1 mục thực nghiệm trong báo cáo.
-
+- [ ] Chọn 30–50 alert mẫu (hiện mới test lẻ tẻ ~5 alert khi làm GĐ3).
+- [ ] So thời gian phân tích tay vs có AI.
 ### Mở rộng (nếu dư thời gian)
 - Thêm Windows victim + Sysmon (`.40`).
 - Nút "Explain" trên dashboard nhỏ.
