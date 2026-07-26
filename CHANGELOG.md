@@ -3,7 +3,23 @@
 Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog](https://keepachangelog.com/).
 
 ---
+## [1.4.0] — 2026-07-26
 
+Hoàn tất GĐ3 — mô-đun AI local chạy thật đầu-cuối (Ollama, RAG, ép JSON schema), đã test với nhiều model.
+
+### Added
+- **`ai_module/llm.py`** — implement gọi Ollama thật (`ollama.Client().chat(..., format="json")`), thay thế stub `NotImplementedError`.
+- **Few-shot example trong `SYSTEM_PROMPT`** (`llm.py`) — 1 cặp input/output mẫu đã điền sẵn, dùng chung cho mọi model (không if-else riêng theo tên model), giúp model yếu về instruction-following (vd base model) không nhầm mô tả field trong schema thành giá trị cần trả.
+- **`_looks_like_echoed_schema()` + `_fallback_result()`** (`llm.py`) — cơ chế fallback dùng chung: phát hiện khi model "trả lại đề bài" (copy nguyên văn mô tả field) thay vì phân tích thực tế, tự động chuyển sang kết quả fallback thay vì trả về JSON vô nghĩa.
+- **`ai_module/rag.py`** — implement đầy đủ `index()`/`query()`/`_embed()` qua ChromaDB (persistent local) + Ollama embeddings (`nomic-embed-text`), thay thế stub `NotImplementedError`.
+- **`ai_module/rag_data/wazuh_rules.json`** + **`mitre_techniques.json`** — dữ liệu mẫu 11 rule Wazuh + 8 MITRE ATT&CK technique (dựa theo rule thực tế đã gặp: 5503, 550, 60106, 60642...) để RAG có dữ liệu index thật, đã xác nhận `index()` chạy thành công (19 doc).
+- **`ai_module/config.example.yaml`** — thêm block `wazuh_indexer` (host/port/user/password/verify_ssl) tách riêng khỏi `wazuh` (Manager API) — khớp với kiến trúc `reader.py` thật (query thẳng Indexer, không qua Manager API).
+- **`ai_module/main.py`** — cập nhật xử lý lỗi tổng quát (`except Exception` thay vì chỉ bắt `NotImplementedError`), khởi tạo RAG có try/except để không crash khi thiếu dữ liệu/model embedding.
+
+### Changed
+- Đã test end-to-end với 4 model qua Ollama trên alert thật (Windows Logon, FIM, Software Protection): `qwen2.5:7b` và `CyberCrew/notmythos-8b` cho kết quả ổn định, đúng schema, chất lượng tương đương nhau — chọn làm 2 model chính cho GĐ4. `FenkoHQ/Foundation-Sec-8B` (base model, continued pre-train trên corpus bảo mật) không tuân theo structured JSON output ổn định dù đã có few-shot — ghi nhận là hạn chế của model, không phải lỗi hệ thống (chi tiết: `eval/model-comparison.md`, chưa merge lên nhánh chính).
+
+---
 ## [1.3.0] — 2026-07-17
 
 Mở rộng infra: thêm Windows victim (`.40`) + Wazuh agent. Fix sự cố nghiêm trọng khiến Dashboard timeout sau nhiều ngày vận hành liên tục.
