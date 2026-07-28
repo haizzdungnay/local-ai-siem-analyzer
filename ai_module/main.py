@@ -30,6 +30,7 @@ def main():
     # 1. Load config
     cfg = load_config(args.config)
     model = args.model or cfg["ollama"]["model"]
+    ollama_timeout = cfg["ollama"].get("timeout", 120)
 
     # 2. Đọc alert
     if args.demo:
@@ -51,7 +52,11 @@ def main():
                 data_dir=cfg["rag"]["data_dir"],
                 embedding_model=cfg["rag"]["embedding_model"],
                 base_url=cfg["ollama"]["base_url"],
+                timeout=ollama_timeout,
             )
+            indexed_count = rag.ensure_indexed()
+            if indexed_count:
+                print(f"[*] Đã index {indexed_count} tài liệu RAG.")
         except Exception as e:
             print(f"[!] Không khởi tạo được RAG, chạy tiếp không có RAG context: {e}")
             rag = None
@@ -85,7 +90,8 @@ def main():
                 alert_text=alert_text,
                 rag_context=rag_context,
                 model=model,
-                base_url=cfg["ollama"]["base_url"]
+                base_url=cfg["ollama"]["base_url"],
+                timeout=ollama_timeout,
             )
             print(f"\n[AI Analysis]\n{json.dumps(result, ensure_ascii=False, indent=2)}")
         except Exception as e:

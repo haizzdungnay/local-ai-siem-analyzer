@@ -18,15 +18,22 @@ class RuleRAG:
     """RAG đơn giản cho rule Wazuh + MITRE, dùng ChromaDB persistent local."""
 
     def __init__(self, data_dir: str = "rag_data", embedding_model: str = "nomic-embed-text",
-                 base_url: str = "http://localhost:11434", persist_subdir: str = "chroma"):
+                 base_url: str = "http://localhost:11434", persist_subdir: str = "chroma",
+                 timeout: float = 120):
         self.data_dir = Path(data_dir)
         self.embedding_model = embedding_model
-        self.ollama_client = ollama_sdk.Client(host=base_url)
+        self.ollama_client = ollama_sdk.Client(host=base_url, timeout=timeout)
 
         persist_path = self.data_dir / persist_subdir
         persist_path.mkdir(parents=True, exist_ok=True)
         self.chroma_client = chromadb.PersistentClient(path=str(persist_path))
         self.collection = self.chroma_client.get_or_create_collection("wazuh_rules_mitre")
+
+    def ensure_indexed(self) -> int:
+        """Index dữ liệu nguồn khi collection chưa có document nào."""
+        if self.collection.count() > 0:
+            return 0
+        return self.index()
 
     def _embed(self, text: str) -> list:
         resp = self.ollama_client.embeddings(model=self.embedding_model, prompt=text)

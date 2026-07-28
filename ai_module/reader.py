@@ -14,9 +14,14 @@ def load_config(path: str = "config.yaml") -> dict:
 
 def get_wazuh_token(cfg: dict) -> str:
     """Xác thực Wazuh Manager API, trả về JWT token. (Không dùng để lấy alert)"""
-    url = f"{cfg['wazuh']['protocol']}://{cfg['wazuh']['host']}:{cfg['wazuh']['port']}/security/user/authenticate"
-    r = requests.post(url, auth=(cfg["wazuh"]["user"], cfg["wazuh"]["password"]),
-                      verify=cfg["wazuh"].get("verify_ssl", False))
+    wazuh_cfg = cfg["wazuh"]
+    url = f"{wazuh_cfg['protocol']}://{wazuh_cfg['host']}:{wazuh_cfg['port']}/security/user/authenticate"
+    r = requests.post(
+        url,
+        auth=(wazuh_cfg["user"], wazuh_cfg["password"]),
+        verify=wazuh_cfg.get("verify_ssl", False),
+        timeout=wazuh_cfg.get("timeout", 30),
+    )
     r.raise_for_status()
     return r.json()["data"]["token"]
 
@@ -37,6 +42,7 @@ def fetch_alerts_api(cfg: dict, limit: int = 10) -> list[dict]:
         json=query,
         auth=(idx_cfg["user"], idx_cfg["password"]),
         verify=idx_cfg.get("verify_ssl", False),
+        timeout=idx_cfg.get("timeout", 30),
     )
     r.raise_for_status()
 
