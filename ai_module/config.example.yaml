@@ -8,6 +8,7 @@ wazuh:
   user: "wazuh-wui"
   password: "CHANGE_ME"            # đổi sau khi cài Wazuh
   verify_ssl: false                 # lab dùng self-signed cert
+  timeout: 30                       # giây; tránh chờ vô hạn khi Manager lỗi
 
 # Wazuh Indexer (OpenSearch) — reader.py lấy alert thật từ đây, không phải
 # từ Manager API ở trên. Thường cùng host với wazuh, khác port.
@@ -17,6 +18,7 @@ wazuh_indexer:
   user: "admin"                     # user Indexer — thường KHÁC user Manager API ở trên
   password: "CHANGE_ME"             # đổi sau khi cài Wazuh
   verify_ssl: false                 # lab dùng self-signed cert
+  timeout: 30                       # giây; tránh chờ vô hạn khi Indexer lỗi
 
 # Ollama LLM
 ollama:

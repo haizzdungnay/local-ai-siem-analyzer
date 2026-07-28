@@ -61,15 +61,25 @@ sudo bash scripts/setup/install-agent.sh 192.168.100.10   # cài agent, trỏ v�
 
 # --- Trên máy thật (host) ---
 ollama pull qwen2.5:3b && ollama pull qwen2.5:7b
+ollama pull nomic-embed-text                         # embedding cho RAG
 cd ai_module && pip install -r requirements.txt
 cp config.example.yaml config.yaml                  # điền IP + API key Wazuh
-python main.py --demo                                # chạy thử với alert mẫu
+python main.py --demo                                # lần đầu tự index dữ liệu RAG
 
 # --- Sinh cảnh báo (từ Kali .30) ---
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
 ```
 
 Chi tiết từng bước: [`docs/setup.md`](docs/setup.md).
+
+### Kiểm tra code
+
+```bash
+pip install -r ai_module/requirements-dev.txt
+python -m pytest tests -q
+```
+
+Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
 
 ---
 

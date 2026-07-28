@@ -61,7 +61,8 @@ Không bịa thông tin không có trong alert.""".format(
 
 
 def analyze_alert(alert_text: str, rag_context: str = "",
-                   model: str = "qwen2.5:3b", base_url: str = "http://localhost:11434") -> dict:
+                  model: str = "qwen2.5:3b", base_url: str = "http://localhost:11434",
+                  timeout: float = 120) -> dict:
     """Gửi alert đã trích + RAG context cho LLM, parse JSON output.
 
     Args:
@@ -69,6 +70,7 @@ def analyze_alert(alert_text: str, rag_context: str = "",
         rag_context: output từ rag.format_context()
         model: tên model Ollama
         base_url: Ollama endpoint
+        timeout: thời gian chờ tối đa cho request Ollama, tính bằng giây
 
     Returns:
         dict theo OUTPUT_SCHEMA
@@ -77,7 +79,7 @@ def analyze_alert(alert_text: str, rag_context: str = "",
     if rag_context:
         user_msg += f"\n\nTham khảo thêm:\n{rag_context}"
 
-    client = ollama_sdk.Client(host=base_url)
+    client = ollama_sdk.Client(host=base_url, timeout=timeout)
     response = client.chat(
         model=model,
         messages=[
@@ -125,6 +127,12 @@ def _parse_response(raw: str) -> dict:
         result = json.loads(raw)
     except json.JSONDecodeError:
         return _fallback_result("[LLM không trả JSON hợp lệ]", raw)
+
+    if not isinstance(result, dict):
+        return _fallback_result(
+            "[LLM trả JSON hợp lệ nhưng không phải JSON object]",
+            raw,
+        )
 
     # Validate required keys
     for key in OUTPUT_SCHEMA:

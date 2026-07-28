@@ -6,7 +6,7 @@ import yaml
 
 
 def load_config(path: str = "config.yaml") -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -85,10 +85,19 @@ def format_for_llm(extracted: dict) -> str:
 
     mitre_id = extracted.get("rule.mitre.id")
     mitre_tactic = extracted.get("rule.mitre.tactic")
-    if mitre_id or mitre_tactic:
+    mitre_technique = extracted.get("rule.mitre.technique")
+    if mitre_id or mitre_tactic or mitre_technique:
         mitre_id_str = ", ".join(mitre_id) if isinstance(mitre_id, list) else str(mitre_id or "")
         mitre_tactic_str = ", ".join(mitre_tactic) if isinstance(mitre_tactic, list) else str(mitre_tactic or "")
-        lines.append(f"MITRE: {mitre_id_str} / {mitre_tactic_str}")
+        mitre_technique_str = (
+            ", ".join(mitre_technique)
+            if isinstance(mitre_technique, list)
+            else str(mitre_technique or "")
+        )
+        mitre_parts = [
+            part for part in (mitre_id_str, mitre_tactic_str, mitre_technique_str) if part
+        ]
+        lines.append(f"MITRE: {' / '.join(mitre_parts)}")
 
     agent_name = extracted.get("agent.name")
     agent_ip = extracted.get("agent.ip")

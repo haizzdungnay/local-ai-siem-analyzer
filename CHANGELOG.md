@@ -3,6 +3,17 @@
 Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog](https://keepachangelog.com/).
 
 ---
+## [Unreleased]
+
+### Added
+- Test hồi quy cho pipeline AI và GitHub Actions chạy trên Linux/Windows.
+
+### Fixed
+- Tự index dữ liệu RAG ở lần chạy đầu thay vì query collection rỗng.
+- Đọc config UTF-8 ổn định trên Windows và giữ tên MITRE technique trong prompt.
+- Fallback an toàn khi LLM trả JSON không phải object.
+- Áp dụng timeout cấu hình cho Ollama, Wazuh Manager và Indexer.
+
 ## [1.4.0] — 2026-07-26
 
 Hoàn tất GĐ3 — mô-đun AI local chạy thật đầu-cuối (Ollama, RAG, ép JSON schema), đã test với nhiều model.
