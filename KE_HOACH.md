@@ -120,7 +120,7 @@ GUI Network → Manual: IP `192.168.100.30/24` cho card Host-only; card NAT đ�
 - [x] Ép output JSON schema: `{summary, root_cause, severity, mitre, next_steps[]}` — có thêm few-shot example + cơ chế fallback khi model không tuân schema.
 
 ### GĐ4 — Đánh giá
-- [x] Đóng băng 30 alert `sanitized-live` trong `eval/cases/`, manifest và expected ground truth nháp.
+- [x] Đóng băng 33 alert `sanitized-live` trong `eval/cases/`, gồm 3 web case live, manifest và expected ground truth nháp.
 - [x] Viết rubric 1–5, CSV schema và runner baseline tái dùng extractor/RAG/Ollama.
 - [x] Chạy vòng review độc lập kỹ thuật: giảm duplicate, sửa severity/disposition và MITRE ground truth.
 - [ ] Reviewer người thứ hai adjudicate ground truth và chấm độc lập toàn bộ corpus.

@@ -38,6 +38,12 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Live AI pipeline chạy lại thành công trên 3 alert Indexer gần nhất bằng `qwen2.5:7b`, có RAG và JSON output hợp lệ.
 - Vòng live-lab cuối pass `20` pytest, compileall, shell syntax và `git diff --check`; script tạm trên VM đã dọn.
 - Tạo checkpoint local `1fd6205` trên branch `claude/lab-eval-checkpoint`; secrets, `.claude/`, `.bak` và `create_rag_data.py` không được stage.
+- Web live capture PASS sau khi normalize LF khi chuyển script sang Kali: Indexer ghi `31101`, correlation `31151` và XSS `31105`; sửa curl SQLi URL bằng `--data-urlencode` để tránh HTTP `000` do khoảng trắng thô.
+- Thêm 3 case web `sanitized-live` cùng expected draft vào eval; corpus tăng từ 30 lên 33 case và dataset tests bắt buộc đủ ba rule web.
+- FIM retained-marker re-test xác nhận đủ rule `554` khi add và `550` khi modify `/opt/wazuh-fim-lab/modified-marker.txt` sau baseline 20 giây.
+- Rerun baseline 33 case: RAG schema 32/33, severity exact 22/33, mean 2.716s; no-RAG schema 33/33, severity exact 19/33, mean 2.428s.
+- Thêm `eval/summarize_results.py` để tổng hợp metric và human scores đã nhập mà không tự bịa điểm semantic.
+- Expanded eval verification pass: compileall, 21 pytest, summary tool, shell syntax và `git diff --check`.
 
 ## [1.4.0] — 2026-07-26
 

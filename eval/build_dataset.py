@@ -108,6 +108,7 @@ selectors = [
     ("ssh", "5503", 5), ("ssh", "5760", 5), ("ssh", "5710", 2),
     ("ssh", "2502", 1), ("ssh", "5712", 1), ("ssh", "40112", 2),
     ("fim", "554", 2), ("fim", "553", 1),
+    ("web", "31101", 1), ("web", "31151", 1), ("web", "31105", 1),
     ("benign", "5715", 1), ("benign", "5501", 2), ("benign", "5502", 2),
     ("benign", "5402", 1), ("benign", "503", 1), ("benign", "23502", 6),
     ("ambiguous", "506", 1), ("ambiguous", "510", 1),
@@ -134,12 +135,14 @@ if not 30 <= len(selected) <= 50:
 severity = {
     "5503": "medium", "5760": "medium", "5710": "medium", "2502": "high",
     "5712": "high", "40112": "high", "554": "medium", "553": "high",
+    "31101": "medium", "31151": "high", "31105": "medium",
     "5715": "low", "5501": "low", "5502": "low", "5402": "low", "503": "low", "23502": "low",
     "506": "medium", "510": "high",
 }
 disposition = {
     "5503": "suspicious", "5760": "suspicious", "5710": "suspicious", "2502": "malicious",
     "5712": "malicious", "40112": "ambiguous", "554": "ambiguous", "553": "ambiguous",
+    "31101": "suspicious", "31151": "malicious", "31105": "suspicious",
     "5715": "benign", "5501": "benign", "5502": "benign", "5402": "benign", "503": "benign", "23502": "benign",
     "506": "ambiguous", "510": "ambiguous",
 }
@@ -152,6 +155,9 @@ summary = {
     "40112": "Nhiều lần xác thực thất bại được theo sau bởi đăng nhập thành công; cần xác minh phiên thành công.",
     "554": "Một file mới xuất hiện trong thư mục FIM được giám sát.",
     "553": "Một file trong thư mục FIM được giám sát đã bị xóa.",
+    "31101": "Web server trả HTTP 404 cho request truy cập path đáng ngờ `/etc/passwd`.",
+    "31151": "Nhiều request web lỗi từ cùng IP được Wazuh tương quan thành hoạt động quét.",
+    "31105": "Một request chứa payload XSS được gửi tới web server và nhận HTTP 404.",
     "5715": "Đăng nhập SSH bằng public key đã thành công.",
     "5501": "Một phiên PAM đã được mở.",
     "5502": "Một phiên PAM đã đóng.",
@@ -170,6 +176,9 @@ root_cause = {
     "40112": "Rule tương quan phát hiện thất bại xác thực trước một lần thành công; cần xác minh tính hợp lệ của phiên thành công.",
     "554": "Một file mới xuất hiện trong path FIM; nguyên nhân không có trong alert và cần đối chiếu change record.",
     "553": "Một file FIM đã bị xóa; nguyên nhân không có trong alert và cần xác minh actor hoặc tiến trình thực hiện.",
+    "31101": "Request từ IP nguồn chứa path nhạy cảm nhưng server trả 404; alert chưa chứng minh đọc file thành công.",
+    "31151": "Nhiều HTTP 404 liên tiếp từ cùng nguồn khớp hành vi vulnerability scanning và kích hoạt correlation rule.",
+    "31105": "URL chứa chuỗi `<script>` khớp chữ ký XSS nhưng response 404; alert chưa chứng minh JavaScript đã thực thi.",
     "5715": "Public key của analyst được chấp nhận; cần đối chiếu source và fingerprint để xác nhận phiên được phép.",
     "5501": "PAM mở một phiên; alert không đủ evidence để xác nhận tính hợp lệ của hoạt động.",
     "5502": "PAM đóng một phiên; alert không cho biết nguyên nhân đóng.",
@@ -188,6 +197,9 @@ next_steps = {
     "40112": ["Xác minh chủ sở hữu IP, phương thức xác thực và phiên đăng nhập thành công", "Thu hồi credential và cô lập máy nếu phiên không được phép"],
     "554": ["Xác minh path, owner và hash của file mới", "Đối chiếu với script hoặc change record trước khi xóa hoặc cách ly"],
     "553": ["Xác minh file bị xóa và tiến trình hoặc người dùng thực hiện", "Khôi phục từ backup nếu đây không phải cleanup được phép"],
+    "31101": ["Rà các request cùng IP và thời điểm", "Xác minh server không trả nội dung file nhạy cảm"],
+    "31151": ["Xác định phạm vi URL và dịch vụ bị quét", "Chặn hoặc rate-limit nguồn nếu hoạt động không được phép"],
+    "31105": ["Kiểm tra response và application log để xác nhận payload không thực thi", "Rà input validation và output encoding của ứng dụng"],
     "5715": ["Xác minh IP nguồn và fingerprint public key thuộc analyst", "Không chặn phiên nếu khớp hoạt động quản trị dự kiến"],
     "5501": ["Đối chiếu phiên với lệnh sudo hoặc phiên SSH liên quan", "Chỉ nâng mức nếu tài khoản, nguồn hoặc thời gian bất thường"],
     "5502": ["Đối chiếu với phiên mở tương ứng", "Không cần xử lý thêm nếu phiên hợp lệ"],
@@ -207,7 +219,7 @@ def reference_text(mapping, rid, alert):
 
 def expected_mitre(alert, rid):
     full_log = str(alert.get("full_log", ""))
-    if rid in {"5715", "5501", "5402", "23502"}:
+    if rid in {"5715", "5501", "5402", "23502", "31101", "31105"}:
         return [], []
     if rid == "5710" and "Failed password" not in full_log:
         return [], []

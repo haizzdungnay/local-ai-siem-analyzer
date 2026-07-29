@@ -1,6 +1,6 @@
 # GĐ4 — Bộ đánh giá phân tích alert
 
-Corpus hiện có 30 case `sanitized-live` lấy từ Wazuh lab ngày 2026-07-28–29. Mỗi case có input đóng băng trong `cases/` và ground truth nháp trong `expected/`; `manifest.json` nối hai phần bằng `case_id`.
+Corpus hiện có 33 case `sanitized-live` lấy từ Wazuh lab ngày 2026-07-28–29. Mỗi case có input đóng băng trong `cases/` và ground truth nháp trong `expected/`; `manifest.json` nối hai phần bằng `case_id`.
 
 ## Thành phần
 
@@ -10,8 +10,9 @@ Corpus hiện có 30 case `sanitized-live` lấy từ Wazuh lab ngày 2026-07-28
 - `results.csv`: output baseline, latency, schema validity và cột điểm reviewer.
 - `run_eval.py`: runner dùng đúng extractor, RAG và `analyze_alert()` của pipeline.
 - `build_dataset.py`: script maintainer tái tạo snapshot từ Indexer; cần `ai_module/config.yaml`, có xóa rồi ghi lại `cases/` và `expected/`.
+- `summarize_results.py`: tổng hợp latency, schema/error rate, severity exact-match và human scores đã điền.
 
-Ground truth đã qua một vòng review độc lập nhưng vẫn giữ `review_status: draft-single-reviewer` vì chưa có reviewer người thứ hai. Vòng review đã giảm duplicate, hạ `40112` thành ambiguous/high, bỏ forced MITRE trên benign/weak-evidence case và thêm benign rule `23502`. Snapshot Indexer hiện không có alert web `31101/31151`, nên corpus chưa chứa web case; không tạo synthetic case chỉ để đủ quota.
+Ground truth đã qua một vòng review độc lập nhưng vẫn giữ `review_status: draft-single-reviewer` vì chưa có reviewer người thứ hai. Vòng review đã giảm duplicate, hạ `40112` thành ambiguous/high và bỏ forced MITRE trên benign/weak-evidence case. Live capture mới bổ sung `31101`, `31151` và `31105`; không có synthetic case.
 
 ## Chạy baseline
 
@@ -36,7 +37,15 @@ python eval/run_eval.py --model qwen2.5:7b --limit 1 --results eval/results-smok
 
 Runner ghi mới file CSV. Chạy cùng corpus, config extractor, prompt, RAG corpus và model tag; không sửa prompt giữa hai lượt so sánh.
 
-Kết quả smoke baseline đã ghi ở [`baseline.md`](baseline.md). Đây là kết quả model tự động trước human review, không phải điểm chất lượng cuối.
+Kết quả baseline đã ghi ở [`baseline.md`](baseline.md). Đây là kết quả model tự động trước human review, không phải điểm chất lượng cuối.
+
+Tổng hợp kết quả hiện có:
+
+```powershell
+python eval/summarize_results.py eval/results.csv eval/results-no-rag.csv
+```
+
+Human reviewer điền năm cột `*_score`, `reviewer`, `notes` trong bản copy của CSV. Không tự sinh điểm semantic từ model output hoặc expected data.
 
 ## Baseline phân tích tay
 
@@ -45,5 +54,6 @@ Kết quả smoke baseline đã ghi ở [`baseline.md`](baseline.md). Đây là 
 3. Reviewer khác chấm output tay và output AI theo `rubric.md`; ẩn tên nguồn output khi có thể.
 4. Ghi thời gian tay vào file riêng hoặc cột notes; không ghi đè output model trong `results.csv`.
 5. Báo median/p95 latency, schema-valid rate và điểm trung bình từng tiêu chí; không chỉ báo một điểm tổng.
+6. Dùng `summarize_results.py` sau khi chấm; `scored_cases` phải bằng số case trước khi kết luận semantic.
 
 `root_cause` phải phân biệt sự kiện quan sát được với suy đoán. Rule MITRE từ Wazuh có thể map rộng ngay cả trên hoạt động benign; reviewer chấm model dựa alert + ground truth, không buộc model kết luận attack chỉ vì rule có MITRE.

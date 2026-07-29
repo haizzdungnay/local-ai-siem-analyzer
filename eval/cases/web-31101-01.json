@@ -1,0 +1,19 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "protocol": "GET",
+    "srcip": "10.0.0.30",
+    "id": "404",
+    "url": "/etc/passwd"
+  },
+  "rule": {
+    "level": 5,
+    "description": "Web server 400 error code.",
+    "id": "31101"
+  },
+  "full_log": "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /etc/passwd HTTP/1.1\" 404 437 \"-\" \"curl/8.18.0\""
+}

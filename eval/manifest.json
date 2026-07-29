@@ -268,5 +268,32 @@
     "scenario": "ambiguous",
     "rule_id": "510",
     "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "web-31101-01",
+    "case_file": "eval/cases/web-31101-01.json",
+    "expected_file": "eval/expected/web-31101-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "web",
+    "rule_id": "31101",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "web-31151-01",
+    "case_file": "eval/cases/web-31151-01.json",
+    "expected_file": "eval/expected/web-31151-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "web",
+    "rule_id": "31151",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "web-31105-01",
+    "case_file": "eval/cases/web-31105-01.json",
+    "expected_file": "eval/expected/web-31105-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "web",
+    "rule_id": "31105",
+    "review_status": "draft-single-reviewer"
   }
 ]

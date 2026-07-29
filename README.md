@@ -115,7 +115,7 @@ local-ai-siem-analyzer/
 1. **Dựng lab SIEM** — 3 VM, mạng, Wazuh Docker, agent Active, bật thu log.
 2. **Sinh cảnh báo** — SSH brute-force, web attack (DVWA), FIM. Map sẵn rule ID.
 3. **Mô-đun AI (lõi)** — Ollama, trích trường chính, RAG, ép JSON schema `{summary, root_cause, severity, mitre, next_steps}`.
-4. **Đánh giá** — 30 alert `sanitized-live`, ground truth đã review kỹ thuật, rubric 1–5 và baseline `qwen2.5:7b` RAG/no-RAG; còn human review và đo thời gian phân tích tay.
+4. **Đánh giá** — 33 alert `sanitized-live` gồm SSH/FIM/web/benign/ambiguous, ground truth đã review kỹ thuật, rubric 1–5 và baseline `qwen2.5:7b` RAG/no-RAG; còn human review và đo thời gian phân tích tay.
 
 Chi tiết: [`KE_HOACH.md`](KE_HOACH.md), [`eval/README.md`](eval/README.md).
 

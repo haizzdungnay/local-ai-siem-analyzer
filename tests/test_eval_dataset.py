@@ -15,7 +15,7 @@ def test_eval_manifest_has_valid_sanitized_cases():
     assert 30 <= len(manifest) <= 50
     assert len({item["case_id"] for item in manifest}) == len(manifest)
     assert {item["provenance"] for item in manifest} == {"sanitized-live"}
-    assert {item["scenario"] for item in manifest} >= {"ssh", "fim", "benign", "ambiguous"}
+    assert {item["scenario"] for item in manifest} >= {"ssh", "fim", "web", "benign", "ambiguous"}
 
     rule_counts = Counter()
     for item in manifest:
@@ -40,6 +40,9 @@ def test_eval_manifest_has_valid_sanitized_cases():
     assert rule_counts["5503"] >= 3
     assert rule_counts["554"] >= 1
     assert rule_counts["23502"] >= 1
+    assert rule_counts["31101"] >= 1
+    assert rule_counts["31151"] >= 1
+    assert rule_counts["31105"] >= 1
 
     expected_by_id = {
         item["case_id"]: json.loads(
@@ -64,6 +67,21 @@ def test_eval_runner_resolves_case_path_from_repo(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
     assert runner.load_case(item)["rule"]["id"] == item["rule_id"]
+
+
+def test_result_summary_metrics():
+    summary_path = EVAL_DIR / "summarize_results.py"
+    spec = importlib.util.spec_from_file_location("summarize_results", summary_path)
+    summary_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(summary_module)
+
+    summary = summary_module.summarize(EVAL_DIR / "results.csv")
+
+    assert summary["cases"] == 33
+    assert summary["schema_valid"] == 32
+    assert summary["errors"] == 0
+    assert summary["severity_exact"] == 22
+    assert summary["scored_cases"] == 0
 
 
 def test_results_csv_matches_runner_schema():

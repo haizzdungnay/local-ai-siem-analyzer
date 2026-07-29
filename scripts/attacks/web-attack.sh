@@ -19,7 +19,7 @@ echo ""
 echo "=== 3. Curl đơn giản (trigger WAF rule) ==="
 curl -s -o /dev/null -w "HTTP %{http_code}" "http://$TARGET/../../etc/passwd" || true
 echo ""
-curl -s -o /dev/null -w "HTTP %{http_code}" "http://$TARGET/?id=1' OR 1=1--" || true
+curl -s -o /dev/null -w "HTTP %{http_code}" --get --data-urlencode "id=1' OR 1=1--" "http://$TARGET/" || true
 echo ""
 curl -s -o /dev/null -w "HTTP %{http_code}" "http://$TARGET/<script>alert(1)</script>" || true
 

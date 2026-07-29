@@ -25,7 +25,13 @@ Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần
 - Live AI attempt 2 PASS: `python ai_module/main.py --limit 3`, model `qwen2.5:7b`, Indexer/RAG/Ollama chạy đủ, 3 JSON output hợp lệ. Quan sát semantic: benign PAM/sudo vẫn có MITRE text chưa chính xác ở vài output; cần human scoring, không blocker pipeline.
 - Remote `/tmp/ssh-bruteforce.sh` và `/tmp/fim-trigger.sh` đã dọn trên cả ba VM.
 - Full verification sau live lab: compileall PASS, `20 passed`, shell syntax PASS, `git diff --check` PASS; chỉ còn CRLF warnings.
-- Next: human review/scoring, manual timing, optional web live capture; chưa commit/push.
+- Web live PASS ngày 2026-07-29: DVWA/Apache reachable, Nikto bounded 44s; Indexer batch gần nhất có `31101`, `31151` correlation và `31105` XSS. Script được sửa dùng `--data-urlencode` cho SQLi curl để tránh HTTP `000`.
+- Web eval capture hoàn tất: append 3 case `web-31101-01`, `web-31151-01`, `web-31105-01`; corpus hiện 33 case, không rewrite 30 case cũ; expected vẫn draft-single-reviewer.
+- FIM modified PASS: tạo `modified-marker.txt`, chờ baseline 20s, append nội dung, chờ 20s; Indexer ghi `554` add và `550` Integrity checksum changed. Marker vẫn ở `/opt/wazuh-fim-lab/modified-marker.txt` để giữ bằng chứng/baseline; xóa sau khi không cần sẽ sinh `553`.
+- Baseline 33 case rerun PASS: RAG 32/33 schema, 22/33 severity exact, mean 2.716s; no-RAG 33/33 schema, 19/33 severity exact, mean 2.428s. RAG `benign-23502-01` fallback `severity=unknown`.
+- Human eval package: `eval/summarize_results.py` tổng hợp latency/schema/error/severity và điểm đã nhập; không tự sinh semantic score. Human reviewer và manual timing vẫn bắt buộc.
+- Full verification increment: compileall PASS, `21 passed`, summary tool PASS, 3 attack scripts + hook syntax PASS, `git diff --check` PASS; chỉ CRLF warnings.
+- Next: commit web/FIM/eval increment; sau đó reviewer người thứ hai chấm 66 output và đo 33 case tay.
 
 ## Trạng thái
 

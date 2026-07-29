@@ -1,0 +1,30 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "protocol": "GET",
+    "srcip": "10.0.0.30",
+    "id": "404",
+    "url": "/<script>alert(1)</script>"
+  },
+  "rule": {
+    "level": 6,
+    "description": "XSS (Cross Site Scripting) attempt.",
+    "mitre": {
+      "technique": [
+        "JavaScript"
+      ],
+      "id": [
+        "T1059.007"
+      ],
+      "tactic": [
+        "Execution"
+      ]
+    },
+    "id": "31105"
+  },
+  "full_log": "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /<script>alert(1)</script> HTTP/1.1\" 404 437 \"-\" \"curl/8.18.0\""
+}

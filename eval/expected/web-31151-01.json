@@ -1,0 +1,29 @@
+{
+  "case_id": "web-31151-01",
+  "provenance": "sanitized-live",
+  "scenario": "web",
+  "rule_id": "31151",
+  "disposition": "malicious",
+  "severity": "high",
+  "mitre_ids": [
+    "T1595.002"
+  ],
+  "mitre_tactics": [
+    "Reconnaissance"
+  ],
+  "summary_reference": "Nhiều request web lỗi từ cùng IP được Wazuh tương quan thành hoạt động quét.",
+  "root_cause_reference": "Nhiều HTTP 404 liên tiếp từ cùng nguồn khớp hành vi vulnerability scanning và kích hoạt correlation rule.",
+  "required_facts": [
+    "Multiple web server 400 error codes from same source ip.",
+    "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /level/16/level/16/exec//show/interfaces/status HTTP/1.1\" 404 492 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.6282.50 Safari/537.36 OPR/104.0.0.0\""
+  ],
+  "forbidden_claims": [
+    "Không khẳng định khai thác thành công khi response là HTTP 404.",
+    "Không tự động chặn hoặc cô lập trước khi xác minh hoạt động được phép."
+  ],
+  "next_steps_reference": [
+    "Xác định phạm vi URL và dịch vụ bị quét",
+    "Chặn hoặc rate-limit nguồn nếu hoạt động không được phép"
+  ],
+  "review_status": "draft-single-reviewer"
+}
