@@ -1,0 +1,29 @@
+{
+  "syscheck": {
+    "uname_after": "root",
+    "mtime_after": "2026-07-29T01:11:33",
+    "size_after": "381",
+    "gid_after": "7",
+    "mode": "realtime",
+    "path": "/etc/cups/subscriptions.conf.N",
+    "sha1_after": "c1a75f1b46ad34f1543a9b96c150bd1e4c49e7a8",
+    "gname_after": "lp",
+    "uid_after": "0",
+    "perm_after": "rw-r-----",
+    "event": "added",
+    "md5_after": "9487347a51298d3f2278428ec5f7b15d",
+    "sha256_after": "2d49e29ffae4b9cf09c65e064ffd3b1967ac630664fed657ed00c32b84072ab6",
+    "inode_after": 1837497
+  },
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "rule": {
+    "id": "554",
+    "level": 5,
+    "description": "File added to the system."
+  },
+  "full_log": "File '/etc/cups/subscriptions.conf.N' added\nMode: realtime\n"
+}

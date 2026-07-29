@@ -1,0 +1,29 @@
+{
+  "case_id": "ssh-5712-01",
+  "provenance": "sanitized-live",
+  "scenario": "ssh",
+  "rule_id": "5712",
+  "disposition": "malicious",
+  "severity": "high",
+  "mitre_ids": [
+    "T1110"
+  ],
+  "mitre_tactics": [
+    "Credential Access"
+  ],
+  "summary_reference": "Wazuh phát hiện chuỗi brute-force SSH vào tài khoản không tồn tại.",
+  "root_cause_reference": "Nhiều lần thử SSH bằng tài khoản không tồn tại kích hoạt rule tương quan brute-force.",
+  "required_facts": [
+    "sshd: brute force trying to get access to the system. Non existent user.",
+    "victim-ubuntu sshd[1000]: Failed password for invalid user invalid-user-a from 10.0.0.1 port 40000 ssh2"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Chặn hoặc cô lập IP nguồn nếu không được phép",
+    "Rà soát tài khoản và các phiên thành công cùng thời điểm"
+  ],
+  "review_status": "draft-single-reviewer"
+}

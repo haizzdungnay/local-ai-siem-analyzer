@@ -1,0 +1,25 @@
+{
+  "case_id": "ambiguous-510-01",
+  "provenance": "sanitized-live",
+  "scenario": "ambiguous",
+  "rule_id": "510",
+  "disposition": "ambiguous",
+  "severity": "high",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Rootcheck báo nghi ngờ file hệ thống bị trojan hóa; cần xác minh để loại false positive.",
+  "root_cause_reference": "Rootcheck khớp chữ ký generic trên binary diff; alert cần kiểm chứng hash hoặc package trước khi kết luận trojan.",
+  "required_facts": [
+    "Host-based anomaly detection event (rootcheck).",
+    "Trojaned version of file '/usr/bin/diff' detected. Signature used: 'bash|^/bin/sh|file\\.h|proc\\.h|/dev/[^n]|^/bin/.*sh' (Generic)."
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Xác minh package owner và checksum của binary",
+    "So sánh với binary sạch trước khi cô lập hoặc thay thế"
+  ],
+  "review_status": "draft-single-reviewer"
+}

@@ -14,7 +14,7 @@
                     │   Ollama + ai_module (Python)│  native, full CPU/RAM/GPU
                     │   Host-only IP: 192.168.100.1│
                     └──────────────┬──────────────┘
-                                   │ đọc alert qua API https://192.168.100.10:55000
+                                   │ đọc alert qua Indexer https://192.168.100.10:9200
         ┌──────────────────────────┼──────────────────────────┐
         │        Host-only VMnet1 — 192.168.100.0/24           │
    ┌────▼─────┐            ┌───────▼────────┐         ┌────────▼────────┐
@@ -25,7 +25,7 @@
         (mỗi VM còn 1 card NAT riêng để ra internet)
 ```
 
-**Luồng:** Kali `.30` tấn công → Victim `.20` sinh log → Wazuh agent đẩy về SIEM `.10` → `ai_module` trên host đọc alert qua API → LLM local giải thích.
+**Luồng:** Kali `.30` tấn công → Victim `.20` sinh log → Wazuh agent đẩy về SIEM `.10` → `ai_module` trên host đọc alert từ Wazuh Indexer `:9200` → LLM local giải thích. Manager API `:55000` chỉ dùng cho tác vụ quản trị, không lưu alert.
 
 ---
 
@@ -38,9 +38,9 @@
 | Mạng | 2 card/VM: NAT (internet) + Host-only (`192.168.100.0/24`) |
 | SIEM | Ubuntu Server no-GUI, Wazuh Docker all-in-one, `.10` |
 | Victim chính | Ubuntu Server no-GUI + agent, `.20` |
-| Victim phụ | Windows + Sysmon (bổ sung sau), `.40` |
+| Victim phụ | Windows + Wazuh agent đã Active, Sysmon bổ sung sau, `.40` |
 | Attacker | Kali (không cài agent), `.30` |
-| LLM | `qwen2.5:3b` (chính) + `qwen2.5:7b` (so sánh) |
+| LLM | `qwen2.5:3b` (demo nhẹ) + `qwen2.5:7b` (baseline GĐ4) |
 | AI module | Python, chạy native trên host |
 
 Bảng IP đầy đủ: xem [`docs/network.md`](docs/network.md).
@@ -62,9 +62,9 @@ sudo bash scripts/setup/install-agent.sh 192.168.100.10   # cài agent, trỏ v�
 # --- Trên máy thật (host) ---
 ollama pull qwen2.5:3b && ollama pull qwen2.5:7b
 ollama pull nomic-embed-text                         # embedding cho RAG
-cd ai_module && pip install -r requirements.txt
-cp config.example.yaml config.yaml                  # điền IP + API key Wazuh
-python main.py --demo                                # lần đầu tự index dữ liệu RAG
+pip install -r ai_module/requirements.txt
+cp ai_module/config.example.yaml ai_module/config.yaml  # điền credential Indexer
+python ai_module/main.py --demo                         # lần đầu tự index dữ liệu RAG
 
 # --- Sinh cảnh báo (từ Kali .30) ---
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
@@ -115,9 +115,9 @@ local-ai-siem-analyzer/
 1. **Dựng lab SIEM** — 3 VM, mạng, Wazuh Docker, agent Active, bật thu log.
 2. **Sinh cảnh báo** — SSH brute-force, web attack (DVWA), FIM. Map sẵn rule ID.
 3. **Mô-đun AI (lõi)** — Ollama, trích trường chính, RAG, ép JSON schema `{summary, root_cause, severity, mitre, next_steps}`.
-4. **Đánh giá** — 30–50 alert, so tay vs AI, chấm 1–5, so `3b` vs `7b`.
+4. **Đánh giá** — 30 alert `sanitized-live`, ground truth đã review kỹ thuật, rubric 1–5 và baseline `qwen2.5:7b` RAG/no-RAG; còn human review và đo thời gian phân tích tay.
 
-Chi tiết: [`KE_HOACH.md`](KE_HOACH.md).
+Chi tiết: [`KE_HOACH.md`](KE_HOACH.md), [`eval/README.md`](eval/README.md).
 
 ---
 
@@ -125,7 +125,7 @@ Chi tiết: [`KE_HOACH.md`](KE_HOACH.md).
 
 - **Repo là source of truth.** Mọi thông tin lab bám repo này; không rải rác ngoài.
 - **Chạy lại được (reproducible).** Ưu tiên script tự động hơn thao tác tay; có gì làm tay thì ghi vào `docs/`.
-- **Lõi trước, mở rộng sau.** Ubuntu victim + AI module làm trước; Windows/Sysmon cắm sau.
+- **Lõi trước, mở rộng sau.** Ubuntu victim + AI module là lõi; Windows agent `.40` đã Active, Sysmon cắm sau.
 - **Không ném raw JSON vào LLM.** Luôn trích trường chính → giảm token, tăng chính xác.
 
 ## License

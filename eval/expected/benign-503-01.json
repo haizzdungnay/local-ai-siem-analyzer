@@ -1,0 +1,25 @@
+{
+  "case_id": "benign-503-01",
+  "provenance": "sanitized-live",
+  "scenario": "benign",
+  "rule_id": "503",
+  "disposition": "benign",
+  "severity": "low",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Wazuh agent đã khởi động.",
+  "root_cause_reference": "Wazuh agent đã khởi động; nguyên nhân không có trong alert, cần đối chiếu change record.",
+  "required_facts": [
+    "Wazuh agent started.",
+    "ossec: Agent started: 'victim-ubuntu->any'."
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Xác nhận agent active và đang gửi heartbeat",
+    "Đối chiếu với thay đổi cấu hình dự kiến"
+  ],
+  "review_status": "draft-single-reviewer"
+}

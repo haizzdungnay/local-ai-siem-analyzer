@@ -1,0 +1,35 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcip": "10.0.0.1",
+    "dstuser": "analyst"
+  },
+  "rule": {
+    "frequency": 2,
+    "id": "40112",
+    "level": 12,
+    "description": "Multiple authentication failures followed by a success.",
+    "mitre": {
+      "technique": [
+        "Valid Accounts",
+        "Brute Force"
+      ],
+      "id": [
+        "T1078",
+        "T1110"
+      ],
+      "tactic": [
+        "Defense Evasion",
+        "Persistence",
+        "Privilege Escalation",
+        "Initial Access",
+        "Credential Access"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: Accepted publickey for analyst from 10.0.0.1 port 40000 ssh2: ED25519 SHA256:[REDACTED]"
+}

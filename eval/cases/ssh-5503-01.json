@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "uid": "0",
+    "srcip": "10.0.0.30",
+    "euid": "0",
+    "dstuser": "root",
+    "tty": "ssh"
+  },
+  "rule": {
+    "id": "5503",
+    "level": 5,
+    "description": "PAM: User login failed.",
+    "mitre": {
+      "technique": [
+        "Password Guessing"
+      ],
+      "id": [
+        "T1110.001"
+      ],
+      "tactic": [
+        "Credential Access"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.0.0.30  user=root"
+}

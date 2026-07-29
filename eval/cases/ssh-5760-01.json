@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcip": "10.0.0.30",
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "5760",
+    "level": 5,
+    "description": "sshd: authentication failed.",
+    "mitre": {
+      "technique": [
+        "Password Guessing",
+        "SSH"
+      ],
+      "id": [
+        "T1110.001",
+        "T1021.004"
+      ],
+      "tactic": [
+        "Credential Access",
+        "Lateral Movement"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: Failed password for root from 10.0.0.30 port 40000 ssh2"
+}

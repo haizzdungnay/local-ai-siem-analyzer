@@ -16,6 +16,7 @@ ai_module/config.yaml
 # RAG vector store (sinh lại được)
 ai_module/rag_data/*.db
 ai_module/rag_data/chroma/
+/rag_data/chroma/
 
 # Ollama models (quá to cho git)
 *.gguf

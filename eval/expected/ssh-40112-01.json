@@ -1,0 +1,34 @@
+{
+  "case_id": "ssh-40112-01",
+  "provenance": "sanitized-live",
+  "scenario": "ssh",
+  "rule_id": "40112",
+  "disposition": "ambiguous",
+  "severity": "high",
+  "mitre_ids": [
+    "T1078",
+    "T1110"
+  ],
+  "mitre_tactics": [
+    "Defense Evasion",
+    "Persistence",
+    "Privilege Escalation",
+    "Initial Access",
+    "Credential Access"
+  ],
+  "summary_reference": "Nhiều lần xác thực thất bại được theo sau bởi đăng nhập thành công; cần xác minh phiên thành công.",
+  "root_cause_reference": "Rule tương quan phát hiện thất bại xác thực trước một lần thành công; cần xác minh tính hợp lệ của phiên thành công.",
+  "required_facts": [
+    "Multiple authentication failures followed by a success.",
+    "victim-ubuntu sshd[1000]: Accepted publickey for analyst from 10.0.0.1 port 40000 ssh2: ED25519 SHA256:[REDACTED]"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Xác minh chủ sở hữu IP, phương thức xác thực và phiên đăng nhập thành công",
+    "Thu hồi credential và cô lập máy nếu phiên không được phép"
+  ],
+  "review_status": "draft-single-reviewer"
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "benign-5715-01",
+  "provenance": "sanitized-live",
+  "scenario": "benign",
+  "rule_id": "5715",
+  "disposition": "benign",
+  "severity": "low",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Đăng nhập SSH bằng public key đã thành công.",
+  "root_cause_reference": "Public key của analyst được chấp nhận; cần đối chiếu source và fingerprint để xác nhận phiên được phép.",
+  "required_facts": [
+    "sshd: authentication success.",
+    "victim-ubuntu sshd[1000]: Accepted publickey for analyst from 10.0.0.1 port 40000 ssh2: ED25519 SHA256:[REDACTED]"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Xác minh IP nguồn và fingerprint public key thuộc analyst",
+    "Không chặn phiên nếu khớp hoạt động quản trị dự kiến"
+  ],
+  "review_status": "draft-single-reviewer"
+}

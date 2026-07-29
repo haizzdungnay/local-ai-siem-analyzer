@@ -1,0 +1,16 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "extra_data": "victim-ubuntu->any"
+  },
+  "rule": {
+    "id": "503",
+    "level": 3,
+    "description": "Wazuh agent started."
+  },
+  "full_log": "ossec: Agent started: 'victim-ubuntu->any'."
+}

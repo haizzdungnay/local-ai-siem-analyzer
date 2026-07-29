@@ -11,7 +11,8 @@ import reader
 def test_load_config_reads_utf8_on_windows(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        '# Cấu hình tiếng Việt — dấu ngoặc “cong”\nextractor:\n  fields: []\n',
+        '# Cấu hình tiếng Việt — dấu ngoặc “cong”\n'
+        'ollama: {}\nwazuh_indexer: {}\nextractor:\n  fields: []\n',
         encoding="utf-8",
     )
 
@@ -37,6 +38,32 @@ def test_parse_response_falls_back_for_non_object_json():
 
     assert result["severity"] == "unknown"
     assert "JSON object" in result["root_cause"]
+
+
+def test_parse_response_rejects_invalid_schema():
+    invalid = {
+        "summary": "summary",
+        "root_cause": "cause",
+        "severity": "urgent",
+        "mitre": "",
+        "next_steps": "not-a-list",
+    }
+
+    result = llm._parse_response(json.dumps(invalid))
+
+    assert result["severity"] == "unknown"
+
+
+def test_fetch_alerts_api_rejects_bad_limit():
+    cfg = {"wazuh_indexer": {}}
+
+    for limit in (0, -1, 51):
+        try:
+            reader.fetch_alerts_api(cfg, limit=limit)
+        except ValueError as exc:
+            assert "1..50" in str(exc)
+        else:
+            raise AssertionError(f"limit {limit} phải bị từ chối")
 
 
 def test_analyze_alert_forwards_timeout_to_ollama(monkeypatch):
@@ -102,6 +129,63 @@ def test_fetch_alerts_api_uses_configured_timeout(monkeypatch):
     assert captured["timeout"] == 17
 
 
+def test_fetch_alerts_api_rejects_malformed_hits(monkeypatch):
+    class FakeResponse:
+        def __init__(self, hits):
+            self.hits = hits
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"hits": {"hits": self.hits}}
+
+    cfg = {
+        "wazuh_indexer": {
+            "host": "192.168.100.10", "port": 9200,
+            "user": "admin", "password": "secret", "verify_ssl": False,
+        }
+    }
+    invalid = [
+        ([None], "hits.hits[0] phải là object"),
+        ([{}], "hits.hits[0]._source phải là object"),
+        ([{"_source": "bad"}], "hits.hits[0]._source phải là object"),
+    ]
+
+    for hits, message in invalid:
+        monkeypatch.setattr(reader.requests, "post", lambda *args, hits=hits, **kwargs: FakeResponse(hits))
+        try:
+            reader.fetch_alerts_api(cfg, limit=1)
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError(f"Malformed hits phải bị từ chối: {hits}")
+
+
+def test_fetch_alerts_api_preserves_valid_hit_order(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"hits": {"hits": [
+                {"_source": {"rule": {"id": "5503"}}},
+                {"_source": {"rule": {"id": "5760"}}},
+            ]}}
+
+    monkeypatch.setattr(reader.requests, "post", lambda *args, **kwargs: FakeResponse())
+    cfg = {
+        "wazuh_indexer": {
+            "host": "192.168.100.10", "port": 9200,
+            "user": "admin", "password": "secret", "verify_ssl": False,
+        }
+    }
+
+    alerts = reader.fetch_alerts_api(cfg, limit=2)
+
+    assert [alert["rule"]["id"] for alert in alerts] == ["5503", "5760"]
+
+
 def test_get_wazuh_token_uses_configured_timeout(monkeypatch):
     captured = {}
 
@@ -131,6 +215,95 @@ def test_get_wazuh_token_uses_configured_timeout(monkeypatch):
 
     assert reader.get_wazuh_token(cfg) == "jwt-token"
     assert captured["timeout"] == 11
+
+
+def test_rule_rag_rejects_invalid_source_before_embedding(monkeypatch, tmp_path):
+    class FakeCollection:
+        def upsert(self, **kwargs):
+            raise AssertionError("upsert không được gọi")
+
+    class FakeChromaClient:
+        def get_or_create_collection(self, name):
+            return FakeCollection()
+
+    monkeypatch.setattr(rag.chromadb, "PersistentClient", lambda path: FakeChromaClient())
+    monkeypatch.setattr(rag.ollama_sdk, "Client", lambda **kwargs: object())
+    (tmp_path / "wazuh_rules.json").write_text(
+        json.dumps({"id": "5503"}), encoding="utf-8"
+    )
+    rule_rag = rag.RuleRAG(data_dir=tmp_path)
+    monkeypatch.setattr(
+        rule_rag, "_embed", lambda text: (_ for _ in ()).throw(AssertionError("embed không được gọi"))
+    )
+
+    try:
+        rule_rag.index()
+    except ValueError as exc:
+        assert "top-level phải là list" in str(exc)
+    else:
+        raise AssertionError("JSON object phải bị từ chối")
+
+
+def test_rule_rag_rejects_bad_items_and_ids(tmp_path):
+    source = tmp_path / "source.json"
+    invalid_cases = [
+        (["bad"], "item[0] phải là object"),
+        ([{}], "item[0].id phải là string không rỗng"),
+        ([{"id": "  "}], "item[0].id phải là string không rỗng"),
+        ([{"id": "5503"}, {"id": "5503"}], "duplicate id '5503'"),
+    ]
+
+    for payload, message in invalid_cases:
+        source.write_text(json.dumps(payload), encoding="utf-8")
+        try:
+            rag._load_source(source, "rule")
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError(f"Payload phải bị từ chối: {payload}")
+
+
+def test_rule_rag_rejects_duplicate_mitre_id(tmp_path):
+    source = tmp_path / "mitre_techniques.json"
+    source.write_text(json.dumps([{"id": "T1110"}, {"id": "T1110"}]), encoding="utf-8")
+
+    try:
+        rag._load_source(source, "mitre")
+    except ValueError as exc:
+        assert "duplicate id 'T1110'" in str(exc)
+    else:
+        raise AssertionError("Duplicate MITRE ID phải bị từ chối")
+
+
+def test_rule_rag_indexes_valid_sources(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeCollection:
+        def upsert(self, **kwargs):
+            captured.update(kwargs)
+
+    class FakeChromaClient:
+        def get_or_create_collection(self, name):
+            return FakeCollection()
+
+    monkeypatch.setattr(rag.chromadb, "PersistentClient", lambda path: FakeChromaClient())
+    monkeypatch.setattr(rag.ollama_sdk, "Client", lambda **kwargs: object())
+    (tmp_path / "wazuh_rules.json").write_text(
+        json.dumps([{"id": "5503", "description": "PAM failed"}]), encoding="utf-8"
+    )
+    (tmp_path / "mitre_techniques.json").write_text(
+        json.dumps([{"id": "T1110", "name": "Brute Force", "description": "Guessing"}]),
+        encoding="utf-8",
+    )
+    rule_rag = rag.RuleRAG(data_dir=tmp_path)
+    monkeypatch.setattr(rule_rag, "_embed", lambda text: [1.0])
+
+    assert rule_rag.index() == 2
+    assert captured["ids"] == ["rule-5503", "mitre-T1110"]
+    assert captured["metadatas"] == [
+        {"source": "wazuh_rule", "rule_id": "5503"},
+        {"source": "mitre", "technique_id": "T1110"},
+    ]
 
 
 def test_rule_rag_indexes_only_when_collection_is_empty(monkeypatch, tmp_path):
@@ -170,6 +343,24 @@ def test_rule_rag_indexes_only_when_collection_is_empty(monkeypatch, tmp_path):
     assert rule_rag.ensure_indexed() == 0
     assert indexed == [True]
     assert ollama_kwargs["timeout"] == 13
+
+
+def test_configure_console_encoding_uses_utf8(monkeypatch):
+    calls = []
+
+    class FakeStream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(main.sys, "stdout", FakeStream())
+    monkeypatch.setattr(main.sys, "stderr", FakeStream())
+
+    main._configure_console_encoding()
+
+    assert calls == [
+        {"encoding": "utf-8", "errors": "replace"},
+        {"encoding": "utf-8", "errors": "replace"},
+    ]
 
 
 def test_main_initializes_rag_index_and_passes_timeout(monkeypatch):

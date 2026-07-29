@@ -7,12 +7,36 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 
 ### Added
 - Test hồi quy cho pipeline AI và GitHub Actions chạy trên Linux/Windows.
+- `CLAUDE.md` và `.githooks/pre-commit` ghi quy trình continuity, bắt buộc staged `CHANGELOG.md` và `HANDOFF.md` khi commit thay đổi repo.
+- GĐ4: corpus alert `sanitized-live`, manifest, expected ground truth nháp, rubric chấm 1–5 và test kiểm tra cấu trúc/sanitization.
+- Runner `eval/run_eval.py` tái dùng extractor, RAG và Ollama hiện có; ghi latency, schema validity, raw output và cột human score vào CSV.
+- Baseline `qwen2.5:7b` cho cả RAG/no-RAG trên snapshot 30 case; kết quả thô lưu trong `eval/results*.csv`.
+- Tài liệu `eval/README.md` và `eval/baseline.md` mô tả protocol model, phân tích tay và giới hạn kết quả.
+
+### Changed
+- README và `KE_HOACH.md` cập nhật trạng thái GĐ4, đường dẫn chạy eval và phần việc human review còn lại.
+- Đồng bộ tài liệu lab: alert đọc từ Indexer `:9200`, Manager `:55000` chỉ quản trị; Windows agent `.40` đã Active; Bước 8/SSH và FIM marker realtime được ghi đúng vị trí.
+- Thống nhất model demo nhẹ `qwen2.5:3b` với baseline GĐ4 `qwen2.5:7b`, cùng rule SSH thực tế `5503/5760/2502`.
+- Dataset builder giảm dữ liệu nhận dạng lab, giữ provenance và tách input khỏi expected labels; vòng review kỹ thuật giảm duplicate, sửa `40112` thành ambiguous/high, bỏ forced MITRE trên benign/weak-evidence case và thêm benign rule `23502`.
 
 ### Fixed
+- `docs/setup.md` không còn để Bước 8 rỗng hoặc đặt lệnh SSH dưới mục Windows RDP.
 - Tự index dữ liệu RAG ở lần chạy đầu thay vì query collection rỗng.
 - Đọc config UTF-8 ổn định trên Windows và giữ tên MITRE technique trong prompt.
 - Fallback an toàn khi LLM trả JSON không phải object.
 - Áp dụng timeout cấu hình cho Ollama, Wazuh Manager và Indexer.
+- Làm cứng JSON schema/response validation, path resolution, Indexer response checks và script sinh alert lab an toàn hơn.
+- Hydra exit code 0 khi không tìm thấy credential không còn bị hiểu nhầm thành đăng nhập thành công.
+- RAG từ chối source JSON sai top-level/item, ID rỗng hoặc trùng trước khi gọi embedding/upsert.
+- Indexer response thiếu `hits` object, hit không phải object hoặc có `_source` sai kiểu giờ fail rõ thay vì bị bỏ qua âm thầm.
+- Eval runner resolve `case_file` theo thư mục repo, không phụ thuộc current working directory.
+- Verification cuối pass: compileall, 19 pytest, shell syntax và `git diff --check`; chỉ còn CRLF conversion warnings của Git.
+- Xác minh SSH key đăng nhập thành công vào SIEM `.10`, Victim `.20` và Kali `.30` trước vòng re-test live lab.
+- Re-test SSH bounded từ Kali `.30` tới Victim `.20` thành công: 20 attempts, Indexer ghi 21 rule `5503` và 26 rule `5760` từ source `192.168.100.30` trong batch gần nhất.
+- Re-test FIM marker an toàn thành công với `/opt/wazuh-fim-lab/controlled-marker.txt`; Indexer ghi rule `553` (`File deleted`) cho marker, không đụng file nhạy cảm.
+- Console Windows được ép UTF-8 trước khi in output tiếng Việt, sửa `UnicodeEncodeError` khi chạy `ai_module/main.py`.
+- Live AI pipeline chạy lại thành công trên 3 alert Indexer gần nhất bằng `qwen2.5:7b`, có RAG và JSON output hợp lệ.
+- Vòng live-lab cuối pass `20` pytest, compileall, shell syntax và `git diff --check`; script tạm trên VM đã dọn.
 
 ## [1.4.0] — 2026-07-26
 

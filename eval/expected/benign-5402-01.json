@@ -1,0 +1,25 @@
+{
+  "case_id": "benign-5402-01",
+  "provenance": "sanitized-live",
+  "scenario": "benign",
+  "rule_id": "5402",
+  "disposition": "benign",
+  "severity": "low",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Người dùng lab chạy lệnh sudo được ghi trong log.",
+  "root_cause_reference": "Analyst dùng sudo cho lệnh được ghi rõ trong full_log; cần đối chiếu change record để xác nhận được phép.",
+  "required_facts": [
+    "Successful sudo to ROOT executed.",
+    "victim-ubuntu sudo:  analyst : PWD=/home/analyst ; USER=root ; COMMAND=/usr/bin/grep -n /opt/wazuh-fim-lab /var/ossec/etc/ossec.conf"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Đọc chính xác COMMAND trong log và đối chiếu change record",
+    "Điều tra thêm chỉ khi lệnh hoặc người dùng không được phép"
+  ],
+  "review_status": "draft-single-reviewer"
+}

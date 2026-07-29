@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcuser": "analyst",
+    "dstuser": "root",
+    "pwd": "/home/analyst",
+    "command": "/usr/bin/grep -n /opt/wazuh-fim-lab /var/ossec/etc/ossec.conf"
+  },
+  "rule": {
+    "id": "5402",
+    "level": 3,
+    "description": "Successful sudo to ROOT executed.",
+    "mitre": {
+      "technique": [
+        "Sudo and Sudo Caching"
+      ],
+      "id": [
+        "T1548.003"
+      ],
+      "tactic": [
+        "Privilege Escalation",
+        "Defense Evasion"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sudo:  analyst : PWD=/home/analyst ; USER=root ; COMMAND=/usr/bin/grep -n /opt/wazuh-fim-lab /var/ossec/etc/ossec.conf"
+}

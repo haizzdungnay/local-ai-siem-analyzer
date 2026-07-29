@@ -1,0 +1,29 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcuser": "invalid-user-a",
+    "srcip": "10.0.0.1"
+  },
+  "rule": {
+    "frequency": 8,
+    "id": "5712",
+    "level": 10,
+    "description": "sshd: brute force trying to get access to the system. Non existent user.",
+    "mitre": {
+      "technique": [
+        "Brute Force"
+      ],
+      "id": [
+        "T1110"
+      ],
+      "tactic": [
+        "Credential Access"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: Failed password for invalid user invalid-user-a from 10.0.0.1 port 40000 ssh2"
+}

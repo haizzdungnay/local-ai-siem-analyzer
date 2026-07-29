@@ -1,0 +1,28 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcip": "10.0.0.30",
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "2502",
+    "level": 10,
+    "description": "syslog: User missed the password more than one time",
+    "mitre": {
+      "technique": [
+        "Brute Force"
+      ],
+      "id": [
+        "T1110"
+      ],
+      "tactic": [
+        "Credential Access"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: PAM 4 more authentication failures; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.0.0.30  user=root"
+}

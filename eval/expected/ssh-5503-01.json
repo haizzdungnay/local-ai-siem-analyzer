@@ -1,0 +1,29 @@
+{
+  "case_id": "ssh-5503-01",
+  "provenance": "sanitized-live",
+  "scenario": "ssh",
+  "rule_id": "5503",
+  "disposition": "suspicious",
+  "severity": "medium",
+  "mitre_ids": [
+    "T1110.001"
+  ],
+  "mitre_tactics": [
+    "Credential Access"
+  ],
+  "summary_reference": "Một lần xác thực PAM/SSH thất bại từ IP nguồn trong lab.",
+  "root_cause_reference": "Mật khẩu hoặc thông tin xác thực SSH không hợp lệ; một alert đơn lẻ chưa chứng minh brute-force hay compromise.",
+  "required_facts": [
+    "PAM: User login failed.",
+    "victim-ubuntu sshd[1000]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.0.0.30  user=root"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Đếm các thất bại cùng IP và tài khoản trong cửa sổ thời gian ngắn",
+    "Kiểm tra IP nguồn có thuộc lab hoặc danh sách tin cậy không"
+  ],
+  "review_status": "draft-single-reviewer"
+}

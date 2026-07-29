@@ -14,7 +14,7 @@
 | Dải lab | `192.168.100.0/24` |
 | SIEM | Ubuntu Server no-GUI, Wazuh Docker all-in-one, IP `.10` |
 | Victim chính | Ubuntu Server no-GUI + agent, IP `.20` |
-| Victim phụ | Windows + Sysmon (bổ sung sau) |
+| Victim phụ | Windows + Wazuh agent `.40` đã Active; Sysmon bổ sung sau |
 | Attacker | Kali (không cài agent), IP `.30` |
 | LLM | `qwen2.5:3b` (chính) + `qwen2.5:7b` (so sánh) |
 | AI module | Python, chạy native trên host |
@@ -29,7 +29,7 @@
                     │   Ollama + AI module Python  │  native, full CPU/RAM/GPU
                     │   Host-only IP: .1           │
                     └──────────────┬──────────────┘
-                                   │ gọi API https://192.168.100.10:55000
+                                   │ đọc alert qua Indexer https://192.168.100.10:9200
         ┌──────────────────────────┼──────────────────────────┐
         │        Host-only VMnet1 — 192.168.100.0/24           │
    ┌────▼─────┐            ┌───────▼────────┐         ┌────────▼────────┐
@@ -40,7 +40,7 @@
         (mỗi VM còn 1 card NAT riêng để ra internet)
 ```
 
-Luồng: Kali `.30` đánh → Victim `.20` sinh log → agent đẩy về SIEM `.10` → AI trên host `.1` đọc alert qua API.
+Luồng: Kali `.30` đánh → Victim `.20` sinh log → agent đẩy về SIEM `.10` → AI trên host `.1` đọc alert từ Indexer `:9200`. Manager API `:55000` chỉ dùng quản trị, không lưu alert.
 
 ---
 
@@ -52,7 +52,7 @@ Luồng: Kali `.30` đánh → Victim `.20` sinh log → agent đẩy về SIEM 
 | SIEM Wazuh | 192.168.100.10 | DHCP | 6 GB | Nhận log, sinh alert |
 | Victim Ubuntu | 192.168.100.20 | DHCP | 2 GB | Bị đánh, đẩy log |
 | Attacker Kali | 192.168.100.30 | DHCP | 2–3 GB | Sinh tấn công |
-| Victim Windows (sau) | 192.168.100.40 | DHCP | 4 GB | Log Sysmon (mở rộng) |
+| Victim Windows | 192.168.100.40 | DHCP | 4 GB | Wazuh agent Active; Sysmon mở rộng sau |
 
 Ước tính khi chạy: model 3b + 3 VM ≈ 18–20GB → thoải mái. 7b + Windows → sát trần, tắt bớt Kali.
 
@@ -90,7 +90,7 @@ GUI Network → Manual: IP `192.168.100.30/24` cho card Host-only; card NAT đ�
 1. Victim: `ping 192.168.100.10` (tới SIEM)
 2. Attacker: `ping 192.168.100.20` (tới Victim)
 3. Host (CMD): `ping 192.168.100.10`
-4. Host: mở `https://192.168.100.10:55000` → Wazuh trả về = OK
+4. Host: mở `https://192.168.100.10:55000` → Manager API trả về = kết nối quản trị OK; kiểm tra alert qua Indexer `:9200` theo `docs/network.md`
 5. Mọi VM: `ping 8.8.8.8` (internet qua NAT)
 
 ---
@@ -107,7 +107,7 @@ GUI Network → Manual: IP `192.168.100.30/24` cho card Host-only; card NAT đ�
 ### GĐ2 — Sinh cảnh báo (map sẵn rule ID)
 | Kịch bản | Công cụ | Rule Wazuh dự kiến |
 |---|---|---|
-| SSH brute-force | `hydra` từ Kali | 5710 / 5712 (multiple auth fail) |
+| SSH failed auth có giới hạn | `hydra` từ Kali | 5503 / 5760 / 2502 (quan sát lab 4.9.0) |
 | Web attack | `nikto`, `sqlmap` lên DVWA | 31xxx (web) |
 | Sửa file quan trọng | edit `/etc/passwd`... | 550 / 554 (FIM) |
 | Recon | `nmap` | tuỳ rule mạng |
@@ -120,10 +120,17 @@ GUI Network → Manual: IP `192.168.100.30/24` cho card Host-only; card NAT đ�
 - [x] Ép output JSON schema: `{summary, root_cause, severity, mitre, next_steps[]}` — có thêm few-shot example + cơ chế fallback khi model không tuân schema.
 
 ### GĐ4 — Đánh giá
-- [ ] Chọn 30–50 alert mẫu (hiện mới test lẻ tẻ ~5 alert khi làm GĐ3).
-- [ ] So thời gian phân tích tay vs có AI.
+- [x] Đóng băng 30 alert `sanitized-live` trong `eval/cases/`, manifest và expected ground truth nháp.
+- [x] Viết rubric 1–5, CSV schema và runner baseline tái dùng extractor/RAG/Ollama.
+- [x] Chạy vòng review độc lập kỹ thuật: giảm duplicate, sửa severity/disposition và MITRE ground truth.
+- [ ] Reviewer người thứ hai adjudicate ground truth và chấm độc lập toàn bộ corpus.
+- [x] Chạy ma trận `qwen2.5:7b` RAG/no-RAG; còn so thời gian phân tích tay vs có AI.
+- [ ] Chạy model đối chứng khác nếu đủ thời gian, giữ nguyên corpus/prompt/config.
+
+Chi tiết chạy: [`eval/README.md`](eval/README.md).
+
 ### Mở rộng (nếu dư thời gian)
-- Thêm Windows victim + Sysmon (`.40`).
+- Bổ sung Sysmon cho Windows victim `.40` đã Active.
 - Nút "Explain" trên dashboard nhỏ.
 
 ---
@@ -145,4 +152,4 @@ ddc24-ai-siem/
 
 ---
 
-*Ghi chú: Ubuntu victim là lõi làm trước. Windows là nhánh cắm sau khi mô-đun AI chạy ổn.*
+*Ghi chú: Ubuntu victim vẫn là lõi. Windows agent đã Active; Sysmon là nhánh mở rộng sau.*

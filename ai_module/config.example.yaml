@@ -15,9 +15,10 @@ wazuh:
 wazuh_indexer:
   host: "192.168.100.10"
   port: 9200
+  protocol: "https"
   user: "admin"                     # user Indexer — thường KHÁC user Manager API ở trên
   password: "CHANGE_ME"             # đổi sau khi cài Wazuh
-  verify_ssl: false                 # lab dùng self-signed cert
+  verify_ssl: false                 # lab self-signed; dùng CA + true khi không cô lập
   timeout: 30                       # giây; tránh chờ vô hạn khi Indexer lỗi
 
 # Ollama LLM

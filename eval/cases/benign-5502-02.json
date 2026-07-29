@@ -1,0 +1,16 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "5502",
+    "level": 3,
+    "description": "PAM: Login session closed."
+  },
+  "full_log": "victim-ubuntu sudo: pam_unix(sudo:session): session closed for user root"
+}

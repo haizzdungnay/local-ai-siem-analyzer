@@ -1,0 +1,31 @@
+{
+  "case_id": "fim-553-01",
+  "provenance": "sanitized-live",
+  "scenario": "fim",
+  "rule_id": "553",
+  "disposition": "ambiguous",
+  "severity": "high",
+  "mitre_ids": [
+    "T1070.004",
+    "T1485"
+  ],
+  "mitre_tactics": [
+    "Defense Evasion",
+    "Impact"
+  ],
+  "summary_reference": "Một file trong thư mục FIM được giám sát đã bị xóa.",
+  "root_cause_reference": "Một file FIM đã bị xóa; nguyên nhân không có trong alert và cần xác minh actor hoặc tiến trình thực hiện.",
+  "required_facts": [
+    "File deleted.",
+    "File '/etc/cups/subscriptions.conf.N' deleted"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Xác minh file bị xóa và tiến trình hoặc người dùng thực hiện",
+    "Khôi phục từ backup nếu đây không phải cleanup được phép"
+  ],
+  "review_status": "draft-single-reviewer"
+}

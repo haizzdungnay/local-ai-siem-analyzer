@@ -1,0 +1,29 @@
+{
+  "case_id": "ambiguous-506-01",
+  "provenance": "sanitized-live",
+  "scenario": "ambiguous",
+  "rule_id": "506",
+  "disposition": "ambiguous",
+  "severity": "medium",
+  "mitre_ids": [
+    "T1562.001"
+  ],
+  "mitre_tactics": [
+    "Defense Evasion"
+  ],
+  "summary_reference": "Wazuh agent đã dừng; cần xác minh đây là bảo trì hay hành vi né tránh.",
+  "root_cause_reference": "Wazuh agent đã dừng; nguyên nhân không có trong alert. Đối chiếu change record trước khi quy kết defense evasion.",
+  "required_facts": [
+    "Wazuh agent stopped.",
+    "ossec: Agent stopped: 'victim-ubuntu->any'."
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Kiểm tra agent có tự khởi động lại và kết nối Manager không",
+    "Điều tra service logs nếu không có bảo trì được phép"
+  ],
+  "review_status": "draft-single-reviewer"
+}

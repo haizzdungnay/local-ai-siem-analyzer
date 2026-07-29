@@ -1,0 +1,43 @@
+{
+  "syscheck": {
+    "uname_after": "root",
+    "mtime_after": "2026-07-29T01:10:53",
+    "size_after": "91",
+    "gid_after": "7",
+    "mode": "realtime",
+    "path": "/etc/cups/subscriptions.conf.N",
+    "sha1_after": "36a32996736dcf56e977931b1041482ed3b3e7c0",
+    "gname_after": "lp",
+    "uid_after": "0",
+    "perm_after": "rw-r-----",
+    "event": "deleted",
+    "md5_after": "6aed782db7727bd16615c1dadb143b3e",
+    "sha256_after": "7ef355277f2f1b62f9d706a8e7efa8f11b5d99aace77ed63339ec000ab1b2f70",
+    "inode_after": 1838036
+  },
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "rule": {
+    "id": "553",
+    "level": 7,
+    "description": "File deleted.",
+    "mitre": {
+      "technique": [
+        "File Deletion",
+        "Data Destruction"
+      ],
+      "id": [
+        "T1070.004",
+        "T1485"
+      ],
+      "tactic": [
+        "Defense Evasion",
+        "Impact"
+      ]
+    }
+  },
+  "full_log": "File '/etc/cups/subscriptions.conf.N' deleted\nMode: realtime\n"
+}

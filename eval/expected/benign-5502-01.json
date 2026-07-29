@@ -1,0 +1,25 @@
+{
+  "case_id": "benign-5502-01",
+  "provenance": "sanitized-live",
+  "scenario": "benign",
+  "rule_id": "5502",
+  "disposition": "benign",
+  "severity": "low",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Một phiên PAM đã đóng.",
+  "root_cause_reference": "PAM đóng một phiên; alert không cho biết nguyên nhân đóng.",
+  "required_facts": [
+    "PAM: Login session closed.",
+    "victim-ubuntu sshd[1000]: pam_unix(sshd:session): session closed for user analyst"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Đối chiếu với phiên mở tương ứng",
+    "Không cần xử lý thêm nếu phiên hợp lệ"
+  ],
+  "review_status": "draft-single-reviewer"
+}
