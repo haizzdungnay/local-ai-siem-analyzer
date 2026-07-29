@@ -44,6 +44,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Rerun baseline 33 case: RAG schema 32/33, severity exact 22/33, mean 2.716s; no-RAG schema 33/33, severity exact 19/33, mean 2.428s.
 - Thêm `eval/summarize_results.py` để tổng hợp metric và human scores đã nhập mà không tự bịa điểm semantic.
 - Expanded eval verification pass: compileall, 21 pytest, summary tool, shell syntax và `git diff --check`.
+- Commit local web/FIM/eval increment: `a267761` trên `claude/lab-eval-checkpoint`; chưa push.
 
 ## [1.4.0] — 2026-07-26
 
