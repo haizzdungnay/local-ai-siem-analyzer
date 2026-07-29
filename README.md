@@ -70,7 +70,7 @@ python ai_module/main.py --demo                         # lần đầu tự inde
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
 ```
 
-Chi tiết từng bước: [`docs/setup.md`](docs/setup.md).
+Chi tiết dựng lab: [`docs/setup.md`](docs/setup.md). Runbook kiểm thử thủ công toàn hệ thống, chia rõ từng máy/lệnh/kết quả: [`docs/manual-test.md`](docs/manual-test.md).
 
 ### Kiểm tra code
 

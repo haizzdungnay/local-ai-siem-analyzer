@@ -1,5 +1,7 @@
 # Hướng dẫn dựng Lab từ đầu
 
+Sau khi cài xong, kiểm thử end-to-end theo từng máy tại [`manual-test.md`](manual-test.md).
+
 ## Yêu cầu
 - VMware Workstation (Pro/Player)
 - ISO: Ubuntu Server 22.04+, Kali Linux

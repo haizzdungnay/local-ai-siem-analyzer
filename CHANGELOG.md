@@ -45,6 +45,10 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Thêm `eval/summarize_results.py` để tổng hợp metric và human scores đã nhập mà không tự bịa điểm semantic.
 - Expanded eval verification pass: compileall, 21 pytest, summary tool, shell syntax và `git diff --check`.
 - Commit local web/FIM/eval increment: `a267761` trên `claude/lab-eval-checkpoint`; chưa push.
+- Thêm AI-only rubric judge `eval/judge_results.py`, strict schema/hash/resume và summary tách biệt human scores; 26 pytest pass.
+- `CyberCrew/notmythos-8b` chấm đủ 66/66 output: RAG mean 3.44/5, no-RAG 3.42/5; paired 8 RAG wins, 18 ties, 7 no-RAG wins; AI-only, không phải human review.
+- Thêm `docs/manual-test.md`: runbook đầy đủ theo Host/SIEM/Victim/Kali/Windows, exact commands, expected results, timing, troubleshooting, cleanup, baseline, AI judge và human grading.
+- Verification AI scoring/runbook pass: compileall, 26 pytest, 66-judgment summary, shell syntax, `git diff --check` và secret scan.
 
 ## [1.4.0] — 2026-07-26
 

@@ -1,6 +1,6 @@
 # Kịch bản sinh cảnh báo
 
-Mỗi kịch bản tạo alert Wazuh cụ thể. Script nằm trong `scripts/attacks/`.
+Mỗi kịch bản tạo alert Wazuh cụ thể. Script nằm trong `scripts/attacks/`. Quy trình copy script, timing, query rule và cleanup theo từng máy: [`manual-test.md`](manual-test.md).
 
 Alert được tìm trong Wazuh Indexer bằng `POST https://192.168.100.10:9200/wazuh-alerts-*/_search`. Port `55000` là Manager API quản trị, không phải kho alert.
 

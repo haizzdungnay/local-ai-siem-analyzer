@@ -37,6 +37,23 @@ Exact-match severity chỉ là smoke metric, không phải điểm chất lượ
 
 Output live gần nhất cũng cho thấy model có thể cưỡng ép MITRE trên benign PAM/sudo. Đây là finding cần chấm theo rubric, không sửa prompt giữa hai lượt baseline hiện tại.
 
+## AI-only rubric scoring
+
+Judge local độc lập với candidate: `CyberCrew/notmythos-8b`, prompt `ai-judge-v1`, temperature `0`, seed `20260729`.
+
+| AI judge metric | RAG | Không RAG |
+|---|---:|---:|
+| Coverage/schema valid | 33/33 | 33/33 |
+| Overall mean | 3.44/5 | 3.42/5 |
+| Overall median | 3.60/5 | 3.60/5 |
+| Summary mean | 3.94 | 3.94 |
+| Root cause mean | 3.00 | 3.06 |
+| Severity mean | 2.21 | 2.09 |
+| MITRE mean | 4.21 | 4.36 |
+| Next steps mean | 3.85 | 3.64 |
+
+Paired comparison: RAG thắng 8 case, hòa 18, no-RAG thắng 7. Chênh lệch rất nhỏ; không đủ kết luận RAG tốt hơn. Đây là **AI-only rubric scoring**, không phải human review hoặc ground truth final. Raw judgments: `eval/ai-judgments-notmythos-8b.csv`.
+
 ## Còn thiếu
 
 - Reviewer người thứ hai xác nhận/adjudicate 33 expected labels.

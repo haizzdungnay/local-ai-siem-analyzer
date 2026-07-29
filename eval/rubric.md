@@ -35,6 +35,17 @@ Output lỗi schema vẫn chấm semantic nếu đọc được, nhưng `schema_
 - MITRE parent/sub-technique được 4 nếu đúng họ kỹ thuật; 5 cần đúng ID/tactic trong ground truth hoặc giải thích hợp lý vì không map.
 - `sanitized-live`, `synthetic`, `live-lab` phải báo tách biệt. Corpus hiện tại chỉ dùng `sanitized-live`.
 
+## AI-only judge protocol
+
+AI judge được phép dùng để tạo benchmark phụ, nhưng phải tách khỏi human review:
+
+- Dùng model khác candidate; hiện `CyberCrew/notmythos-8b` chấm output `qwen2.5:7b`.
+- Ghi `judge_type=ai-rubric-judge`, model, prompt version, temperature, seed và hashes.
+- Không ghi AI score vào cột human `*_score`, `reviewer`, `notes` của baseline CSV.
+- Không đổi `draft-single-reviewer` thành reviewed/final.
+- Judge response sai schema ghi error; không tự điền điểm.
+- Một AI pass không tạo inter-human agreement và không chứng minh RAG superiority.
+
 ## Chỉ số báo cáo
 
 - Số case và phân bố scenario/rule/disposition.

@@ -10,7 +10,9 @@ Corpus hiện có 33 case `sanitized-live` lấy từ Wazuh lab ngày 2026-07-28
 - `results.csv`: output baseline, latency, schema validity và cột điểm reviewer.
 - `run_eval.py`: runner dùng đúng extractor, RAG và `analyze_alert()` của pipeline.
 - `build_dataset.py`: script maintainer tái tạo snapshot từ Indexer; cần `ai_module/config.yaml`, có xóa rồi ghi lại `cases/` và `expected/`.
-- `summarize_results.py`: tổng hợp latency, schema/error rate, severity exact-match và human scores đã điền.
+- `summarize_results.py`: tổng hợp latency, schema/error rate, severity exact-match, human scores đã điền và AI judgments riêng.
+- `judge_results.py`: AI-only rubric judge; không thay human review.
+- Hướng dẫn kiểm thử và human timing đầy đủ: [`../docs/manual-test.md`](../docs/manual-test.md).
 
 Ground truth đã qua một vòng review độc lập nhưng vẫn giữ `review_status: draft-single-reviewer` vì chưa có reviewer người thứ hai. Vòng review đã giảm duplicate, hạ `40112` thành ambiguous/high và bỏ forced MITRE trên benign/weak-evidence case. Live capture mới bổ sung `31101`, `31151` và `31105`; không có synthetic case.
 
