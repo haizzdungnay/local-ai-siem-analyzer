@@ -37,6 +37,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Console Windows được ép UTF-8 trước khi in output tiếng Việt, sửa `UnicodeEncodeError` khi chạy `ai_module/main.py`.
 - Live AI pipeline chạy lại thành công trên 3 alert Indexer gần nhất bằng `qwen2.5:7b`, có RAG và JSON output hợp lệ.
 - Vòng live-lab cuối pass `20` pytest, compileall, shell syntax và `git diff --check`; script tạm trên VM đã dọn.
+- Tạo checkpoint local `1fd6205` trên branch `claude/lab-eval-checkpoint`; secrets, `.claude/`, `.bak` và `create_rag_data.py` không được stage.
 
 ## [1.4.0] — 2026-07-26
 

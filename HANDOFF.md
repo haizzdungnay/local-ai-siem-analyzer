@@ -2,8 +2,8 @@
 
 Ngày cập nhật: 2026-07-29
 Branch: `claude/lab-eval-checkpoint`
-Commit nền: `78cb31b`
-Chưa commit/push.
+Commit nền trước phiên: `78cb31b`
+Checkpoint local: `1fd6205` trên `claude/lab-eval-checkpoint`; chưa push.
 Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần chạy `git config core.hooksPath .githooks` để bật ledger gate.
 `eval/run_eval.py` tồn tại trong checkout; path case đã resolve theo repo root, không phụ thuộc CWD.
 
