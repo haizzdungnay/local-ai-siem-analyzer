@@ -31,6 +31,11 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+.claude/
+*.bak
+
+# Local one-shot data generator; canonical RAG data is tracked directly
+ai_module/create_rag_data.py
 
 # Docker volumes (trên SIEM, không trong repo)
 wazuh-data/

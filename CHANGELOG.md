@@ -14,6 +14,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Tài liệu `eval/README.md` và `eval/baseline.md` mô tả protocol model, phân tích tay và giới hạn kết quả.
 
 ### Changed
+- Ignore `.claude/`, `*.bak` và local one-shot `ai_module/create_rag_data.py` để trạng thái Git chỉ hiện source cần quản lý.
 - README và `KE_HOACH.md` cập nhật trạng thái GĐ4, đường dẫn chạy eval và phần việc human review còn lại.
 - Đồng bộ tài liệu lab: alert đọc từ Indexer `:9200`, Manager `:55000` chỉ quản trị; Windows agent `.40` đã Active; Bước 8/SSH và FIM marker realtime được ghi đúng vị trí.
 - Thống nhất model demo nhẹ `qwen2.5:3b` với baseline GĐ4 `qwen2.5:7b`, cùng rule SSH thực tế `5503/5760/2502`.
@@ -50,7 +51,8 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Thêm `docs/manual-test.md`: runbook đầy đủ theo Host/SIEM/Victim/Kali/Windows, exact commands, expected results, timing, troubleshooting, cleanup, baseline, AI judge và human grading.
 - Verification AI scoring/runbook pass: compileall, 26 pytest, 66-judgment summary, shell syntax, `git diff --check` và secret scan.
 - Commit local AI scoring/runbook: `a5f874b` trên `claude/lab-eval-checkpoint`.
-- Pre-push verification pass: compileall, 26 pytest, 66-judgment summary và `git diff --check`; chuẩn bị publish branch lên GitHub.
+- Publish checkpoint `ee5d548` lên `origin/claude/lab-eval-checkpoint`.
+- Verification ngày 2026-07-30 pass: compileall, 26 pytest, 66/66 AI judgments, cú pháp 3 attack scripts + pre-commit hook và `git diff --check`.
 
 ## [1.4.0] — 2026-07-26
 

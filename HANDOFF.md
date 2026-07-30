@@ -1,10 +1,10 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-07-29
+Ngày cập nhật: 2026-07-30
 Branch: `claude/lab-eval-checkpoint`
 Commit nền trước phiên: `78cb31b`
-Checkpoint local: `1fd6205`, `d3984ee`, `a267761`, `9377c78`, AI/runbook `a5f874b`, ledger `0a3a8c0` trên `claude/lab-eval-checkpoint`.
-Pre-push verification: compileall PASS, `26 passed`, AI summary 66/66 PASS, `git diff --check` PASS. `gh` CLI không cài; dùng `git push` trực tiếp.
+Checkpoint đã publish tới `origin/claude/lab-eval-checkpoint`: `1fd6205`, `d3984ee`, `a267761`, `9377c78`, AI/runbook `a5f874b`, ledger `0a3a8c0`, pre-push `ee5d548`.
+Verification 2026-07-30: compileall PASS, `26 passed`, AI summary 66/66 PASS, 3 attack scripts + pre-commit hook syntax PASS, `git diff --check` PASS.
 Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần chạy `git config core.hooksPath .githooks` để bật ledger gate.
 `eval/run_eval.py` tồn tại trong checkout; path case đã resolve theo repo root, không phụ thuộc CWD.
 
@@ -36,7 +36,7 @@ Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần
 - AI scoring hoàn tất: `CyberCrew/notmythos-8b`, prompt `ai-judge-v1`, temperature 0, seed 20260729, 66/66 valid, 0 error. RAG mean 3.44, no-RAG 3.42; paired 8/18/7 win/tie/loss. Đây là AI-only score, không đổi human columns hoặc expected review status.
 - Manual runbook hoàn tất tại `docs/manual-test.md`, link từ README/setup/attacks/eval; gồm từng máy, exact command, expected result, timing, troubleshooting, cleanup, AI/human evaluation.
 - Verification AI/runbook: compileall PASS, `26 passed`, AI summary coverage 66 PASS, shell syntax PASS, `git diff --check` PASS; secret scan chỉ thấy documented default placeholder và config path, không có live credential.
-- Next: stage reviewed files và commit checkpoint; chưa push.
+- Branch đã đồng bộ GitHub tới `ee5d548`; phiên 2026-07-30 cập nhật ledger verification và ignore local `.claude/`, `*.bak`, `ai_module/create_rag_data.py`.
 
 ## Trạng thái
 
@@ -93,11 +93,12 @@ AI paired: RAG thắng 8, hòa 18, no-RAG thắng 7. Không kết luận RAG t�
 
 ```text
 python -m compileall -q ai_module eval tests: PASS
-PYTHONPATH=ai_module python -m pytest tests -q: 26 passed trước runbook; chạy lại verification cuối sau docs.
-bash -n scripts/attacks/fim-trigger.sh scripts/attacks/ssh-bruteforce.sh: PASS
-git diff --check: PASS; chỉ có CRLF warnings
-RAG baseline: 30/30 completed
-No-RAG baseline: 30/30 completed
+PYTHONPATH=ai_module python -m pytest tests -q: 26 passed
+python eval/summarize_results.py ... --ai-judgments ...: 66/66 judgments, 0 error
+bash -n scripts/attacks/fim-trigger.sh scripts/attacks/ssh-bruteforce.sh scripts/attacks/web-attack.sh .githooks/pre-commit: PASS
+git diff --check: PASS
+RAG baseline: 33/33 completed
+No-RAG baseline: 33/33 completed
 ```
 
 ## Việc tiếp theo
