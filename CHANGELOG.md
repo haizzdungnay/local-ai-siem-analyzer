@@ -6,6 +6,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ## [Unreleased]
 
 ### Added
+- Release closeout after PR #2: all four GitHub matrix jobs (Ubuntu/Windows × Python 3.11/3.12) are green; squash merge landed at `origin/main` `700416d`. Dashboard was safely restarted with an empty queue on `127.0.0.1:8765` (PID `41728`), schema v4 preserved 23 jobs, and dependency probes reported Ollama/Indexer `ok`.
 - Local SOC completion slice 2026-08-05: roadmap khảo sát Wazuh Dashboard, Security Onion và OpenSearch Security Analytics tại `docs/product-roadmap.md`; phạm vi chốt localhost, không tự remediation hay mở remote khi chưa có auth/TLS/RBAC.
 - Dashboard operations schema v4: append-only analyst review (`new|acknowledged|investigating|resolved|false_positive`), severity override/tags/note, immutable history, bounded search pivots, dependency/queue/database health và retention prune chỉ terminal jobs với `confirm: true`.
 - Report v2 audit mở rộng hash/digest-only cho request data, output schema và model; model digest ghi rõ nguồn/thời điểm quan sát. JSON v1 vẫn tương thích; review hiện tại/history được export an toàn.

@@ -1,8 +1,8 @@
 # Handoff — local-ai-siem-analyzer
 
 Ngày cập nhật: 2026-08-05
-Branch release: `codex/complete-local-ai-siem`
-Commit nền của branch: `a578c7c` (8 commit trước `origin/main` tại đầu phiên).
+Release đã merge: `origin/main` commit `700416d` qua PR #2.
+Ledger follow-up branch: `codex/release-handoff` (chỉ cập nhật trạng thái sau merge).
 Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần chạy `git config core.hooksPath .githooks` để bật ledger gate.
 `eval/run_eval.py` tồn tại trong checkout; path case đã resolve theo repo root, không phụ thuộc CWD.
 
@@ -14,10 +14,10 @@ Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần
 - Runtime dùng Waitress hard-bind `127.0.0.1`; Ollama loopback là mặc định, remote chỉ khi `allow_remote: true` với HTTPS. Read connection SQLite được đóng tường minh để không khóa DB trên Windows.
 - Frontend có loading theo `queued/fetching_alerts/preparing_analysis/calling_ollama/saving_result`, freshness, quick pivot rule/agent/source IP, review history, dependency badges và retention confirmation. JSON v2 là mặc định; JSON v1 chỉ dành cho consumer cũ.
 - Automated release gates PASS: toàn bộ `89 passed`, compileall, `node --check`, Git Bash syntax cho 3 attack scripts + pre-commit hook, workflow YAML và `git diff --check`. Waitress loopback HTTP smoke PASS trên temp DB; lần đầu phát hiện/đã sửa SQLite handle leak. Không chạy lại manual lab traffic hoặc Nikto theo yêu cầu user.
-- PR #2 CI lượt đầu: Ubuntu 3.11 chạy đủ `89 passed`/Node/Bash nhưng fail merge gate vì 14 Markdown hard-break trailing spaces lịch sử trong `docs/manual-test.md`; follow-up đã chỉ xóa whitespace, không đổi runbook semantics. Phải chờ matrix của commit follow-up xanh lại trước merge.
+- PR #2 CI lượt đầu: Ubuntu 3.11 chạy đủ `89 passed`/Node/Bash nhưng fail merge gate vì 14 Markdown hard-break trailing spaces lịch sử trong `docs/manual-test.md`; follow-up `ed7a24a` chỉ xóa whitespace, không đổi runbook semantics. Matrix 4 job sau follow-up đều xanh và PR đã squash merge thành `700416d`.
 - Evidence live cũ vẫn hợp lệ cho đường dữ liệu: job `#22` VI và `#23` EN cùng historical aggregate 12.781 alert đều có Qwen `ollama_model`, compliance `full` và latency khoảng 9-10 giây. Không dùng evidence này để khẳng định semantic accuracy; human review vẫn cần cho nội dung SOC.
-- Dashboard PID `39752` hiện vẫn listen `127.0.0.1:8765` từ process trước release; không dùng process này làm release acceptance và không tự sửa/xóa live DB trong lượt automated-only. Sau merge cần restart đúng process khi queue rỗng để nạp Waitress/schema v4.
-- Release workflow: push branch, tạo PR vào `main`, chờ toàn bộ GitHub checks xanh rồi merge; không merge khi CI pending/fail.
+- Dashboard đã restart sau merge khi queue rỗng: PID `41728` listen `127.0.0.1:8765`, Waitress worker/scheduler `running`, queue `0`, DB `ok`, 23 jobs giữ nguyên, `retention_enabled=false`; Ollama và Indexer dependency probes đều `ok`.
+- Release workflow PR #2 hoàn tất: push → CI 4 job xanh → squash merge `700416d`; không có manual lab traffic/Nikto mới.
 
 ## Lịch sử phiên trước (archived đến 2026-08-04)
 
