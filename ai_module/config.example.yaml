@@ -24,6 +24,7 @@ wazuh_indexer:
 # Ollama LLM
 ollama:
   base_url: "http://localhost:11434"
+  allow_remote: false              # remote only when true with an HTTPS endpoint
   model: "qwen2.5:3b"              # đổi qua 7b khi so sánh
   timeout: 120                      # giây; 7b chậm hơn
 
@@ -47,3 +48,26 @@ rag:
   embedding_model: "nomic-embed-text"   # chạy qua Ollama
   vector_db: "chromadb"                  # hoặc faiss
   data_dir: "rag_data"                   # chứa rule descriptions + MITRE
+
+# Local dashboard — chỉ bind loopback trên Windows host.
+dashboard:
+  host: "127.0.0.1"
+  port: 8765
+  database_path: "dashboard_data/dashboard.db"
+  allowed_models: ["qwen2.5:3b", "qwen2.5:7b"]
+  max_alerts_per_job: 2000              # detail cap; vượt cap tự chuyển aggregate-only
+  max_aggregate_rule_buckets: 1000
+  max_timeline_buckets: 96
+  default_language: "vi"                # vi | en
+  max_pending_jobs: 100
+  max_groups_in_prompt: 20
+  max_sample_log_chars: 1000
+  max_window_prompt_chars: 24000
+  ingest_delay_seconds: 120
+  max_catchup_windows: 24
+  worker_poll_seconds: 1
+  request_timeout_seconds: 30
+  max_job_history: 200
+  retention_days: 0                # 0 keeps history indefinitely
+  retention_keep_latest: 20        # preserve this many newest jobs during pruning
+  # `CyberCrew/notmythos-8b` chỉ thêm khi đã cài và benchmark riêng.

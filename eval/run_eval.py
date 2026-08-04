@@ -9,16 +9,25 @@ AI_MODULE_DIR = Path(__file__).resolve().parents[1] / "ai_module"
 sys.path.insert(0, str(AI_MODULE_DIR))
 
 from extractor import extract_fields, format_for_llm
-from llm import OUTPUT_KEYS, OUTPUT_SEVERITIES, analyze_alert
+from llm import OUTPUT_KEYS, OUTPUT_SEVERITIES, SOC_PROMPT_VERSION, analyze_alert
 from rag import RuleRAG
 from reader import load_config
 
 EVAL_DIR = Path(__file__).resolve().parent
 RESULT_FIELDS = [
-    "case_id", "model", "rag_enabled", "latency_s", "schema_valid", "error",
+    "case_id", "model", "rag_enabled", "language", "latency_s", "schema_valid", "error",
+    "prompt_version", "system_prompt_sha256", "requested_language",
+    "response_language", "language_compliance", "output_origin",
+    "provenance_json",
     "summary_score", "root_cause_score", "severity_score", "mitre_score",
     "next_steps_score", "reviewer", "notes", "output_json",
 ]
+
+
+def _configure_console_encoding():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 def parse_args():
@@ -27,7 +36,18 @@ def parse_args():
     parser.add_argument("--model", default=None)
     parser.add_argument("--no-rag", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--results", default=str(EVAL_DIR / "results.csv"))
+    parser.add_argument(
+        "--language", choices=("vi", "en"), default="vi",
+        help="Ngon ngu output cua SOC prompt",
+    )
+    parser.add_argument(
+        "--results", default=None,
+        help="CSV output rieng; mac dinh la file gan prompt version va language",
+    )
+    parser.add_argument(
+        "--overwrite", action="store_true",
+        help="Cho phep ghi de file ket qua da ton tai (khong nen dung voi baseline lich su)",
+    )
     return parser.parse_args()
 
 
@@ -57,20 +77,25 @@ def load_case(item):
     return json.loads(case_path.read_text(encoding="utf-8"))
 
 
-def open_results(path):
+def open_results(path, *, overwrite=False):
     result_path = Path(path)
     result_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = result_path.open("w", newline="", encoding="utf-8")
+    mode = "w" if overwrite else "x"
+    handle = result_path.open(mode, newline="", encoding="utf-8")
     writer = csv.DictWriter(handle, fieldnames=RESULT_FIELDS)
     writer.writeheader()
     return handle, writer
 
 
 def main():
+    _configure_console_encoding()
     args = parse_args()
     cfg = load_config(args.config)
     model = args.model or cfg["ollama"]["model"]
     timeout = cfg["ollama"].get("timeout", 120)
+    results_path = args.results or str(
+        EVAL_DIR / f"results-{SOC_PROMPT_VERSION}-{args.language}.csv"
+    )
     rag_enabled = bool(cfg.get("rag", {}).get("enabled")) and not args.no_rag
     rule_rag = None
     if rag_enabled:
@@ -85,7 +110,7 @@ def main():
         )
         rule_rag.ensure_indexed()
 
-    handle, writer = open_results(args.results)
+    handle, writer = open_results(results_path, overwrite=args.overwrite)
     manifest = load_manifest(args.limit)
     try:
         for index, item in enumerate(manifest, 1):
@@ -101,21 +126,35 @@ def main():
             started = time.perf_counter()
             error = ""
             result = None
+            provenance = {}
             try:
-                result = analyze_alert(
+                result, provenance = analyze_alert(
                     alert_text=alert_text,
                     rag_context=rag_context,
                     model=model,
                     base_url=cfg["ollama"]["base_url"],
                     timeout=timeout,
+                    language=args.language,
+                    include_provenance=True,
+                    allow_remote=cfg["ollama"].get("allow_remote", False),
                 )
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
             latency = time.perf_counter() - started
             writer.writerow({
                 "case_id": item["case_id"], "model": model,
-                "rag_enabled": str(rag_enabled).lower(), "latency_s": f"{latency:.3f}",
+                "rag_enabled": str(rag_enabled).lower(), "language": args.language,
+                "latency_s": f"{latency:.3f}",
                 "schema_valid": str(valid_output(result)).lower(), "error": error,
+                "prompt_version": provenance.get("prompt_version", ""),
+                "system_prompt_sha256": provenance.get(
+                    "system_prompt_sha256", provenance.get("prompt_sha256", "")
+                ),
+                "requested_language": provenance.get("requested_language", args.language),
+                "response_language": provenance.get("response_language", ""),
+                "language_compliance": provenance.get("language_compliance", "unknown"),
+                "output_origin": provenance.get("output_origin", ""),
+                "provenance_json": json.dumps(provenance, ensure_ascii=False, sort_keys=True),
                 "output_json": json.dumps(result, ensure_ascii=False) if result is not None else "",
             })
             handle.flush()

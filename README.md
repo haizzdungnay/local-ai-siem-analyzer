@@ -65,6 +65,7 @@ ollama pull nomic-embed-text                         # embedding cho RAG
 pip install -r ai_module/requirements.txt
 cp ai_module/config.example.yaml ai_module/config.yaml  # điền credential Indexer
 python ai_module/main.py --demo                         # lần đầu tự index dữ liệu RAG
+python ai_module/dashboard.py                           # http://127.0.0.1:8765
 
 # --- Sinh cảnh báo (từ Kali .30) ---
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
@@ -81,6 +82,25 @@ python -m pytest tests -q
 
 Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
 
+### Dashboard AI local
+
+`python ai_module/dashboard.py` mở `http://127.0.0.1:8765`. App chỉ phục vụ trên máy chính, đọc alert từ Indexer `:9200`, không proxy credential xuống browser. Chức năng MVP:
+
+- Preset `5m/15m/30m/1h/2h/6h/12h/24h` hoặc custom range tối đa 24 giờ.
+- Chọn model, ngôn ngữ AI `Tiếng Việt/English` và giao diện `Tối/Sáng`; ngôn ngữ yêu cầu, ngôn ngữ phản hồi và mức tuân thủ đều được ghi cùng kết quả.
+- System prompt SOC được version hóa (`soc-contract-v1`), tách fact/inference/uncertainty/limitation và gọi Ollama với `temperature=0`, `seed=42` để dễ audit/reproduce.
+- Theo dõi phase thật `queued → fetching_alerts → preparing_analysis → calling_ollama → saving_result`; không chèn delay/loading giả.
+- Timeline mật độ alert theo thời gian; chọn bucket để lọc hoặc tạo batch con drill-down.
+- Dưới detail cap: deterministic grouping, alert reference và full-document lookup. Vượt cap: tự chuyển aggregate-only từ count/histogram/rule code, không tải full log hàng loạt.
+- Mỗi job có **Xuất JSON v2** gồm analysis, SOC trace, metrics/timeline, alert references và provenance Ollama; có nút JSON v1 cho consumer cũ khi endpoint hỗ trợ. Kết quả cũ thiếu evidence được ghi `unknown_legacy`.
+- Panel **Dấu vết phân tích SOC** chỉ trình bày fact, inference, uncertainty và limitation có thể kiểm toán; không hiển thị chain-of-thought/suy luận nội bộ model.
+- Một fixed-window schedule, ingest delay và bounded catch-up; SQLite giữ job/watermark tại `ai_module/dashboard_data/` (gitignored).
+- Analyst UX local: lọc/pivot lịch sử, case-lite review (status/severity/tags/note), dependency/queue/database health và retention prune có xác nhận rõ.
+
+Tham khảo có chủ đích từ [Wazuh Dashboard](https://documentation.wazuh.com/current/user-manual/wazuh-dashboard/index.html), [Security Onion Alerts](https://docs.securityonion.net/en/2.4/alerts.html), [Security Onion Cases](https://docs.securityonion.net/en/2.4/cases.html) và [OpenSearch Security Analytics](https://docs.opensearch.org/latest/security-analytics/). Scope này không triển khai multi-user RBAC, PCAP pipeline, notification bên ngoài, auto-remediation hay enterprise correlation graph.
+
+AI output chỉ là tư vấn. App không tự chặn IP, chạy lệnh hay sửa Wazuh. Chi tiết vận hành/test: [`docs/manual-test.md`](docs/manual-test.md).
+
 ---
 
 ## 4. Cấu trúc thư mục
@@ -96,7 +116,12 @@ local-ai-siem-analyzer/
 │  ├─ setup/                 # install-wazuh.sh, install-agent.sh
 │  └─ attacks/               # kịch bản sinh alert (ssh brute, web, fim)
 ├─ ai_module/                # LÕI — mô-đun AI Python
-│  ├─ reader.py              # đọc alert (tail json / API)
+│  ├─ reader.py              # đọc alert/range/aggregate từ Wazuh Indexer
+│  ├─ analysis_service.py    # gom nhóm và điều phối phân tích AI
+│  ├─ dashboard.py           # API + production WSGI loopback
+│  ├─ dashboard_store.py     # SQLite job/review/audit state
+│  ├─ dashboard_worker.py    # worker và fixed-window scheduler
+│  ├─ web/                   # dashboard HTML/CSS/JS thuần
 │  ├─ extractor.py           # trích ~10 trường chính
 │  ├─ rag.py                 # RAG rule Wazuh + MITRE
 │  ├─ llm.py                 # gọi Ollama, ép JSON schema

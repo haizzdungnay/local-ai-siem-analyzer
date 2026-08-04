@@ -126,7 +126,12 @@ cd ai_module
 pip install -r requirements.txt
 cp config.example.yaml config.yaml   # sửa IP Wazuh, API key
 python main.py --demo                 # test với alert mẫu
+python dashboard.py                   # mở http://127.0.0.1:8765
 ```
+
+Dashboard chỉ bind loopback. Không đổi `dashboard.host` sang `0.0.0.0`; MVP chưa có auth/TLS cho truy cập từ máy khác. Runtime DB nằm trong `ai_module/dashboard_data/`, không commit.
+
+`dashboard.max_alerts_per_job` là **detail cap**, không phải tổng alert tối đa có thể phân tích. Cửa sổ vượt cap tự dùng aggregate-only (timeline, cardinality, rule-code buckets và field mẫu allowlist), không bulk `full_log`; chọn một timeline bucket để tạo batch con khi cần full detail. Dashboard cũng có lựa chọn AI `vi/en` và theme sáng/tối.
 
 ## Bước 8 — Sinh cảnh báo thử
 Từ Kali (.30), chạy SSH scenario có giới hạn:

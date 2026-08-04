@@ -21,20 +21,28 @@ Ground truth đã qua một vòng review độc lập nhưng vẫn giữ `review
 Model baseline đã có trong lab:
 
 ```powershell
-python eval/run_eval.py --model qwen2.5:7b
+python eval/run_eval.py --model qwen2.5:7b --language vi
 ```
+
+The SOC contract is versioned (`soc-contract-v1`). A new run writes a separate
+CSV named `results-<prompt-version>-<language>.csv`; the historical
+`eval/results.csv` is never overwritten. Use `--results <path>` for an
+explicit output, and add `--overwrite` only when replacing a deliberately
+chosen non-baseline file. Use `--language en` for an English run. The CSV keeps
+the legacy five-field alert schema while adding prompt/language/provenance
+columns for audit and reproducibility.
 
 A/B RAG:
 
 ```powershell
-python eval/run_eval.py --model qwen2.5:7b --results eval/results-rag.csv
-python eval/run_eval.py --model qwen2.5:7b --no-rag --results eval/results-no-rag.csv
+python eval/run_eval.py --model qwen2.5:7b --language vi --results eval/results-soc-contract-v1-vi-rag.csv
+python eval/run_eval.py --model qwen2.5:7b --language vi --no-rag --results eval/results-soc-contract-v1-vi-no-rag.csv
 ```
 
 Smoke-test một case:
 
 ```powershell
-python eval/run_eval.py --model qwen2.5:7b --limit 1 --results eval/results-smoke.csv
+python eval/run_eval.py --model qwen2.5:7b --language vi --limit 1 --results eval/results-soc-contract-v1-vi-smoke.csv
 ```
 
 Runner ghi mới file CSV. Chạy cùng corpus, config extractor, prompt, RAG corpus và model tag; không sửa prompt giữa hai lượt so sánh.

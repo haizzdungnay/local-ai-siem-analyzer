@@ -19,16 +19,21 @@ Script chỉ gửi số lần xác thực sai đã giới hạn; không quét to
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
 ```
 
-## 2. Web Attack (nikto / SQLi / XSS)
+## 2. Web Attack (baseline / web errors / signatures / Nikto)
 **Script:** `scripts/attacks/web-attack.sh`
 **Chạy từ:** Kali (.30)
 **Yêu cầu:** Apache + DVWA cài trên Victim
 **Rule Wazuh dự kiến:** 31xxx
-**Rule Wazuh thực tế:** 31101 (Web server 400 error code) + 31151 (Multiple web server 400 error codes — correlation rule)
+**Rule Wazuh thực tế:** 31101 (Web server 400 error code) + 31151 (Multiple web server 400 error codes — correlation rule) + 31105 (XSS signature)
 
 ```bash
-bash scripts/attacks/web-attack.sh 192.168.100.20
+bash scripts/attacks/web-attack.sh 192.168.100.20 baseline
+bash scripts/attacks/web-attack.sh 192.168.100.20 error-burst 6
+bash scripts/attacks/web-attack.sh 192.168.100.20 signatures
+bash scripts/attacks/web-attack.sh 192.168.100.20 nikto 6 I_UNDERSTAND_NIKTO_ALERT_VOLUME
 ```
+
+Script từ chối target ngoài Victim `.20`, giới hạn error burst ở 3–10 request. Default/`all` không chạy Nikto; explicit mode yêu cầu confirmation token vì live test từng tạo hơn 5.000 alert, dù vẫn có `-maxtime 45s` trong hard wall-clock wrapper 50 giây (`kill-after` 5 giây). Chạy từng mode rồi chờ ingest/query trước mode kế tiếp để có AI window tách biệt. Response `302`/`404` chỉ chứng minh request đã tới Apache, không chứng minh payload thực thi.
 
 Cài DVWA trên Victim:
 ```bash

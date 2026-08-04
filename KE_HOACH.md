@@ -129,9 +129,18 @@ GUI Network → Manual: IP `192.168.100.30/24` cho card Host-only; card NAT đ�
 
 Chi tiết chạy: [`eval/README.md`](eval/README.md).
 
+### GĐ5 — Dashboard AI local (hoàn tất phạm vi localhost)
+- [x] Reader theo cửa sổ UTC tối đa 24 giờ, deterministic grouping và window summary schema riêng.
+- [x] SQLite job/schedule state, một worker và bounded catch-up.
+- [x] Flask API + HTML/CSS/JS chạy trên `127.0.0.1:8765`.
+- [x] Timeline alert, aggregate-only trên detail cap, AI `vi/en` và theme `dark/light`.
+- [x] Live smoke test với Indexer/Ollama; aggregate-only đã xác minh trên cửa sổ 12.781 alert mà không tải bulk raw log.
+- [x] JSON report v2/v1, provenance hash, review history bất biến, health và retention có xác nhận.
+- [ ] Remote access/auth/TLS chỉ thêm nếu sau này cần truy cập ngoài máy chính.
+
 ### Mở rộng (nếu dư thời gian)
 - Bổ sung Sysmon cho Windows victim `.40` đã Active.
-- Nút "Explain" trên dashboard nhỏ.
+- PIT/`search_after` chỉ khi sau này cần export/full-detail pagination; aggregate-only đã xử lý volume cho window summary.
 
 ---
 
@@ -140,7 +149,7 @@ Chi tiết chạy: [`eval/README.md`](eval/README.md).
 ```
 ddc24-ai-siem/
 ├─ ai_module/
-│  ├─ reader.py        # đọc alert (tail json / API)
+│  ├─ reader.py        # đọc alert/range/aggregate từ Wazuh Indexer
 │  ├─ extractor.py     # trích ~10 trường chính
 │  ├─ rag.py           # ChromaDB + embedding rule/MITRE
 │  ├─ llm.py           # gọi Ollama, ép JSON schema

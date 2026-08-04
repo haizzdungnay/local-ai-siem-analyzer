@@ -25,6 +25,17 @@ Chấm độc lập từng output theo thang 1–5. Không chấm văn phong; ch
 
 Output lỗi schema vẫn chấm semantic nếu đọc được, nhưng `schema_valid=false`. Lỗi không có nội dung: cả 5 điểm semantic bằng 1.
 
+## Language and audit trace
+
+The runner records the requested language, response language, compliance state,
+prompt version/hash, deterministic Ollama options, and response provenance in
+separate columns. Reviewers must treat `language_compliance=partial|unknown` as
+an audit warning, not as proof that the model silently translated or completed
+missing evidence. `assessment_basis` may expose observed facts, inferences,
+uncertainties, and limitations for SOC review; it is an inspectable evidence
+summary, never hidden chain-of-thought. Do not infer internal reasoning language
+from these fields.
+
 ## Quy tắc chấm
 
 - Dùng cùng input, prompt, RAG corpus, extractor config và timeout khi so model.

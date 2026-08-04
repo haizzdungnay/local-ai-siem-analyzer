@@ -5,6 +5,7 @@
 - Windows victim `.40` và Wazuh agent đã Active; Sysmon chưa xác nhận.
 - Không ghi credentials, hostname/IP/fingerprint live chưa sanitized vào output tracked.
 - Không chạy `eval/build_dataset.py` nếu không chủ ý rewrite `eval/cases/` và `eval/expected/`.
+- Khi dùng subagent/multi-agent trong project, chỉ dùng model Fable hoặc Opus; ưu tiên Opus.
 
 ## Change protocol
 

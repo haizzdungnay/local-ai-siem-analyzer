@@ -2,6 +2,7 @@
 
 # Python
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 *.egg-info/
@@ -36,6 +37,10 @@ desktop.ini
 
 # Local one-shot data generator; canonical RAG data is tracked directly
 ai_module/create_rag_data.py
+
+# Local dashboard runtime data
+ai_module/dashboard_data/
+ai_module/dashboard-run*.log
 
 # Docker volumes (trên SIEM, không trong repo)
 wazuh-data/

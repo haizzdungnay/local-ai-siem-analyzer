@@ -4,6 +4,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 EVAL_DIR = ROOT / "eval"
@@ -92,4 +94,65 @@ def test_results_csv_matches_runner_schema():
         "case_id", "model", "rag_enabled", "latency_s", "schema_valid", "error",
         "summary_score", "root_cause_score", "severity_score", "mitre_score",
         "next_steps_score", "reviewer", "notes", "output_json",
+    ]
+
+
+def test_eval_runner_writes_versioned_metadata_without_overwriting(tmp_path):
+    runner_path = ROOT / "eval" / "run_eval.py"
+    spec = importlib.util.spec_from_file_location("run_eval_metadata", runner_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    result_path = tmp_path / "results-soc-prompt-v1-vi.csv"
+
+    handle, _ = runner.open_results(result_path)
+    handle.close()
+
+    with result_path.open(newline="", encoding="utf-8") as handle:
+        header = next(csv.reader(handle))
+    assert header == runner.RESULT_FIELDS
+    assert {
+        "language", "prompt_version", "system_prompt_sha256",
+        "requested_language", "response_language", "language_compliance",
+        "output_origin", "provenance_json",
+    } <= set(header)
+    with pytest.raises(FileExistsError):
+        runner.open_results(result_path)
+
+
+def test_eval_schema_remains_legacy_five_fields():
+    runner_path = ROOT / "eval" / "run_eval.py"
+    spec = importlib.util.spec_from_file_location("run_eval_schema", runner_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    valid = {
+        "summary": "Observed login failure",
+        "root_cause": "Invalid credentials",
+        "severity": "low",
+        "mitre": "",
+        "next_steps": ["Verify the source"],
+    }
+
+    assert runner.valid_output(valid)
+    assert not runner.valid_output({**valid, "response_language": "en"})
+
+
+def test_eval_runner_configures_utf8_console(monkeypatch):
+    runner_path = ROOT / "eval" / "run_eval.py"
+    spec = importlib.util.spec_from_file_location("run_eval_console", runner_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    calls = []
+
+    class FakeStream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(runner.sys, "stdout", FakeStream())
+    monkeypatch.setattr(runner.sys, "stderr", FakeStream())
+
+    runner._configure_console_encoding()
+
+    assert calls == [
+        {"encoding": "utf-8", "errors": "replace"},
+        {"encoding": "utf-8", "errors": "replace"},
     ]
