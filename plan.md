@@ -63,7 +63,7 @@ remote/multi-user khi chưa có auth, TLS và RBAC.
 - [x] Chuyển dashboard sang Waitress loopback và chặn Ollama endpoint không an toàn.
 - [x] Rà chéo integration và chạy toàn bộ release gates tự động (`89 passed` + Waitress smoke).
 - [x] Cập nhật `CHANGELOG.md` trước `HANDOFF.md`.
-- [ ] Tạo PR, chờ CI xanh và merge `main`.
+- [x] Tạo PR, chờ CI xanh và merge `main` (PR #2 → `700416d`).
 
 Không chạy lại traffic tấn công hoặc Nikto trong lượt hoàn thiện này; acceptance dùng test tự động
 và evidence live đã có. Human semantic scoring vẫn là hoạt động đánh giá sau release, không phải
