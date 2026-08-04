@@ -71,6 +71,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Chốt kế hoạch dashboard AI local: đọc `wazuh-alerts-*` theo cửa sổ tối đa 24 giờ, phân tích hybrid window/group/alert, lưu job và schedule bằng SQLite, chạy một LLM worker và chỉ phục vụ trên `127.0.0.1`.
 
 ### Fixed
+- PR #2 CI portability follow-up: loại 14 Markdown hard-break trailing spaces cũ trong `docs/manual-test.md` mà `git diff --check HEAD^ HEAD` trên merge ref phát hiện; nội dung runbook không đổi.
 - Chặn config truyền trực tiếp vào dashboard/service và direct LLM API bypass endpoint safety; CLI/eval truyền đúng remote opt-in. Model digest được coi là advisory post-chat metadata thay vì bằng chứng đồng thời với chat.
 - Sửa SQLite read connections không đóng handle thật trên Windows, tránh khóa database khi retention/cleanup; release verification đạt `89 passed`, compileall, Node, shell syntax, YAML và `git diff --check`.
 - Không còn persist/export 200 ký tự raw model preview khi JSON/schema không hợp lệ: fallback chỉ dùng thông báo local đã kiểm soát; cả export v1/v2 xóa summary của legacy `local_fallback` để chặn prompt/log/reasoning từng bị echo. Test mới kiểm raw sentinel không lọt vào fallback, SQLite hoặc JSON report.

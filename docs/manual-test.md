@@ -114,7 +114,7 @@ notepad ai_module/config.yaml
 
 ### 2.1 Kết nối
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -194,7 +194,7 @@ exit
 
 ## 3. Kiểm tra Victim Ubuntu `.20`
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -264,7 +264,7 @@ exit
 
 ## 4. Kiểm tra Kali `.30`
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -304,7 +304,7 @@ exit
 
 ### 5.1 Copy script
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -317,7 +317,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_ed25519" kali@192.168.100.30 "tr -d '\r' </tmp/
 
 ### 5.2 Chạy
 
-**Máy chạy:** Kali `.30`  
+**Máy chạy:** Kali `.30`
 **Shell:** Bash qua SSH từ Host
 
 ```powershell
@@ -332,7 +332,7 @@ Chờ Indexer ingest tối đa 120 giây. Không chạy lại ngay khi chưa que
 
 ### 5.3 Query alert
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -355,7 +355,7 @@ Remove-Item Env:PYTHONPATH
 
 ### 6.1 Copy và normalize script
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -432,7 +432,7 @@ Kết luận của lượt này: dashboard đọc log thật; implementation m�
 
 ## 7. Scenario FIM an toàn
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell gọi Victim
 
 Tạo marker, chờ baseline, sửa marker:
@@ -462,7 +462,7 @@ Cleanup có thể sinh rule `553 File deleted`; ghi đây là cleanup artifact, 
 
 ## 8. Windows Victim `.40`
 
-**Máy chạy:** Windows Victim qua VMware console  
+**Máy chạy:** Windows Victim qua VMware console
 **Shell:** PowerShell chạy Administrator
 
 ```powershell
@@ -490,7 +490,7 @@ Sysmon chưa có config/test canonical trong repo. Chỉ ghi `Windows agent PASS
 
 ## 9. Kiểm thử AI pipeline trên Host
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ### 9.1 Unit/integration mock
@@ -540,7 +540,7 @@ Mỗi lần chạy prompt mới phải dùng một file kết quả riêng. Runn
 `eval/results.csv` baseline lịch sử; provenance và language được ghi thêm vào
 CSV mới.
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -568,7 +568,7 @@ python eval/summarize_results.py eval/results-soc-contract-v1-vi-rag.csv eval/re
 
 AI scoring không thay human review. Judge model khác candidate nhưng vẫn là AI.
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -605,7 +605,7 @@ Mục này mới là manual human evaluation.
 
 ### 12.1 Chuẩn bị file riêng
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
@@ -769,7 +769,7 @@ Dừng app bằng `Ctrl+C`. Scheduler chỉ chạy khi process dashboard đang c
 
 ## 14. Cleanup và kiểm tra cuối
 
-**Máy chạy:** Host Windows  
+**Máy chạy:** Host Windows
 **Shell:** PowerShell
 
 ```powershell
