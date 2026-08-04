@@ -1,0 +1,25 @@
+{
+  "case_id": "ssh-5710-02",
+  "provenance": "sanitized-live",
+  "scenario": "ssh",
+  "rule_id": "5710",
+  "disposition": "suspicious",
+  "severity": "medium",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Có lần đăng nhập SSH dùng tài khoản không tồn tại.",
+  "root_cause_reference": "Client SSH thử username không tồn tại; alert không đủ evidence để kết luận password guessing.",
+  "required_facts": [
+    "sshd: Attempt to login using a non-existent user",
+    "victim-ubuntu sshd[1000]: Invalid user invalid-user-b from 10.0.0.1 port 40000"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Kiểm tra số username không tồn tại được thử từ cùng IP",
+    "Theo dõi rule tương quan 5712 hoặc đăng nhập thành công sau đó"
+  ],
+  "review_status": "draft-single-reviewer"
+}

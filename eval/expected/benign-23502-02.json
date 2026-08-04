@@ -1,0 +1,24 @@
+{
+  "case_id": "benign-23502-02",
+  "provenance": "sanitized-live",
+  "scenario": "benign",
+  "rule_id": "23502",
+  "disposition": "benign",
+  "severity": "low",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Wazuh ghi nhận bản cập nhật đã giải quyết CVE trên package của agent.",
+  "root_cause_reference": "Vulnerability Detector ghi nhận CVE đã được giải quyết do package hoặc feed được cập nhật.",
+  "required_facts": [
+    "The CVE-2022-32743 that affected samba-libs was solved due to an update in the agent or feed."
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Xác minh package đã ở bản vá và trạng thái CVE là Solved",
+    "Theo dõi lần scan tiếp theo để bảo đảm finding không xuất hiện lại"
+  ],
+  "review_status": "draft-single-reviewer"
+}

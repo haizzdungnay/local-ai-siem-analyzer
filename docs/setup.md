@@ -1,5 +1,7 @@
 # Hướng dẫn dựng Lab từ đầu
 
+Sau khi cài xong, kiểm thử end-to-end theo từng máy tại [`manual-test.md`](manual-test.md).
+
 ## Yêu cầu
 - VMware Workstation (Pro/Player)
 - ISO: Ubuntu Server 22.04+, Kali Linux
@@ -111,7 +113,7 @@ Sửa `/var/ossec/etc/ossec.conf` trên Victim, thêm:
 ```
 Restart agent: `sudo systemctl restart wazuh-agent`.
 
-FIM mặc định đã giám sát `/etc` — không cần thêm.
+FIM mặc định đã giám sát `/etc`; demo an toàn dùng marker riêng. Thêm `<directories realtime="yes">/opt/wazuh-fim-lab</directories>` trong `<syscheck>`, rồi restart agent. Không sửa file hệ thống.
 
 ## Bước 7 — Cài Ollama + AI module trên Host
 ```powershell
@@ -124,10 +126,19 @@ cd ai_module
 pip install -r requirements.txt
 cp config.example.yaml config.yaml   # sửa IP Wazuh, API key
 python main.py --demo                 # test với alert mẫu
+python dashboard.py                   # mở http://127.0.0.1:8765
 ```
 
+Dashboard chỉ bind loopback. Không đổi `dashboard.host` sang `0.0.0.0`; MVP chưa có auth/TLS cho truy cập từ máy khác. Runtime DB nằm trong `ai_module/dashboard_data/`, không commit.
+
+`dashboard.max_alerts_per_job` là **detail cap**, không phải tổng alert tối đa có thể phân tích. Cửa sổ vượt cap tự dùng aggregate-only (timeline, cardinality, rule-code buckets và field mẫu allowlist), không bulk `full_log`; chọn một timeline bucket để tạo batch con khi cần full detail. Dashboard cũng có lựa chọn AI `vi/en` và theme sáng/tối.
+
 ## Bước 8 — Sinh cảnh báo thử
-Xem [`attacks.md`](attacks.md). Nhanh nhất:
+Từ Kali (.30), chạy SSH scenario có giới hạn:
+```bash
+bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
+```
+Kiểm tra Dashboard hoặc Indexer có alert rule **5503** (PAM login failed). FIM chạy riêng trên Victim theo [`attacks.md`](attacks.md).
 
 ## Bước 9 — Windows Victim Setup (mở rộng)
 
@@ -178,8 +189,3 @@ Cài/reinstall **VMware Tools**: `VM → Install VMware Tools` → chạy `setup
 
 ### Lưu ý: Windows Home không hỗ trợ nhận kết nối RDP
 Windows 10/11 **Home** chỉ dùng RDP làm client (kết nối ra), không nhận kết nối RDP vào (cần bản Pro/Enterprise). Với lab, dùng trực tiếp cửa sổ VMware Workstation console để thao tác — không cần RDP.
-```bash
-# Từ Kali (.30)
-bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
-```
-Kiểm tra Dashboard → có alert rule **5503** (PAM login failed — quan sát thực tế trên bản 4.9.0) là lab chạy đúng.

@@ -1,0 +1,25 @@
+{
+  "case_id": "web-31101-01",
+  "provenance": "sanitized-live",
+  "scenario": "web",
+  "rule_id": "31101",
+  "disposition": "suspicious",
+  "severity": "medium",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Web server trả HTTP 404 cho request truy cập path đáng ngờ `/etc/passwd`.",
+  "root_cause_reference": "Request từ IP nguồn chứa path nhạy cảm nhưng server trả 404; alert chưa chứng minh đọc file thành công.",
+  "required_facts": [
+    "Web server 400 error code.",
+    "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /etc/passwd HTTP/1.1\" 404 437 \"-\" \"curl/8.18.0\""
+  ],
+  "forbidden_claims": [
+    "Không khẳng định khai thác thành công khi response là HTTP 404.",
+    "Không tự động chặn hoặc cô lập trước khi xác minh hoạt động được phép."
+  ],
+  "next_steps_reference": [
+    "Rà các request cùng IP và thời điểm",
+    "Xác minh server không trả nội dung file nhạy cảm"
+  ],
+  "review_status": "draft-single-reviewer"
+}

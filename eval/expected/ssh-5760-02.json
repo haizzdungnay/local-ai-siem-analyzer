@@ -1,0 +1,31 @@
+{
+  "case_id": "ssh-5760-02",
+  "provenance": "sanitized-live",
+  "scenario": "ssh",
+  "rule_id": "5760",
+  "disposition": "suspicious",
+  "severity": "medium",
+  "mitre_ids": [
+    "T1110.001",
+    "T1021.004"
+  ],
+  "mitre_tactics": [
+    "Credential Access",
+    "Lateral Movement"
+  ],
+  "summary_reference": "Các lần đăng nhập SSH vào tài khoản đích đều thất bại; log ghi thông báo lặp lại bốn lần.",
+  "root_cause_reference": "Các lần đăng nhập SSH vào tài khoản đích đều thất bại; log ghi thông báo lặp lại bốn lần.",
+  "required_facts": [
+    "sshd: authentication failed.",
+    "victim-ubuntu sshd[1000]: message repeated 4 times: [ Failed password for root from 10.0.0.30 port 40000 ssh2]"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Đối chiếu các alert 5503 hoặc 2502 cùng IP và thời điểm",
+    "Chặn hoặc rate-limit nguồn nếu thất bại tiếp diễn"
+  ],
+  "review_status": "draft-single-reviewer"
+}

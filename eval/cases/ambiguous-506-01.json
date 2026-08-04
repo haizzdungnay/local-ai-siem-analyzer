@@ -1,0 +1,27 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "extra_data": "victim-ubuntu->any"
+  },
+  "rule": {
+    "id": "506",
+    "level": 3,
+    "description": "Wazuh agent stopped.",
+    "mitre": {
+      "technique": [
+        "Disable or Modify Tools"
+      ],
+      "id": [
+        "T1562.001"
+      ],
+      "tactic": [
+        "Defense Evasion"
+      ]
+    }
+  },
+  "full_log": "ossec: Agent stopped: 'victim-ubuntu->any'."
+}

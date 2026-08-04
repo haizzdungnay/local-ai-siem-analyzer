@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "file": "/usr/bin/diff",
+    "title": "Trojaned version of file detected."
+  },
+  "rule": {
+    "id": "510",
+    "level": 7,
+    "description": "Host-based anomaly detection event (rootcheck)."
+  },
+  "full_log": "Trojaned version of file '/usr/bin/diff' detected. Signature used: 'bash|^/bin/sh|file\\.h|proc\\.h|/dev/[^n]|^/bin/.*sh' (Generic)."
+}

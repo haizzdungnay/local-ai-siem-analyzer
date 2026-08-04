@@ -2,10 +2,12 @@
 
 KHÔNG ném raw JSON vào LLM — giảm token, tăng chính xác.
 """
+from pathlib import Path
+
 import yaml
 
 
-def load_config(path: str = "config.yaml") -> dict:
+def load_config(path: str = str(Path(__file__).resolve().parent / "config.yaml")) -> dict:
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 

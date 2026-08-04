@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "uid": "1000",
+    "dstuser": "root(uid=0)"
+  },
+  "rule": {
+    "id": "5501",
+    "level": 3,
+    "description": "PAM: Login session opened.",
+    "mitre": {
+      "technique": [
+        "Valid Accounts"
+      ],
+      "id": [
+        "T1078"
+      ],
+      "tactic": [
+        "Defense Evasion",
+        "Persistence",
+        "Privilege Escalation",
+        "Initial Access"
+      ]
+    }
+  },
+  "full_log": "Jul 29 01:15:02 victim-ubuntu pkexec[1000]: pam_unix(polkit-1:session): session opened for user root(uid=0) by (uid=1000)"
+}

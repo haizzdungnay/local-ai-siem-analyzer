@@ -1,0 +1,35 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "vulnerability": {
+      "reference": "https://bugzilla.samba.org/show_bug.cgi?id=15103, https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/ZTTOLTHUHOV4SHCHCB5TAA4FQVJAWN4P/, https://gitlab.com/samba-team/samba/-/merge_requests/2644, https://security.gentoo.org/glsa/202309-06",
+      "severity": "Medium",
+      "cve": "CVE-2022-1615",
+      "package": {
+        "name": "libsmbclient",
+        "version": "2:4.15.13+dfsg-0ubuntu1.12",
+        "architecture": "amd64"
+      },
+      "published": "2022-09-01T21:15:08Z",
+      "enumeration": "CVE",
+      "title": "CVE-2022-1615 affecting libsmbclient was solved",
+      "type": "Packages",
+      "cvss": {
+        "cvss3": {
+          "base_score": "5.500000"
+        }
+      },
+      "updated": "2025-08-22T20:19:52Z",
+      "status": "Solved"
+    }
+  },
+  "rule": {
+    "id": "23502",
+    "level": 3,
+    "description": "The CVE-2022-1615 that affected libsmbclient was solved due to an update in the agent or feed."
+  }
+}

@@ -61,7 +61,8 @@ ping 192.168.100.20    # → Victim
 
 # Từ Host (CMD Windows)
 ping 192.168.100.10    # → SIEM
-curl -k https://192.168.100.10:55000   # → Wazuh API
+curl -k https://192.168.100.10:55000   # → Manager API; chỉ kiểm tra kết nối quản trị
+curl -k -u admin:'PASSWORD' https://192.168.100.10:9200/wazuh-alerts-*/_search -H 'Content-Type: application/json' -d '{"size":1,"query":{"match_all":{}}}'  # → Indexer alert path
 
 # Mọi VM
 ping 8.8.8.8           # → internet qua NAT

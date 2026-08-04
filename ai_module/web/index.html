@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wazuh AI Analyst</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <div><strong>Wazuh AI Analyst</strong><span>Local · AI advisory</span></div>
+    <div class="header-tools">
+      <div id="health" class="health">Đang kiểm tra...</div>
+      <label class="header-select">Giao diện
+        <select id="theme"><option value="dark">Tối</option><option value="light">Sáng</option></select>
+      </label>
+    </div>
+  </header>
+  <main>
+    <section class="card control-card">
+      <div>
+        <p class="eyebrow">Phân tích mới</p>
+        <h1>Chọn cửa sổ alert</h1>
+        <p class="muted">Nguồn: Wazuh Indexer <code>wazuh-alerts-*</code>. Mỗi job tạo một báo cáo cửa sổ.</p>
+      </div>
+      <form id="job-form">
+        <label>Khoảng nhanh
+          <select id="preset">
+            <option value="300">5 phút</option><option value="900">15 phút</option>
+            <option value="1800">30 phút</option><option value="3600">1 giờ</option>
+            <option value="7200">2 giờ</option><option value="21600">6 giờ</option>
+            <option value="43200">12 giờ</option><option value="86400">24 giờ</option>
+            <option value="custom">Tùy chỉnh</option>
+          </select>
+        </label>
+        <label class="custom-field">Bắt đầu<input id="start" type="datetime-local"></label>
+        <label class="custom-field">Kết thúc<input id="end" type="datetime-local"></label>
+        <label>Model<select id="model"></select></label>
+        <label>AI trả lời<select id="language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
+        <button id="job-submit" type="submit">Đưa vào hàng đợi</button>
+      </form>
+      <p id="form-message" class="message"></p>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="section-title"><div><p class="eyebrow">Tự động</p><h2>Fixed windows</h2></div><span id="schedule-state" class="badge">idle</span></div>
+        <form id="schedule-form">
+          <label class="toggle"><input id="schedule-enabled" type="checkbox"> Bật tự động</label>
+          <label>Interval<select id="schedule-interval">
+            <option value="300">5 phút</option><option value="900">15 phút</option>
+            <option value="1800">30 phút</option><option value="3600">1 giờ</option>
+            <option value="7200">2 giờ</option><option value="21600">6 giờ</option>
+            <option value="43200">12 giờ</option><option value="86400">24 giờ</option>
+          </select></label>
+          <label>Model<select id="schedule-model"></select></label>
+          <label>AI trả lời<select id="schedule-language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
+          <button type="submit">Lưu lịch</button>
+        </form>
+        <dl id="schedule-detail"></dl>
+        <div id="schedule-actions" class="actions hidden">
+          <button id="schedule-retry" type="button" class="secondary">Thử lại lịch</button>
+          <button id="schedule-skip" type="button" class="danger">Bỏ qua cửa sổ</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title"><div><p class="eyebrow">Lịch sử gom log</p><h2>Batch analysis</h2></div><button id="refresh" class="secondary">Làm mới</button></div>
+        <div class="history-filters" aria-label="Lọc lịch sử batch">
+          <label>Tìm job<input id="history-search" type="search" placeholder="ID, model, tóm tắt"></label>
+          <label>Status<select id="history-status"><option value="">Tất cả</option><option>succeeded</option><option>partial</option><option>failed</option><option>running</option><option>pending</option><option>cancelled</option></select></label>
+          <label>Ngôn ngữ<select id="history-language"><option value="">Tất cả</option><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
+          <label>Mode<select id="history-mode"><option value="">Tất cả</option><option value="full">Full</option><option value="aggregate">Aggregate</option></select></label>
+          <label>Review<select id="history-review"><option value="">Tất cả</option><option value="none">Chưa review</option><option value="new">New</option><option value="acknowledged">Acknowledged</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option><option value="false_positive">False positive</option></select></label>
+          <button id="history-filter-clear" type="button" class="secondary">Bỏ lọc</button>
+        </div>
+        <p class="muted table-hint">Mỗi dòng là một cửa sổ log. Click hoặc dùng Enter/Space để xem nhận xét AI tương ứng.</p>
+        <div class="table-scroll batch-table-scroll">
+          <table class="batch-table"><thead><tr>
+            <th scope="col">Batch</th><th scope="col">Cửa sổ</th><th scope="col">Status</th>
+            <th scope="col">Alerts</th><th scope="col">Groups</th><th scope="col">Rules</th>
+            <th scope="col">Max level</th><th scope="col">AI</th><th scope="col">Review</th><th scope="col">Freshness</th>
+          </tr></thead><tbody id="jobs"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid ops-grid">
+      <div class="card"><div class="section-title"><div><p class="eyebrow">Local runtime</p><h2>Dependency & queue health</h2></div><button id="deps-refresh" type="button" class="secondary">Kiểm tra</button></div><dl id="dependency-health" class="ops-detail"></dl></div>
+      <div class="card"><div class="section-title"><div><p class="eyebrow">Retention</p><h2>Bảo trì dữ liệu local</h2></div><button id="maintenance-refresh" type="button" class="secondary">Làm mới</button></div><dl id="maintenance-stats" class="ops-detail"></dl><p id="maintenance-note" class="muted"></p><button id="maintenance-prune" type="button" class="danger" disabled>Xóa history theo retention</button></div>
+    </section>
+
+    <section id="result" class="card hidden">
+      <div class="section-title">
+        <div><p class="eyebrow">Kết quả</p><h2 id="result-title">Job</h2><p id="result-meta" class="muted result-meta"></p></div>
+        <div class="result-state"><div class="result-badges"><span id="analysis-mode" class="badge"></span><span id="result-status" class="badge"></span></div><div id="job-actions" class="actions"></div></div>
+      </div>
+      <div id="summary" class="summary"></div>
+      <section class="timeline-root" aria-labelledby="timeline-title">
+        <div class="timeline-heading">
+          <div><p class="eyebrow">Alert map</p><h3 id="timeline-title">Mật độ alert theo thời gian</h3><p class="muted">Chọn một cột để lọc alert chi tiết hoặc tạo batch con cho đúng khoảng đó.</p></div>
+          <div class="actions"><button id="timeline-reset" type="button" class="secondary hidden">Bỏ lọc</button><button id="timeline-analyze" type="button" class="secondary hidden">Phân tích bucket này</button></div>
+        </div>
+        <p id="timeline-empty" class="muted hidden"></p>
+        <div id="alert-timeline" class="alert-timeline" role="list" aria-label="Số alert theo thời gian"></div>
+        <div id="timeline-axis" class="timeline-axis"><span></span><span></span></div>
+        <p id="timeline-selection" class="timeline-selection muted" aria-live="polite"></p>
+      </section>
+      <section class="ai-review" aria-labelledby="ai-review-title">
+        <div class="ai-review-heading"><div><p class="eyebrow">Phân tích tương ứng</p><h3 id="ai-review-title">Nhận xét AI cho batch đã chọn</h3></div><span id="ai-review-status" class="badge"></span></div>
+        <div id="ai-loading" class="ai-loading hidden" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <div><strong id="ai-loading-title">Đang xử lý</strong><p id="ai-loading-detail" class="muted"></p></div>
+        </div>
+        <p id="ai-review-empty" class="muted hidden"></p>
+        <dl id="ai-provenance" class="ai-provenance hidden"></dl>
+        <section id="soc-trace" class="soc-trace hidden" aria-labelledby="soc-trace-title">
+          <div class="soc-trace-heading">
+            <div><p class="eyebrow">Audit summary</p><h4 id="soc-trace-title">Dấu vết phân tích SOC</h4></div>
+            <span id="soc-trace-confidence" class="badge"></span>
+          </div>
+          <p class="soc-trace-notice">Đây là tóm tắt bằng chứng và quyết định có thể kiểm toán, không phải chain-of-thought hay suy luận nội bộ của model.</p>
+          <dl id="soc-trace-meta" class="soc-trace-meta"></dl>
+          <div class="soc-trace-grid">
+            <div class="trace-field"><span>Sự kiện quan sát</span><ul id="soc-observed-facts"></ul></div>
+            <div class="trace-field"><span>Suy luận</span><ul id="soc-inferences"></ul></div>
+            <div class="trace-field"><span>Bất định</span><ul id="soc-uncertainties"></ul></div>
+            <div class="trace-field"><span>Giới hạn</span><ul id="soc-limitations"></ul></div>
+          </div>
+        </section>
+        <div id="ai-review-content" class="ai-review-content">
+          <div class="review-field review-summary"><span>Tóm tắt</span><p id="ai-summary"></p></div>
+          <div class="review-field"><span>Phát hiện chính / Root cause</span><p id="ai-root-cause"></p></div>
+          <div class="review-field"><span>MITRE</span><p id="ai-mitre"></p></div>
+          <div class="review-field"><span>Next steps</span><ol id="ai-next-steps"></ol></div>
+        </div>
+      </section>
+      <section class="case-lite" aria-labelledby="case-lite-title">
+        <div class="section-title"><div><p class="eyebrow">Analyst triage · local only</p><h3 id="case-lite-title">Case-lite review</h3></div><span id="review-current" class="badge">chưa review</span></div>
+        <form id="review-form">
+          <label>Trạng thái<select id="review-status"><option value="new">New</option><option value="acknowledged">Acknowledged</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option><option value="false_positive">False positive</option></select></label>
+          <label>Severity<select id="review-severity"><option value="inherit">Giữ AI</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+          <label class="review-tags">Tags<input id="review-tags" type="text" placeholder="web, needs-evidence"></label>
+          <label class="review-note">Ghi chú analyst<textarea id="review-note" rows="2" maxlength="2000" placeholder="Bằng chứng đã kiểm, bước tiếp theo; không dán raw alert/credential."></textarea></label>
+          <button type="submit">Lưu review</button>
+        </form>
+        <p id="review-message" class="message" aria-live="polite"></p><div id="review-history" class="review-history"></div>
+      </section>
+      <section class="viz-root" aria-labelledby="rules-chart-title">
+        <div class="chart-heading"><div><h3 id="rules-chart-title">Top rules trong cửa sổ</h3><p id="rules-chart-subtitle" class="muted"></p></div></div>
+        <div id="rules-chart" class="rule-chart"></div>
+        <div id="chart-tooltip" class="chart-tooltip hidden" role="tooltip"></div>
+        <details class="table-view" open>
+          <summary>Bảng dữ liệu rule</summary>
+          <div class="table-scroll"><table><thead><tr><th scope="col">Rule ID</th><th scope="col">Alerts</th><th scope="col">Max level</th></tr></thead><tbody id="rules-table"></tbody></table></div>
+        </details>
+      </section>
+      <div class="columns"><div><h3>Nhóm alert</h3><div id="groups"></div></div><div><h3 id="alerts-title">Alert</h3><p id="alerts-empty" class="muted hidden"></p><div id="alerts"></div></div></div>
+    </section>
+  </main>
+  <dialog id="alert-dialog"><button id="dialog-close" class="secondary">Đóng</button><pre id="alert-json"></pre></dialog>
+</body>
+</html>

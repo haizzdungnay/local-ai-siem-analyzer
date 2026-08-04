@@ -1,0 +1,158 @@
+import csv
+import importlib.util
+import json
+from collections import Counter
+from pathlib import Path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+EVAL_DIR = ROOT / "eval"
+
+
+def test_eval_manifest_has_valid_sanitized_cases():
+    manifest = json.loads((EVAL_DIR / "manifest.json").read_text(encoding="utf-8"))
+
+    assert 30 <= len(manifest) <= 50
+    assert len({item["case_id"] for item in manifest}) == len(manifest)
+    assert {item["provenance"] for item in manifest} == {"sanitized-live"}
+    assert {item["scenario"] for item in manifest} >= {"ssh", "fim", "web", "benign", "ambiguous"}
+
+    rule_counts = Counter()
+    for item in manifest:
+        case = json.loads((ROOT / item["case_file"]).read_text(encoding="utf-8"))
+        expected = json.loads((ROOT / item["expected_file"]).read_text(encoding="utf-8"))
+        serialized = json.dumps(case, ensure_ascii=False)
+
+        assert expected["case_id"] == item["case_id"]
+        assert expected["review_status"] == "draft-single-reviewer"
+        assert expected["severity"] in {"low", "medium", "high", "critical"}
+        assert expected["disposition"] in {"benign", "suspicious", "malicious", "ambiguous"}
+        assert expected["required_facts"]
+        assert expected["next_steps_reference"]
+        assert "192.168.100." not in serialized
+        assert "trnguyn-virtual-machine" not in serialized
+        assert "99-claude-lab" not in serialized
+        assert "SHA256:TzVS" not in serialized
+        assert "password" not in {key.lower() for key in case}
+        rule_counts[expected["rule_id"]] += 1
+
+    assert len(rule_counts) >= 10
+    assert rule_counts["5503"] >= 3
+    assert rule_counts["554"] >= 1
+    assert rule_counts["23502"] >= 1
+    assert rule_counts["31101"] >= 1
+    assert rule_counts["31151"] >= 1
+    assert rule_counts["31105"] >= 1
+
+    expected_by_id = {
+        item["case_id"]: json.loads(
+            (ROOT / item["expected_file"]).read_text(encoding="utf-8")
+        )
+        for item in manifest
+    }
+    assert expected_by_id["ssh-40112-01"]["disposition"] == "ambiguous"
+    assert expected_by_id["ssh-40112-01"]["severity"] == "high"
+    assert expected_by_id["benign-5715-01"]["mitre_ids"] == []
+    assert expected_by_id["benign-5402-01"]["mitre_ids"] == []
+    assert expected_by_id["ssh-5710-02"]["mitre_ids"] == []
+
+
+def test_eval_runner_resolves_case_path_from_repo(monkeypatch, tmp_path):
+    runner_path = ROOT / "eval" / "run_eval.py"
+    spec = importlib.util.spec_from_file_location("run_eval", runner_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    item = json.loads((EVAL_DIR / "manifest.json").read_text(encoding="utf-8"))[0]
+
+    monkeypatch.chdir(tmp_path)
+
+    assert runner.load_case(item)["rule"]["id"] == item["rule_id"]
+
+
+def test_result_summary_metrics():
+    summary_path = EVAL_DIR / "summarize_results.py"
+    spec = importlib.util.spec_from_file_location("summarize_results", summary_path)
+    summary_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(summary_module)
+
+    summary = summary_module.summarize(EVAL_DIR / "results.csv")
+
+    assert summary["cases"] == 33
+    assert summary["schema_valid"] == 32
+    assert summary["errors"] == 0
+    assert summary["severity_exact"] == 22
+    assert summary["scored_cases"] == 0
+
+
+def test_results_csv_matches_runner_schema():
+    with (EVAL_DIR / "results.csv").open(newline="", encoding="utf-8") as handle:
+        header = next(csv.reader(handle))
+
+    assert header == [
+        "case_id", "model", "rag_enabled", "latency_s", "schema_valid", "error",
+        "summary_score", "root_cause_score", "severity_score", "mitre_score",
+        "next_steps_score", "reviewer", "notes", "output_json",
+    ]
+
+
+def test_eval_runner_writes_versioned_metadata_without_overwriting(tmp_path):
+    runner_path = ROOT / "eval" / "run_eval.py"
+    spec = importlib.util.spec_from_file_location("run_eval_metadata", runner_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    result_path = tmp_path / "results-soc-prompt-v1-vi.csv"
+
+    handle, _ = runner.open_results(result_path)
+    handle.close()
+
+    with result_path.open(newline="", encoding="utf-8") as handle:
+        header = next(csv.reader(handle))
+    assert header == runner.RESULT_FIELDS
+    assert {
+        "language", "prompt_version", "system_prompt_sha256",
+        "requested_language", "response_language", "language_compliance",
+        "output_origin", "provenance_json",
+    } <= set(header)
+    with pytest.raises(FileExistsError):
+        runner.open_results(result_path)
+
+
+def test_eval_schema_remains_legacy_five_fields():
+    runner_path = ROOT / "eval" / "run_eval.py"
+    spec = importlib.util.spec_from_file_location("run_eval_schema", runner_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    valid = {
+        "summary": "Observed login failure",
+        "root_cause": "Invalid credentials",
+        "severity": "low",
+        "mitre": "",
+        "next_steps": ["Verify the source"],
+    }
+
+    assert runner.valid_output(valid)
+    assert not runner.valid_output({**valid, "response_language": "en"})
+
+
+def test_eval_runner_configures_utf8_console(monkeypatch):
+    runner_path = ROOT / "eval" / "run_eval.py"
+    spec = importlib.util.spec_from_file_location("run_eval_console", runner_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    calls = []
+
+    class FakeStream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(runner.sys, "stdout", FakeStream())
+    monkeypatch.setattr(runner.sys, "stderr", FakeStream())
+
+    runner._configure_console_encoding()
+
+    assert calls == [
+        {"encoding": "utf-8", "errors": "replace"},
+        {"encoding": "utf-8", "errors": "replace"},
+    ]

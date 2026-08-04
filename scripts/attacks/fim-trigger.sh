@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
-# Kích hoạt FIM (File Integrity Monitoring) — rule Wazuh 550/554.
+# Kích hoạt FIM trên file test riêng — rule Wazuh 550/554.
 # Chạy TRÊN MÁY VICTIM: sudo bash fim-trigger.sh
-# Wazuh agent phải đang giám sát /etc (mặc định đã có).
 set -euo pipefail
 
-echo "[*] Tạo thay đổi file quan trọng để kích FIM..."
+TEST_DIR="/opt/wazuh-fim-lab"
+TEST_FILE="$TEST_DIR/controlled-marker.txt"
+[[ "$(id -u)" -eq 0 ]] || { echo "!! Chạy script bằng root" >&2; exit 1; }
+mkdir -p "$TEST_DIR"
+chmod 750 "$TEST_DIR"
 
-# Thêm comment vô hại vào /etc/hosts (dễ revert)
-cp /etc/hosts /etc/hosts.bak
-echo "# fim-test $(date +%s)" >> /etc/hosts
-echo "    [+] Sửa /etc/hosts"
+cleanup() {
+  rm -f "$TEST_FILE"
+}
+trap cleanup EXIT INT TERM
 
-# Tạo user test rồi xoá
-useradd fim_testuser 2>/dev/null && echo "    [+] Tạo user fim_testuser" || true
-userdel fim_testuser 2>/dev/null && echo "    [+] Xoá user fim_testuser" || true
+echo "[*] Tạo thay đổi file test FIM: $TEST_FILE"
+printf 'baseline %s\n' "$(date +%s)" > "$TEST_FILE"
+printf 'changed %s\n' "$(date +%s)" >> "$TEST_FILE"
+echo "    [+] Tạo và sửa file test"
 
-# Sửa permission file nhạy cảm
-chmod 644 /etc/shadow && echo "    [+] Đổi perm /etc/shadow (644 — BẤT THƯỜNG)" || true
-chmod 640 /etc/shadow && echo "    [+] Revert /etc/shadow (640)"
-
-# Revert hosts
-mv /etc/hosts.bak /etc/hosts
-
-echo "[✓] Đợi ~30s cho syscheck quét lại, rồi kiểm tra alert FIM trên Dashboard."
+echo "[✓] File giữ tới khi alert được thu; cleanup khi script thoát."
 echo "    Rule dự kiến: 550 (file modified), 554 (file added/deleted)"

@@ -7,17 +7,22 @@ on:
 
 jobs:
   test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
             ai_module/requirements.txt
@@ -26,5 +31,21 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r ai_module/requirements-dev.txt
 
-      - name: Run tests
-        run: python -m pytest tests -q
+      - name: Compile Python sources
+        run: python -m compileall -q ai_module eval tests
+
+      - name: Run tests without pytest cache
+        run: python -m pytest tests -q -p no:cacheprovider
+
+      - name: Check browser JavaScript syntax
+        run: node --check ai_module/web/app.js
+
+      - name: Check shell script syntax
+        if: runner.os == 'Linux'
+        run: bash -n scripts/attacks/fim-trigger.sh scripts/attacks/ssh-bruteforce.sh scripts/attacks/web-attack.sh .githooks/pre-commit
+
+      - name: Check commit whitespace and credential placeholders
+        if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        run: |
+          git diff --check HEAD^ HEAD
+          python -c "from pathlib import Path; import yaml; cfg = yaml.safe_load(Path('ai_module/config.example.yaml').read_text(encoding='utf-8')); assert cfg['wazuh']['password'] == 'CHANGE_ME'; assert cfg['wazuh_indexer']['password'] == 'CHANGE_ME'"

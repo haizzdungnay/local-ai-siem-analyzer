@@ -14,7 +14,7 @@
                     │   Ollama + ai_module (Python)│  native, full CPU/RAM/GPU
                     │   Host-only IP: 192.168.100.1│
                     └──────────────┬──────────────┘
-                                   │ đọc alert qua API https://192.168.100.10:55000
+                                   │ đọc alert qua Indexer https://192.168.100.10:9200
         ┌──────────────────────────┼──────────────────────────┐
         │        Host-only VMnet1 — 192.168.100.0/24           │
    ┌────▼─────┐            ┌───────▼────────┐         ┌────────▼────────┐
@@ -25,7 +25,7 @@
         (mỗi VM còn 1 card NAT riêng để ra internet)
 ```
 
-**Luồng:** Kali `.30` tấn công → Victim `.20` sinh log → Wazuh agent đẩy về SIEM `.10` → `ai_module` trên host đọc alert qua API → LLM local giải thích.
+**Luồng:** Kali `.30` tấn công → Victim `.20` sinh log → Wazuh agent đẩy về SIEM `.10` → `ai_module` trên host đọc alert từ Wazuh Indexer `:9200` → LLM local giải thích. Manager API `:55000` chỉ dùng cho tác vụ quản trị, không lưu alert.
 
 ---
 
@@ -38,9 +38,9 @@
 | Mạng | 2 card/VM: NAT (internet) + Host-only (`192.168.100.0/24`) |
 | SIEM | Ubuntu Server no-GUI, Wazuh Docker all-in-one, `.10` |
 | Victim chính | Ubuntu Server no-GUI + agent, `.20` |
-| Victim phụ | Windows + Sysmon (bổ sung sau), `.40` |
+| Victim phụ | Windows + Wazuh agent đã Active, Sysmon bổ sung sau, `.40` |
 | Attacker | Kali (không cài agent), `.30` |
-| LLM | `qwen2.5:3b` (chính) + `qwen2.5:7b` (so sánh) |
+| LLM | `qwen2.5:3b` (demo nhẹ) + `qwen2.5:7b` (baseline GĐ4) |
 | AI module | Python, chạy native trên host |
 
 Bảng IP đầy đủ: xem [`docs/network.md`](docs/network.md).
@@ -62,15 +62,16 @@ sudo bash scripts/setup/install-agent.sh 192.168.100.10   # cài agent, trỏ v�
 # --- Trên máy thật (host) ---
 ollama pull qwen2.5:3b && ollama pull qwen2.5:7b
 ollama pull nomic-embed-text                         # embedding cho RAG
-cd ai_module && pip install -r requirements.txt
-cp config.example.yaml config.yaml                  # điền IP + API key Wazuh
-python main.py --demo                                # lần đầu tự index dữ liệu RAG
+pip install -r ai_module/requirements.txt
+cp ai_module/config.example.yaml ai_module/config.yaml  # điền credential Indexer
+python ai_module/main.py --demo                         # lần đầu tự index dữ liệu RAG
+python ai_module/dashboard.py                           # http://127.0.0.1:8765
 
 # --- Sinh cảnh báo (từ Kali .30) ---
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
 ```
 
-Chi tiết từng bước: [`docs/setup.md`](docs/setup.md).
+Chi tiết dựng lab: [`docs/setup.md`](docs/setup.md). Runbook kiểm thử thủ công toàn hệ thống, chia rõ từng máy/lệnh/kết quả: [`docs/manual-test.md`](docs/manual-test.md).
 
 ### Kiểm tra code
 
@@ -80,6 +81,25 @@ python -m pytest tests -q
 ```
 
 Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
+
+### Dashboard AI local
+
+`python ai_module/dashboard.py` mở `http://127.0.0.1:8765`. App chỉ phục vụ trên máy chính, đọc alert từ Indexer `:9200`, không proxy credential xuống browser. Chức năng MVP:
+
+- Preset `5m/15m/30m/1h/2h/6h/12h/24h` hoặc custom range tối đa 24 giờ.
+- Chọn model, ngôn ngữ AI `Tiếng Việt/English` và giao diện `Tối/Sáng`; ngôn ngữ yêu cầu, ngôn ngữ phản hồi và mức tuân thủ đều được ghi cùng kết quả.
+- System prompt SOC được version hóa (`soc-contract-v1`), tách fact/inference/uncertainty/limitation và gọi Ollama với `temperature=0`, `seed=42` để dễ audit/reproduce.
+- Theo dõi phase thật `queued → fetching_alerts → preparing_analysis → calling_ollama → saving_result`; không chèn delay/loading giả.
+- Timeline mật độ alert theo thời gian; chọn bucket để lọc hoặc tạo batch con drill-down.
+- Dưới detail cap: deterministic grouping, alert reference và full-document lookup. Vượt cap: tự chuyển aggregate-only từ count/histogram/rule code, không tải full log hàng loạt.
+- Mỗi job có **Xuất JSON v2** gồm analysis, SOC trace, metrics/timeline, alert references và provenance Ollama; có nút JSON v1 cho consumer cũ khi endpoint hỗ trợ. Kết quả cũ thiếu evidence được ghi `unknown_legacy`.
+- Panel **Dấu vết phân tích SOC** chỉ trình bày fact, inference, uncertainty và limitation có thể kiểm toán; không hiển thị chain-of-thought/suy luận nội bộ model.
+- Một fixed-window schedule, ingest delay và bounded catch-up; SQLite giữ job/watermark tại `ai_module/dashboard_data/` (gitignored).
+- Analyst UX local: lọc/pivot lịch sử, case-lite review (status/severity/tags/note), dependency/queue/database health và retention prune có xác nhận rõ.
+
+Tham khảo có chủ đích từ [Wazuh Dashboard](https://documentation.wazuh.com/current/user-manual/wazuh-dashboard/index.html), [Security Onion Alerts](https://docs.securityonion.net/en/2.4/alerts.html), [Security Onion Cases](https://docs.securityonion.net/en/2.4/cases.html) và [OpenSearch Security Analytics](https://docs.opensearch.org/latest/security-analytics/). Scope này không triển khai multi-user RBAC, PCAP pipeline, notification bên ngoài, auto-remediation hay enterprise correlation graph.
+
+AI output chỉ là tư vấn. App không tự chặn IP, chạy lệnh hay sửa Wazuh. Chi tiết vận hành/test: [`docs/manual-test.md`](docs/manual-test.md).
 
 ---
 
@@ -96,7 +116,12 @@ local-ai-siem-analyzer/
 │  ├─ setup/                 # install-wazuh.sh, install-agent.sh
 │  └─ attacks/               # kịch bản sinh alert (ssh brute, web, fim)
 ├─ ai_module/                # LÕI — mô-đun AI Python
-│  ├─ reader.py              # đọc alert (tail json / API)
+│  ├─ reader.py              # đọc alert/range/aggregate từ Wazuh Indexer
+│  ├─ analysis_service.py    # gom nhóm và điều phối phân tích AI
+│  ├─ dashboard.py           # API + production WSGI loopback
+│  ├─ dashboard_store.py     # SQLite job/review/audit state
+│  ├─ dashboard_worker.py    # worker và fixed-window scheduler
+│  ├─ web/                   # dashboard HTML/CSS/JS thuần
 │  ├─ extractor.py           # trích ~10 trường chính
 │  ├─ rag.py                 # RAG rule Wazuh + MITRE
 │  ├─ llm.py                 # gọi Ollama, ép JSON schema
@@ -115,9 +140,9 @@ local-ai-siem-analyzer/
 1. **Dựng lab SIEM** — 3 VM, mạng, Wazuh Docker, agent Active, bật thu log.
 2. **Sinh cảnh báo** — SSH brute-force, web attack (DVWA), FIM. Map sẵn rule ID.
 3. **Mô-đun AI (lõi)** — Ollama, trích trường chính, RAG, ép JSON schema `{summary, root_cause, severity, mitre, next_steps}`.
-4. **Đánh giá** — 30–50 alert, so tay vs AI, chấm 1–5, so `3b` vs `7b`.
+4. **Đánh giá** — 33 alert `sanitized-live` gồm SSH/FIM/web/benign/ambiguous, ground truth đã review kỹ thuật, rubric 1–5 và baseline `qwen2.5:7b` RAG/no-RAG; còn human review và đo thời gian phân tích tay.
 
-Chi tiết: [`KE_HOACH.md`](KE_HOACH.md).
+Chi tiết: [`KE_HOACH.md`](KE_HOACH.md), [`eval/README.md`](eval/README.md).
 
 ---
 
@@ -125,7 +150,7 @@ Chi tiết: [`KE_HOACH.md`](KE_HOACH.md).
 
 - **Repo là source of truth.** Mọi thông tin lab bám repo này; không rải rác ngoài.
 - **Chạy lại được (reproducible).** Ưu tiên script tự động hơn thao tác tay; có gì làm tay thì ghi vào `docs/`.
-- **Lõi trước, mở rộng sau.** Ubuntu victim + AI module làm trước; Windows/Sysmon cắm sau.
+- **Lõi trước, mở rộng sau.** Ubuntu victim + AI module là lõi; Windows agent `.40` đã Active, Sysmon cắm sau.
 - **Không ném raw JSON vào LLM.** Luôn trích trường chính → giảm token, tăng chính xác.
 
 ## License

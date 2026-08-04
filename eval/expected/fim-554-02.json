@@ -1,0 +1,25 @@
+{
+  "case_id": "fim-554-02",
+  "provenance": "sanitized-live",
+  "scenario": "fim",
+  "rule_id": "554",
+  "disposition": "ambiguous",
+  "severity": "medium",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Một file mới xuất hiện trong thư mục FIM được giám sát.",
+  "root_cause_reference": "Một file mới xuất hiện trong path FIM; nguyên nhân không có trong alert và cần đối chiếu change record.",
+  "required_facts": [
+    "File added to the system.",
+    "File '/etc/cups/subscriptions.conf.N' added"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Xác minh path, owner và hash của file mới",
+    "Đối chiếu với script hoặc change record trước khi xóa hoặc cách ly"
+  ],
+  "review_status": "draft-single-reviewer"
+}

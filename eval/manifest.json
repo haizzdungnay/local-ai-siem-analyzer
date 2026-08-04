@@ -1,0 +1,299 @@
+[
+  {
+    "case_id": "ssh-5503-01",
+    "case_file": "eval/cases/ssh-5503-01.json",
+    "expected_file": "eval/expected/ssh-5503-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5503",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5503-02",
+    "case_file": "eval/cases/ssh-5503-02.json",
+    "expected_file": "eval/expected/ssh-5503-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5503",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5503-03",
+    "case_file": "eval/cases/ssh-5503-03.json",
+    "expected_file": "eval/expected/ssh-5503-03.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5503",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5760-01",
+    "case_file": "eval/cases/ssh-5760-01.json",
+    "expected_file": "eval/expected/ssh-5760-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5760",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5760-02",
+    "case_file": "eval/cases/ssh-5760-02.json",
+    "expected_file": "eval/expected/ssh-5760-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5760",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5760-03",
+    "case_file": "eval/cases/ssh-5760-03.json",
+    "expected_file": "eval/expected/ssh-5760-03.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5760",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5710-01",
+    "case_file": "eval/cases/ssh-5710-01.json",
+    "expected_file": "eval/expected/ssh-5710-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5710",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5710-02",
+    "case_file": "eval/cases/ssh-5710-02.json",
+    "expected_file": "eval/expected/ssh-5710-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5710",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-2502-01",
+    "case_file": "eval/cases/ssh-2502-01.json",
+    "expected_file": "eval/expected/ssh-2502-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "2502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-5712-01",
+    "case_file": "eval/cases/ssh-5712-01.json",
+    "expected_file": "eval/expected/ssh-5712-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "5712",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-40112-01",
+    "case_file": "eval/cases/ssh-40112-01.json",
+    "expected_file": "eval/expected/ssh-40112-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "40112",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ssh-40112-02",
+    "case_file": "eval/cases/ssh-40112-02.json",
+    "expected_file": "eval/expected/ssh-40112-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "ssh",
+    "rule_id": "40112",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "fim-554-01",
+    "case_file": "eval/cases/fim-554-01.json",
+    "expected_file": "eval/expected/fim-554-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "fim",
+    "rule_id": "554",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "fim-554-02",
+    "case_file": "eval/cases/fim-554-02.json",
+    "expected_file": "eval/expected/fim-554-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "fim",
+    "rule_id": "554",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "fim-553-01",
+    "case_file": "eval/cases/fim-553-01.json",
+    "expected_file": "eval/expected/fim-553-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "fim",
+    "rule_id": "553",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-5715-01",
+    "case_file": "eval/cases/benign-5715-01.json",
+    "expected_file": "eval/expected/benign-5715-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "5715",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-5501-01",
+    "case_file": "eval/cases/benign-5501-01.json",
+    "expected_file": "eval/expected/benign-5501-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "5501",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-5501-02",
+    "case_file": "eval/cases/benign-5501-02.json",
+    "expected_file": "eval/expected/benign-5501-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "5501",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-5502-01",
+    "case_file": "eval/cases/benign-5502-01.json",
+    "expected_file": "eval/expected/benign-5502-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "5502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-5502-02",
+    "case_file": "eval/cases/benign-5502-02.json",
+    "expected_file": "eval/expected/benign-5502-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "5502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-5402-01",
+    "case_file": "eval/cases/benign-5402-01.json",
+    "expected_file": "eval/expected/benign-5402-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "5402",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-503-01",
+    "case_file": "eval/cases/benign-503-01.json",
+    "expected_file": "eval/expected/benign-503-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "503",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-23502-01",
+    "case_file": "eval/cases/benign-23502-01.json",
+    "expected_file": "eval/expected/benign-23502-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "23502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-23502-02",
+    "case_file": "eval/cases/benign-23502-02.json",
+    "expected_file": "eval/expected/benign-23502-02.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "23502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-23502-03",
+    "case_file": "eval/cases/benign-23502-03.json",
+    "expected_file": "eval/expected/benign-23502-03.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "23502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-23502-04",
+    "case_file": "eval/cases/benign-23502-04.json",
+    "expected_file": "eval/expected/benign-23502-04.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "23502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-23502-05",
+    "case_file": "eval/cases/benign-23502-05.json",
+    "expected_file": "eval/expected/benign-23502-05.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "23502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "benign-23502-06",
+    "case_file": "eval/cases/benign-23502-06.json",
+    "expected_file": "eval/expected/benign-23502-06.json",
+    "provenance": "sanitized-live",
+    "scenario": "benign",
+    "rule_id": "23502",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ambiguous-506-01",
+    "case_file": "eval/cases/ambiguous-506-01.json",
+    "expected_file": "eval/expected/ambiguous-506-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ambiguous",
+    "rule_id": "506",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "ambiguous-510-01",
+    "case_file": "eval/cases/ambiguous-510-01.json",
+    "expected_file": "eval/expected/ambiguous-510-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "ambiguous",
+    "rule_id": "510",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "web-31101-01",
+    "case_file": "eval/cases/web-31101-01.json",
+    "expected_file": "eval/expected/web-31101-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "web",
+    "rule_id": "31101",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "web-31151-01",
+    "case_file": "eval/cases/web-31151-01.json",
+    "expected_file": "eval/expected/web-31151-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "web",
+    "rule_id": "31151",
+    "review_status": "draft-single-reviewer"
+  },
+  {
+    "case_id": "web-31105-01",
+    "case_file": "eval/cases/web-31105-01.json",
+    "expected_file": "eval/expected/web-31105-01.json",
+    "provenance": "sanitized-live",
+    "scenario": "web",
+    "rule_id": "31105",
+    "review_status": "draft-single-reviewer"
+  }
+]

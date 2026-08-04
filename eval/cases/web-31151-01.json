@@ -1,0 +1,30 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "protocol": "GET",
+    "srcip": "10.0.0.30",
+    "id": "404",
+    "url": "/level/16/level/16/exec//show/interfaces/status"
+  },
+  "rule": {
+    "level": 10,
+    "description": "Multiple web server 400 error codes from same source ip.",
+    "mitre": {
+      "technique": [
+        "Vulnerability Scanning"
+      ],
+      "id": [
+        "T1595.002"
+      ],
+      "tactic": [
+        "Reconnaissance"
+      ]
+    },
+    "id": "31151"
+  },
+  "full_log": "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /level/16/level/16/exec//show/interfaces/status HTTP/1.1\" 404 492 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.6282.50 Safari/537.36 OPR/104.0.0.0\""
+}

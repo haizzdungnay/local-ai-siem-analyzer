@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcuser": "invalid-user-b",
+    "srcip": "10.0.0.1"
+  },
+  "rule": {
+    "id": "5710",
+    "level": 5,
+    "description": "sshd: Attempt to login using a non-existent user",
+    "mitre": {
+      "technique": [
+        "Password Guessing",
+        "SSH"
+      ],
+      "id": [
+        "T1110.001",
+        "T1021.004"
+      ],
+      "tactic": [
+        "Credential Access",
+        "Lateral Movement"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: Invalid user invalid-user-b from 10.0.0.1 port 40000"
+}

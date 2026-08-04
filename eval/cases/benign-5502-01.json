@@ -1,0 +1,16 @@
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "dstuser": "analyst"
+  },
+  "rule": {
+    "id": "5502",
+    "level": 3,
+    "description": "PAM: Login session closed."
+  },
+  "full_log": "victim-ubuntu sshd[1000]: pam_unix(sshd:session): session closed for user analyst"
+}

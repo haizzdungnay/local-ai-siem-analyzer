@@ -1,0 +1,29 @@
+{
+  "case_id": "ssh-2502-01",
+  "provenance": "sanitized-live",
+  "scenario": "ssh",
+  "rule_id": "2502",
+  "disposition": "malicious",
+  "severity": "high",
+  "mitre_ids": [
+    "T1110"
+  ],
+  "mitre_tactics": [
+    "Credential Access"
+  ],
+  "summary_reference": "Nhiều lần xác thực SSH thất bại được PAM tổng hợp.",
+  "root_cause_reference": "PAM ghi nhận nhiều lần xác thực thất bại trong cùng chuỗi kết nối.",
+  "required_facts": [
+    "syslog: User missed the password more than one time",
+    "victim-ubuntu sshd[1000]: PAM 4 more authentication failures; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.0.0.30  user=root"
+  ],
+  "forbidden_claims": [
+    "Không khẳng định compromise thành công nếu alert không có bằng chứng đó.",
+    "Không tự động chặn, xóa file hoặc cô lập máy trước khi xác minh context."
+  ],
+  "next_steps_reference": [
+    "Điều tra toàn bộ chuỗi SSH cùng IP nguồn",
+    "Kiểm tra có phiên thành công sau các lần thất bại không"
+  ],
+  "review_status": "draft-single-reviewer"
+}
