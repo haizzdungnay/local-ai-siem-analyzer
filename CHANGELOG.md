@@ -6,6 +6,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ## [Unreleased]
 
 ### Added
+- Release closeout PR #4: all four GitHub matrix jobs (Ubuntu/Windows × Python 3.11/3.12) passed; squash merge landed at `origin/main` `04cae1b`.
 - Verified hardening slice 2026-08-05: dashboard window retrieval dùng RAG theo rule group đã sanitize, có threshold distance, context bound, provenance/export scrub và trạng thái truthful. RAG build sang Chroma collection generation mới, chỉ atomically đổi manifest active sau khi đầy đủ embedding; manifest ghi corpus/schema và embedding-model digest khi Ollama cung cấp metadata.
 - Cancellation terminal commit: worker lưu result và trạng thái `succeeded|partial` trong một SQLite transaction chỉ khi `cancel_requested=0`; cancel thắng ở pha `saving_result` không tạo result row hay success giả.
 - Local safety/governance: request JSON cap 64 KiB/HTTP 413, alert detail DTO redact, TLS verify mặc định, CLI raw alert opt-in, secret scan ở staged/CI và runbook dùng placeholder. Dependency lock/SBOM/SCA có pin Actions, quyền read-only và exception `pip-audit` hết hạn rõ ràng.
