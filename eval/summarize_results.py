@@ -3,6 +3,7 @@ import csv
 import json
 import math
 import statistics
+import sys
 from pathlib import Path
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -10,6 +11,15 @@ SCORE_FIELDS = [
     "summary_score", "root_cause_score", "severity_score", "mitre_score",
     "next_steps_score",
 ]
+REQUIRED_RESULT_FIELDS = {
+    "case_id", "latency_s", "schema_valid", "error", "output_json", *SCORE_FIELDS,
+}
+
+
+def _configure_console_encoding():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 def percentile(values, quantile):
@@ -19,6 +29,13 @@ def percentile(values, quantile):
 
 def load_expected():
     manifest = json.loads((EVAL_DIR / "manifest.json").read_text(encoding="utf-8"))
+    if not isinstance(manifest, list) or not manifest:
+        raise ValueError("eval/manifest.json must be a non-empty list")
+    case_ids = [item.get("case_id") for item in manifest]
+    if any(not isinstance(case_id, str) or not case_id for case_id in case_ids):
+        raise ValueError("eval/manifest.json contains an invalid case_id")
+    if len(case_ids) != len(set(case_ids)):
+        raise ValueError("eval/manifest.json contains duplicate case_id")
     return {
         item["case_id"]: json.loads(
             (EVAL_DIR.parent / item["expected_file"]).read_text(encoding="utf-8")
@@ -27,13 +44,38 @@ def load_expected():
     }
 
 
-def summarize(path):
+def _load_result_rows(path):
     with Path(path).open(newline="", encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
+        reader = csv.DictReader(handle)
+        fieldnames = set(reader.fieldnames or [])
+        missing_fields = REQUIRED_RESULT_FIELDS - fieldnames
+        if missing_fields:
+            raise ValueError(f"{path}: missing CSV columns: {sorted(missing_fields)}")
+        rows = list(reader)
     if not rows:
         raise ValueError(f"{path}: không có result row")
+    return rows
 
+
+def _validate_result_coverage(path, rows, expected):
+    case_ids = [row.get("case_id", "") for row in rows]
+    if any(not case_id for case_id in case_ids):
+        raise ValueError(f"{path}: empty case_id")
+    actual = set(case_ids)
+    duplicates = len(case_ids) - len(actual)
+    missing = set(expected) - actual
+    unknown = actual - set(expected)
+    if duplicates or missing or unknown:
+        raise ValueError(
+            f"{path}: coverage mismatch; duplicates={duplicates}, "
+            f"missing={len(missing)}, unknown={len(unknown)}"
+        )
+
+
+def summarize(path):
     expected = load_expected()
+    rows = _load_result_rows(path)
+    _validate_result_coverage(path, rows, expected)
     latencies = [float(row["latency_s"]) for row in rows]
     severity_exact = 0
     score_values = {field: [] for field in SCORE_FIELDS}
@@ -134,6 +176,7 @@ def summarize_ai_judgments(path, result_paths):
 
 
 def main():
+    _configure_console_encoding()
     parser = argparse.ArgumentParser(description="Tổng hợp kết quả eval tự động, human score và AI judge")
     parser.add_argument("results", nargs="+", type=Path)
     parser.add_argument("--ai-judgments", type=Path)

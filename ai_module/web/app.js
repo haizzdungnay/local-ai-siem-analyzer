@@ -757,7 +757,7 @@ function renderEventLists(job, bucket = null) {
     const pivots = document.createElement('div'); pivots.className = 'actions';
     row.className = 'row';
     text(label, `${alert.rule_id} · ${alert.timestamp} · ${alert.agent}`);
-    text(button, 'Full alert');
+    text(button, 'Chi tiết alert đã lọc');
     button.type = 'button';
     [['Lọc rule', alert.rule_id], ['Lọc agent', alert.agent], ['Lọc source IP', alert.source_ip]].forEach(([labelText, value]) => {
       if (!value) return;

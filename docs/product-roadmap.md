@@ -34,11 +34,18 @@ tăng khả năng kiểm toán và xử lý alert local, không sao chép multi-
 
 ## Sau release
 
-- Correlation nhiều finding/window, asset criticality và threat-intel enrichment có cache.
-- Notification/ticket outbound với allowlist, idempotency và audit; không cho LLM tự action.
-- Auth/RBAC/OIDC, TLS và audit actor trước khi hỗ trợ remote hoặc nhiều analyst.
-- PCAP/network pivot chỉ khi lab có nguồn dữ liệu và retention policy phù hợp.
-- Dependency lock/SBOM/SCA và signed release artifact.
+Thứ tự sau release được chốt chi tiết tại `docs/improvement-plan.md`. Không mở
+rộng feature trước khi hoàn tất các gate về tính đúng và bằng chứng:
+
+1. Làm rõ dashboard RAG contract, aggregate approximation và cancellation.
+2. Version/rebuild RAG index, relevance threshold và export provenance.
+3. Hoàn tất two-reviewer human evaluation, adjudication và analyst-only versus
+   AI-assist benchmark trước khi kết luận về model/RAG.
+4. Lock dependency, SBOM/SCA, secret governance và regression safety suite.
+
+Sau các gate trên mới xem xét correlation nhiều finding/window, asset criticality,
+threat-intel cache, notification/ticket outbound có idempotency/audit,
+auth/RBAC/OIDC, TLS, PCAP/network pivot và remote multi-user.
 
 ## Không triển khai trong scope local hiện tại
 

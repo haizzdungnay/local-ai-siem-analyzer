@@ -44,7 +44,9 @@ sudo usermod -aG docker $USER
 # Trên SIEM (.10)
 sudo bash scripts/setup/install-wazuh.sh
 ```
-Đợi ~2–3 phút. Kiểm tra: `docker compose ps` → 3 container running. Mở `https://192.168.100.10` (admin/SecretPassword — ĐỔI NGAY).
+Đợi ~2–3 phút. Kiểm tra: `docker compose ps` → 3 container running. Mở
+`https://192.168.100.10` bằng tài khoản bootstrap của deployment cục bộ và đổi
+mật khẩu ngay; không ghi giá trị bootstrap vào repo, runbook hay ảnh chụp.
 
 ## Bước 4.5 — Đổi mật khẩu admin mặc định (Docker deployment)
 
@@ -71,7 +73,9 @@ Tìm block `admin:`, thay giá trị `hash:` bằng hash mới.
 ```bash
 nano docker-compose.yml
 ```
-Thay **tất cả** chỗ xuất hiện `SecretPassword` → password mới (cả service `wazuh.manager` và `wazuh.dashboard`, biến `INDEXER_PASSWORD`).
+Cập nhật mọi biến/sản phẩm dùng `INDEXER_PASSWORD` và credential Dashboard (cả
+service `wazuh.manager` và `wazuh.dashboard`) thành mật khẩu mới. Không commit
+`docker-compose.yml` đã chứa giá trị vận hành.
 
 **4. Reset lại stack để áp dụng đồng bộ**
 ```bash

@@ -139,6 +139,89 @@ def test_full_alert_route_uses_server_side_reference(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     assert called == {"index": "wazuh-alerts-4.x-2026.07.30", "document": "abc"}
+    assert "_source" not in response.json
+    assert response.json["redactions"]["raw_source"] is True
+
+
+def test_json_request_size_limit_rejects_before_endpoint_parsing(tmp_path):
+    cfg = make_cfg(tmp_path)
+    cfg["dashboard"]["max_json_request_bytes"] = 64
+    app = dashboard.create_app(cfg=cfg, start_runtime=False)
+
+    response = app.test_client().post(
+        "/api/jobs",
+        data=b'{"model":"qwen2.5:3b","padding":"' + (b"x" * 80) + b'"}',
+        content_type="application/json",
+    )
+
+    assert response.status_code == 413
+    assert response.json == {"error": "JSON request body is too large"}
+
+
+def test_status_does_not_claim_rag_is_enabled_before_initialization(tmp_path):
+    cfg = make_cfg(tmp_path)
+    cfg["rag"] = {"enabled": True, "data_dir": "rag_data", "embedding_model": "embed"}
+    app = dashboard.create_app(cfg=cfg, start_runtime=False)
+
+    assert app.test_client().get("/api/status").get_json()["rag"] == "not_initialized"
+
+
+def test_status_does_not_claim_rag_is_enabled_before_initialization(tmp_path):
+    cfg = make_cfg(tmp_path)
+    cfg["rag"] = {"enabled": True, "data_dir": "rag_data", "embedding_model": "embed"}
+    app = dashboard.create_app(cfg=cfg, start_runtime=False)
+
+    assert app.test_client().get("/api/status").get_json()["rag"] == "not_initialized"
+
+
+def test_alert_detail_dto_masks_pii_and_excludes_raw_source(monkeypatch, tmp_path):
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    store = app.config["DASHBOARD_STORE"]
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:3b", "dashboard-v1",
+    )
+    store.replace_job_data(job_id, {
+        "groups": [{"group_key": "g", "count": 1}],
+        "alerts": [{
+            "_index": "wazuh-alerts-4.x-2026.07.30", "_id": "abc",
+            "timestamp": "2026-07-30T11:30:00Z", "rule_id": "5503", "rule_level": 5,
+            "description": "PAM failed", "agent": "victim", "source_ip": "192.0.2.30",
+            "group_key": "g",
+        }],
+    })
+    row_id = store.get_job_detail(job_id)["alerts"][0]["id"]
+
+    monkeypatch.setattr(dashboard, "fetch_alert_document", lambda *args: {
+        "_index": "wazuh-alerts-4.x-2026.07.30",
+        "_id": "abc",
+        "_source": {
+            "timestamp": "2026-07-30T11:30:00Z",
+            "rule": {
+                "id": "5503", "level": 5, "description": "PAM password=hidden failed",
+                "mitre": {"id": ["T1110"]},
+            },
+            "agent": {"id": "agent-007", "name": "Alice-Laptop", "ip": "192.0.2.12"},
+            "data": {"srcip": "203.0.113.85", "password": "DO_NOT_EXPOSE"},
+            "full_log": "Bearer VERY_SECRET_TOKEN user=alice",
+        },
+    })
+
+    response = app.test_client().get(f"/api/job-alerts/{row_id}")
+    payload = response.get_json()
+    serialized = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert payload["schema_version"] == "local-ai-siem-alert-detail/v1"
+    assert payload["rule"] == {
+        "id": "5503", "level": 5, "description": "PAM password=[redacted] failed",
+        "mitre_ids": ["T1110"],
+    }
+    assert payload["agent"]["reference"].startswith("agent-")
+    assert payload["network"]["source_ip"] == "203.0.113.0/24"
+    assert '"_source":' not in serialized
+    for unsafe_value in ("VERY_SECRET_TOKEN", "DO_NOT_EXPOSE", "Alice-Laptop", "203.0.113.85"):
+        assert unsafe_value not in serialized
 
 
 def test_job_history_uses_configured_server_cap(tmp_path):

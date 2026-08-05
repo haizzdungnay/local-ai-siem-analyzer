@@ -7,7 +7,8 @@ wazuh:
   protocol: "https"
   user: "wazuh-wui"
   password: "CHANGE_ME"            # đổi sau khi cài Wazuh
-  verify_ssl: false                 # lab dùng self-signed cert
+  verify_ssl: true                  # verify certificates by default; configure ca_bundle for private PKI
+  # Isolated lab only: setting verify_ssl: false emits a runtime security warning.
   timeout: 30                       # giây; tránh chờ vô hạn khi Manager lỗi
 
 # Wazuh Indexer (OpenSearch) — reader.py lấy alert thật từ đây, không phải
@@ -18,7 +19,8 @@ wazuh_indexer:
   protocol: "https"
   user: "admin"                     # user Indexer — thường KHÁC user Manager API ở trên
   password: "CHANGE_ME"             # đổi sau khi cài Wazuh
-  verify_ssl: false                 # lab self-signed; dùng CA + true khi không cô lập
+  verify_ssl: true                  # verify certificates by default; configure ca_bundle for private PKI
+  # Isolated lab only: setting verify_ssl: false emits a runtime security warning.
   timeout: 30                       # giây; tránh chờ vô hạn khi Indexer lỗi
 
 # Ollama LLM
@@ -48,6 +50,8 @@ rag:
   embedding_model: "nomic-embed-text"   # chạy qua Ollama
   vector_db: "chromadb"                  # hoặc faiss
   data_dir: "rag_data"                   # chứa rule descriptions + MITRE
+  relevance_threshold: 1.0                # Chroma distance; lower is more relevant
+  max_window_rag_rules: 8                 # retrieve only bounded aggregate rule groups
 
 # Local dashboard — chỉ bind loopback trên Windows host.
 dashboard:
@@ -67,6 +71,7 @@ dashboard:
   max_catchup_windows: 24
   worker_poll_seconds: 1
   request_timeout_seconds: 30
+  max_json_request_bytes: 65536     # reject larger JSON API bodies with HTTP 413 before parsing
   max_job_history: 200
   retention_days: 0                # 0 keeps history indefinitely
   retention_keep_latest: 20        # preserve this many newest jobs during pruning

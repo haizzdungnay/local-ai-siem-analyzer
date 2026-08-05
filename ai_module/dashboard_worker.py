@@ -111,11 +111,20 @@ class DashboardRuntime:
                 aggregate, job["model"], job.get("language", "vi")
             )
             latency = time.perf_counter() - started
+            # An in-flight Ollama request cannot be forcibly stopped, but a cancel
+            # received while it ran must not create a successful saved result.
+            if self.store.get_job(job["id"])["cancel_requested"]:
+                self.store.complete_job(job["id"], "cancelled")
+                return
             self.store.update_phase(job["id"], "saving_result")
             warnings = ["Prompt coverage bị rút gọn"] if result["coverage"]["truncated"] else []
             if aggregate.get("analysis_mode") == "aggregate":
                 warnings.append(
                     f"Aggregate-only: {aggregate['total_alerts']} alert vượt detail cap; không tải full log"
+                )
+            if result["coverage"].get("unique_counts_approximate"):
+                warnings.append(
+                    "Unique rule/agent/source-IP counts are approximate OpenSearch cardinalities"
                 )
             if result["analysis"]["severity"] == "unknown":
                 warnings.append("LLM trả fallback/unknown")
@@ -141,17 +150,20 @@ class DashboardRuntime:
                 warnings.append(
                     "Language compliance is partial or unknown; review the natural-language fields"
                 )
-            self.store.save_result(
+            status = "partial" if result["partial"] or language_compliance != "full" else "succeeded"
+            saved = self.store.save_result_and_complete_if_not_cancelled(
                 job["id"], "window", "window", result["analysis"],
                 coverage=result["coverage"], warnings=warnings,
-                provenance=provenance, latency_s=latency,
-            )
-            status = "partial" if result["partial"] or language_compliance != "full" else "succeeded"
-            self.store.complete_job(
-                job["id"], status,
+                provenance=provenance, latency_s=latency, status=status,
                 progress_current=aggregate["total_alerts"],
                 progress_total=aggregate["total_alerts"],
             )
+            if not saved:
+                current = self.store.get_job(job["id"])
+                if current and current["cancel_requested"]:
+                    self.store.complete_job(job["id"], "cancelled")
+                    return
+                raise RuntimeError("Job không thể hoàn tất vì trạng thái đã thay đổi")
             self._advance_schedule_for_job(job)
         except Exception as exc:
             current = self.store.get_job(job["id"])

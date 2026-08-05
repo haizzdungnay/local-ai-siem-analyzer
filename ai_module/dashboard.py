@@ -1,14 +1,17 @@
 """Localhost-only Flask dashboard for Wazuh alert AI analysis."""
 import atexit
 import hashlib
+import ipaddress
 import json
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, current_app, jsonify, request, send_from_directory
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from analysis_service import ANALYSIS_VERSION, AnalysisService
 from dashboard_store import DashboardStore
@@ -34,6 +37,7 @@ DEFAULT_DASHBOARD = {
     "max_catchup_windows": 24,
     "worker_poll_seconds": 1,
     "request_timeout_seconds": 30,
+    "max_json_request_bytes": 65536,
     "retention_days": 0,
     "retention_keep_latest": 20,
 }
@@ -46,7 +50,17 @@ def _error(message, status):
 def _json_body():
     if not request.is_json:
         raise ValueError("Content-Type phải là application/json")
-    body = request.get_json(silent=False)
+    max_bytes = current_app.config["MAX_JSON_BODY_BYTES"]
+    if request.content_length is not None and request.content_length > max_bytes:
+        raise RequestEntityTooLarge("JSON request body exceeds the configured limit")
+    # Read a bounded payload before decoding so an oversized body is never parsed.
+    raw_body = request.get_data(cache=True)
+    if len(raw_body) > max_bytes:
+        raise RequestEntityTooLarge("JSON request body exceeds the configured limit")
+    try:
+        body = json.loads(raw_body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError("Invalid JSON body") from exc
     if not isinstance(body, dict):
         raise ValueError("JSON body phải là object")
     return body
@@ -87,6 +101,92 @@ def _safe_export_value(value):
     if isinstance(value, list):
         return [_safe_export_value(item) for item in value]
     return value
+
+
+_INLINE_SECRET_RE = re.compile(
+    r"(?i)\b(api[_ -]?key|authorization|bearer|password|passwd|secret|token|cookie|session(?:[_ -]?id)?)\b"
+    r"\s*([=:])\s*[^,\s;]+"
+)
+
+
+def _source_value(source, *path):
+    value = source
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _safe_detail_text(value, *, max_length=512):
+    """Keep short, allow-listed metadata while stripping inline credential values."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return ""
+    text = " ".join(str(value).split())[:max_length]
+    return _INLINE_SECRET_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}[redacted]", text,
+    )
+
+
+def _safe_detail_list(value):
+    if not isinstance(value, list):
+        value = [value]
+    return [text for item in value if (text := _safe_detail_text(item, max_length=128))]
+
+
+def _masked_ip(value):
+    if not isinstance(value, str):
+        return ""
+    try:
+        address = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return "[redacted]"
+    prefix = 24 if address.version == 4 else 64
+    network = ipaddress.ip_network(f"{address}/{prefix}", strict=False)
+    return str(network)
+
+
+def _agent_reference(source):
+    identity = _source_value(source, "agent", "id")
+    if identity in (None, ""):
+        identity = _source_value(source, "agent", "name")
+    identity_text = _safe_detail_text(identity, max_length=128)
+    if not identity_text:
+        return ""
+    digest = hashlib.sha256(identity_text.encode("utf-8")).hexdigest()[:12]
+    return f"agent-{digest}"
+
+
+def _alert_detail_dto(row_id, document):
+    """Return an analyst-safe alert summary, never an Indexer _source document."""
+    source = document.get("_source") if isinstance(document, dict) else None
+    if not isinstance(source, dict):
+        raise ValueError("Indexer document response is missing a source object")
+
+    rule_level = _source_value(source, "rule", "level")
+    if isinstance(rule_level, bool) or not isinstance(rule_level, (int, float)):
+        rule_level = None
+    return {
+        "schema_version": "local-ai-siem-alert-detail/v1",
+        "alert_id": row_id,
+        "timestamp": _safe_detail_text(_source_value(source, "timestamp"), max_length=64),
+        "rule": {
+            "id": _safe_detail_text(_source_value(source, "rule", "id"), max_length=128),
+            "level": rule_level,
+            "description": _safe_detail_text(
+                _source_value(source, "rule", "description"), max_length=512,
+            ),
+            "mitre_ids": _safe_detail_list(_source_value(source, "rule", "mitre", "id")),
+        },
+        "agent": {"reference": _agent_reference(source)},
+        "network": {"source_ip": _masked_ip(_source_value(source, "data", "srcip"))},
+        "redactions": {
+            "raw_source": True,
+            "full_log": True,
+            "identity_and_credentials": True,
+            "network_addresses_masked": True,
+        },
+    }
 
 
 def _job_report_v1(job):
@@ -268,6 +368,9 @@ def _dashboard_cfg(cfg):
     timeline_buckets = dashboard["max_timeline_buckets"]
     if isinstance(timeline_buckets, bool) or not isinstance(timeline_buckets, int) or not 12 <= timeline_buckets <= 288:
         raise ValueError("dashboard.max_timeline_buckets phải nằm trong khoảng 12..288")
+    json_limit = dashboard["max_json_request_bytes"]
+    if isinstance(json_limit, bool) or not isinstance(json_limit, int) or not 1 <= json_limit <= 1048576:
+        raise ValueError("dashboard.max_json_request_bytes must be in the range 1..1048576")
     if dashboard["default_language"] not in {"vi", "en"}:
         raise ValueError("dashboard.default_language phải là vi hoặc en")
     retention_days = dashboard["retention_days"]
@@ -400,7 +503,13 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
     )
 
     app = Flask(__name__, static_folder=None)
-    app.config.update(DASHBOARD_CFG=cfg, DASHBOARD_STORE=store, DASHBOARD_RUNTIME=runtime)
+    app.config.update(
+        DASHBOARD_CFG=cfg,
+        DASHBOARD_STORE=store,
+        DASHBOARD_RUNTIME=runtime,
+        MAX_JSON_BODY_BYTES=dashboard_cfg["max_json_request_bytes"],
+        MAX_CONTENT_LENGTH=dashboard_cfg["max_json_request_bytes"],
+    )
 
     @app.after_request
     def security_headers(response):
@@ -417,6 +526,10 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
     @app.errorhandler(ValueError)
     def value_error(exc):
         return _error(exc, 422)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_entity_too_large(exc):
+        return _error("JSON request body is too large", 413)
 
     @app.errorhandler(KeyError)
     def key_error(exc):
@@ -437,7 +550,7 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
             "app": "ok",
             "worker": "running" if runtime.worker_thread and runtime.worker_thread.is_alive() else "stopped",
             "scheduler": "running" if runtime.scheduler_thread and runtime.scheduler_thread.is_alive() else "stopped",
-            "rag": "enabled" if analysis_service.rag else "disabled",
+            "rag": analysis_service.rag_status,
             "queue": stats["queue"]["pending"] + stats["queue"]["running"],
             "database": "ok",
             "database_bytes": stats["database"]["bytes"],
@@ -560,7 +673,8 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
         if not row:
             return _error("Không tìm thấy alert reference", 404)
         try:
-            return jsonify(fetch_alert_document(cfg, row["index_name"], row["document_id"]))
+            document = fetch_alert_document(cfg, row["index_name"], row["document_id"])
+            return jsonify(_alert_detail_dto(row_id, document))
         except requests.Timeout as exc:
             return _error(f"Indexer timeout: {exc}", 504)
         except requests.RequestException as exc:

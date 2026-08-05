@@ -2,7 +2,7 @@
 
 > Mô-đun **AI local** đọc alert từ **Wazuh SIEM** và giải thích thành **ngôn ngữ tự nhiên**: tóm tắt cảnh báo, giải thích nguyên nhân kích hoạt rule, đánh giá mức nghiêm trọng, gợi ý bước kiểm tra/xử lý.
 
-Đề tài thực tập Local AI Module for Analyzing and Interpreting SIEM Security Alerts. Trọng tâm là **chất lượng AI diễn giải log**, không xây SIEM mới. Repo này là **nguồn thông tin duy nhất (single source of truth)** cho toàn bộ lab — mọi cấu hình, script, tài liệu đều nằm ở đây và chạy lại được.
+Đề tài thực tập Local AI Module for Analyzing and Interpreting SIEM Security Alerts. Trọng tâm là **chất lượng AI diễn giải log**, không xây SIEM mới. Repo chứa tài liệu/scrip demo đã sanitize; config live và credential phải ở `ai_module/config.yaml` gitignored hoặc secret manager. Xem [`docs/security-governance.md`](docs/security-governance.md).
 
 ---
 
@@ -78,6 +78,8 @@ Chi tiết dựng lab: [`docs/setup.md`](docs/setup.md). Runbook kiểm thử th
 ```bash
 pip install -r ai_module/requirements-dev.txt
 python -m pytest tests -q
+python scripts/check_tracked_secrets.py
+python scripts/audit_dependencies.py --requirements ai_module/requirements-dev.txt --allowlist ai_module/pip-audit-allowlist.json
 ```
 
 Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
@@ -91,7 +93,8 @@ Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
 - System prompt SOC được version hóa (`soc-contract-v1`), tách fact/inference/uncertainty/limitation và gọi Ollama với `temperature=0`, `seed=42` để dễ audit/reproduce.
 - Theo dõi phase thật `queued → fetching_alerts → preparing_analysis → calling_ollama → saving_result`; không chèn delay/loading giả.
 - Timeline mật độ alert theo thời gian; chọn bucket để lọc hoặc tạo batch con drill-down.
-- Dưới detail cap: deterministic grouping, alert reference và full-document lookup. Vượt cap: tự chuyển aggregate-only từ count/histogram/rule code, không tải full log hàng loạt.
+- Dưới detail cap: deterministic grouping, alert reference và alert-detail DTO đã redact (không trả raw `_source`). Vượt cap: tự chuyển aggregate-only từ count/histogram/rule code, không tải full log hàng loạt; unique cardinality được ghi rõ là xấp xỉ.
+- Dashboard retrieval dùng RAG theo rule group đã sanitize, có relevance threshold, corpus/index provenance và trạng thái effective (`not_initialized`, `ready`, `unavailable`, `disabled`); không có context phù hợp sẽ được ghi rõ thay vì giả RAG success.
 - Mỗi job có **Xuất JSON v2** gồm analysis, SOC trace, metrics/timeline, alert references và provenance Ollama; có nút JSON v1 cho consumer cũ khi endpoint hỗ trợ. Kết quả cũ thiếu evidence được ghi `unknown_legacy`.
 - Panel **Dấu vết phân tích SOC** chỉ trình bày fact, inference, uncertainty và limitation có thể kiểm toán; không hiển thị chain-of-thought/suy luận nội bộ model.
 - Một fixed-window schedule, ingest delay và bounded catch-up; SQLite giữ job/watermark tại `ai_module/dashboard_data/` (gitignored).
@@ -100,6 +103,7 @@ Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
 Tham khảo có chủ đích từ [Wazuh Dashboard](https://documentation.wazuh.com/current/user-manual/wazuh-dashboard/index.html), [Security Onion Alerts](https://docs.securityonion.net/en/2.4/alerts.html), [Security Onion Cases](https://docs.securityonion.net/en/2.4/cases.html) và [OpenSearch Security Analytics](https://docs.opensearch.org/latest/security-analytics/). Scope này không triển khai multi-user RBAC, PCAP pipeline, notification bên ngoài, auto-remediation hay enterprise correlation graph.
 
 AI output chỉ là tư vấn. App không tự chặn IP, chạy lệnh hay sửa Wazuh. Chi tiết vận hành/test: [`docs/manual-test.md`](docs/manual-test.md).
+Kế hoạch hardening/evaluation còn lại: [`docs/improvement-plan.md`](docs/improvement-plan.md).
 
 ---
 

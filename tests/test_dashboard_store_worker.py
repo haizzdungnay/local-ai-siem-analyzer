@@ -322,6 +322,94 @@ def test_worker_persists_window_result_and_partial_status(monkeypatch, tmp_path)
     assert len(detail["groups"]) == 1
 
 
+def test_worker_cancel_after_llm_does_not_save_success(monkeypatch, tmp_path):
+    store = DashboardStore(tmp_path / "dashboard.db")
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v3",
+    )
+    monkeypatch.setattr(
+        dashboard_worker, "fetch_alerts_range",
+        lambda *args, **kwargs: {"total": 1, "alerts": [{
+            "_index": "idx", "_id": "id", "_source": {
+                "timestamp": "2026-07-30T11:30:00Z",
+                "rule": {"id": "1", "level": 3, "description": "x"},
+                "agent": {"name": "agent"},
+            },
+        }]},
+    )
+
+    class Service:
+        def analyze_aggregate(self, aggregate, model, language="vi"):
+            store.request_cancel(job_id)
+            return {
+                "analysis": {
+                    "summary": "summary", "severity": "low", "key_findings": [],
+                    "mitre": [], "next_steps": [],
+                },
+                "coverage": {"truncated": False}, "partial": False,
+                "provenance": {"language_compliance": "full"},
+            }
+
+    runtime = dashboard_worker.DashboardRuntime(
+        store, {"dashboard": {}, "wazuh_indexer": {}, "ollama": {}}, Service(),
+    )
+    runtime._run_job(store.claim_next_job())
+    detail = store.get_job_detail(job_id)
+
+    assert detail["status"] == "cancelled"
+    assert detail["phase"] == "cancelled"
+    assert detail["results"] == []
+
+
+def test_worker_cancel_between_last_check_and_result_commit_discards_result(monkeypatch, tmp_path):
+    """A cancellation racing with the persist phase must win without a result row."""
+    store = DashboardStore(tmp_path / "dashboard.db")
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v3",
+    )
+    monkeypatch.setattr(
+        dashboard_worker, "fetch_alerts_range",
+        lambda *args, **kwargs: {"total": 1, "alerts": [{
+            "_index": "idx", "_id": "id", "_source": {
+                "timestamp": "2026-07-30T11:30:00Z",
+                "rule": {"id": "1", "level": 3, "description": "x"},
+                "agent": {"name": "agent"},
+            },
+        }]},
+    )
+
+    class Service:
+        def analyze_aggregate(self, aggregate, model, language="vi"):
+            return {
+                "analysis": {
+                    "summary": "summary", "severity": "low", "key_findings": [],
+                    "mitre": [], "next_steps": ["verify"],
+                },
+                "coverage": {"truncated": False}, "partial": False,
+                "provenance": {"language_compliance": "full"},
+            }
+
+    update_phase = store.update_phase
+
+    def request_cancel_at_persist_phase(received_job_id, phase):
+        update_phase(received_job_id, phase)
+        if phase == "saving_result":
+            store.request_cancel(job_id)
+
+    monkeypatch.setattr(store, "update_phase", request_cancel_at_persist_phase)
+    runtime = dashboard_worker.DashboardRuntime(
+        store, {"dashboard": {}, "wazuh_indexer": {}, "ollama": {}}, Service(),
+    )
+    runtime._run_job(store.claim_next_job())
+    detail = store.get_job_detail(job_id)
+
+    assert detail["status"] == "cancelled"
+    assert detail["phase"] == "cancelled"
+    assert detail["results"] == []
+
+
 def test_store_exposes_aggregate_metrics_timeline_and_language(tmp_path):
     store = DashboardStore(tmp_path / "dashboard.db")
     job_id = store.create_job(

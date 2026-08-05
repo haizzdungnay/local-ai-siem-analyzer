@@ -55,11 +55,16 @@ def valid_output(result):
     return (
         isinstance(result, dict)
         and set(result) == OUTPUT_KEYS
-        and all(isinstance(result[key], str) for key in ("summary", "root_cause", "severity", "mitre"))
+        and all(
+            isinstance(result[key], str) and bool(result[key].strip())
+            for key in ("summary", "root_cause")
+        )
+        and isinstance(result["mitre"], str)
         and result["severity"] in OUTPUT_SEVERITIES
         and result["severity"] != "unknown"
         and isinstance(result["next_steps"], list)
-        and all(isinstance(step, str) and step for step in result["next_steps"])
+        and bool(result["next_steps"])
+        and all(isinstance(step, str) and step.strip() for step in result["next_steps"])
     )
 
 

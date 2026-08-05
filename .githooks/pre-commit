@@ -4,6 +4,8 @@ set -eu
 changed=$(git diff --cached --name-only --diff-filter=ACMR)
 [ -n "$changed" ] || exit 0
 
+python scripts/check_tracked_secrets.py --staged
+
 other=$(printf '%s\n' "$changed" | grep -Ev '^(CHANGELOG\.md|HANDOFF\.md)$' || true)
 [ -n "$other" ] || exit 0
 

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "id": "PYSEC-2026-311",
+      "package": "chromadb",
+      "expires": "2026-09-05",
+      "reason": "pip-audit reports no fixed ChromaDB release; review or remove this exception before expiry."
+    }
+  ]
+}

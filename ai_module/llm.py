@@ -43,11 +43,11 @@ ASSESSMENT_BASIS_SCHEMA = {
 OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "summary": {"type": "string", "description": FIELD_DESCRIPTIONS["summary"]},
-        "root_cause": {"type": "string", "description": FIELD_DESCRIPTIONS["root_cause"]},
+        "summary": {"type": "string", "minLength": 1, "description": FIELD_DESCRIPTIONS["summary"]},
+        "root_cause": {"type": "string", "minLength": 1, "description": FIELD_DESCRIPTIONS["root_cause"]},
         "severity": {"type": "string", "enum": sorted(OUTPUT_SEVERITIES)},
         "mitre": {"type": "string", "description": FIELD_DESCRIPTIONS["mitre"]},
-        "next_steps": {"type": "array", "items": {"type": "string"}},
+        "next_steps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "response_language": {"type": "string", "enum": ["vi", "en"]},
         "confidence": {"type": "number", "minimum": 0, "maximum": 100},
         "assessment_basis": ASSESSMENT_BASIS_SCHEMA,
@@ -62,11 +62,11 @@ OUTPUT_OPTIONAL_KEYS = {"response_language", "confidence", "assessment_basis"}
 WINDOW_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "summary": {"type": "string"},
+        "summary": {"type": "string", "minLength": 1},
         "severity": {"type": "string", "enum": sorted(OUTPUT_SEVERITIES)},
-        "key_findings": {"type": "array", "items": {"type": "string"}},
+        "key_findings": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "mitre": {"type": "array", "items": {"type": "string"}},
-        "next_steps": {"type": "array", "items": {"type": "string"}},
+        "next_steps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "response_language": {"type": "string", "enum": ["vi", "en"]},
         "confidence": {"type": "number", "minimum": 0, "maximum": 100},
         "assessment_basis": ASSESSMENT_BASIS_SCHEMA,
@@ -389,8 +389,8 @@ def _window_fallback(code: str, raw_preview: str = "", language: str = "vi") -> 
     }
 
 
-def _bounded_strings(value, *, max_items: int, max_chars: int):
-    if not isinstance(value, list) or len(value) > max_items:
+def _bounded_strings(value, *, max_items: int, max_chars: int, min_items: int = 0):
+    if not isinstance(value, list) or not min_items <= len(value) <= max_items:
         return None
     cleaned = []
     for item in value:
@@ -472,9 +472,11 @@ def _parse_alert_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
         if not isinstance(result[key], str):
             return _fallback_result("invalid_field", raw, language), "local_fallback"
         result[key] = result[key].strip()[:2000]
+    if not result["summary"] or not result["root_cause"]:
+        return _fallback_result("invalid_field", raw, language), "local_fallback"
     if result["severity"] not in OUTPUT_SEVERITIES:
         return _fallback_result("invalid_field", raw, language), "local_fallback"
-    steps = _bounded_strings(result["next_steps"], max_items=20, max_chars=1000)
+    steps = _bounded_strings(result["next_steps"], max_items=20, max_chars=1000, min_items=1)
     if steps is None:
         return _fallback_result("invalid_field", raw, language), "local_fallback"
     result["next_steps"] = steps
@@ -525,8 +527,13 @@ def _parse_window_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
     if not isinstance(result["summary"], str) or result["severity"] not in OUTPUT_SEVERITIES:
         return _window_fallback("invalid_field", raw, language), "local_fallback"
     result["summary"] = result["summary"].strip()[:2000]
+    if not result["summary"]:
+        return _window_fallback("invalid_field", raw, language), "local_fallback"
     for key in ("key_findings", "mitre", "next_steps"):
-        values = _bounded_strings(result[key], max_items=20, max_chars=1000)
+        values = _bounded_strings(
+            result[key], max_items=20, max_chars=1000,
+            min_items=1 if key in {"key_findings", "next_steps"} else 0,
+        )
         if values is None:
             return _window_fallback("invalid_field", raw, language), "local_fallback"
         result[key] = values

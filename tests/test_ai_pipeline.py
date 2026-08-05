@@ -2,6 +2,8 @@ import hashlib
 import json
 import sys
 
+import pytest
+
 import extractor
 import llm
 import main
@@ -49,6 +51,27 @@ def test_load_config_restricts_ollama_to_safe_endpoints(tmp_path):
             raise AssertionError(base_url)
 
 
+def test_tls_verification_defaults_to_enabled_and_warns_when_disabled(tmp_path):
+    assert reader._tls_verify_value({}, "wazuh") is True
+    assert reader._request_kwargs({
+        "wazuh_indexer": {"user": "reader", "password": "secret"},
+    })["verify"] is True
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(json.dumps({
+        "ollama": {},
+        "wazuh_indexer": {"verify_ssl": False},
+        "extractor": {"fields": []},
+    }), encoding="utf-8")
+    with pytest.warns(UserWarning, match="disables TLS certificate verification"):
+        cfg = reader.load_config(config_path)
+
+    assert reader._request_kwargs({
+        "wazuh_indexer": {"user": "reader", "password": "secret", "ca_bundle": "/tmp/ca.pem"},
+    })["verify"] == "/tmp/ca.pem"
+    assert cfg["wazuh_indexer"]["verify_ssl"] is False
+
+
 def test_direct_llm_api_rejects_remote_endpoint_without_opt_in(monkeypatch):
     monkeypatch.setattr(
         llm.ollama_sdk, "Client",
@@ -81,7 +104,7 @@ def test_direct_llm_api_allows_explicit_https_remote_opt_in(monkeypatch):
         def chat(self, **kwargs):
             return {"message": {"content": json.dumps({
                 "summary": "summary", "root_cause": "cause", "severity": "low",
-                "mitre": "", "next_steps": [],
+                "mitre": "", "next_steps": ["Review the alert."],
             })}}
 
     monkeypatch.setattr(llm.ollama_sdk, "Client", Client)
@@ -128,6 +151,19 @@ def test_parse_response_rejects_invalid_schema():
     assert result["severity"] == "unknown"
 
 
+@pytest.mark.parametrize("payload", [
+    {"summary": "", "root_cause": "cause", "severity": "low", "mitre": "", "next_steps": ["Review"]},
+    {"summary": "summary", "root_cause": "   ", "severity": "low", "mitre": "", "next_steps": ["Review"]},
+    {"summary": "summary", "root_cause": "cause", "severity": "low", "mitre": "", "next_steps": []},
+    {"summary": "summary", "root_cause": "cause", "severity": "low", "mitre": "", "next_steps": [" "]},
+])
+def test_alert_parser_rejects_near_empty_model_output(payload):
+    result = llm._parse_response(json.dumps(payload))
+
+    assert result["severity"] == "unknown"
+    assert result["next_steps"]
+
+
 def test_fetch_alerts_api_rejects_bad_limit():
     cfg = {"wazuh_indexer": {}}
 
@@ -156,7 +192,7 @@ def test_analyze_alert_forwards_timeout_to_ollama(monkeypatch):
                             "root_cause": "cause",
                             "severity": "low",
                             "mitre": "",
-                            "next_steps": [],
+                            "next_steps": ["Review the alert."],
                         }
                     )
                 }
@@ -508,19 +544,203 @@ def test_rule_rag_indexes_only_when_collection_is_empty(monkeypatch, tmp_path):
     monkeypatch.setattr(rag.ollama_sdk, "Client", fake_ollama_client)
 
     rule_rag = rag.RuleRAG(data_dir=str(tmp_path), timeout=13)
+    (tmp_path / "wazuh_rules.json").write_text(
+        json.dumps([{"id": "5503", "description": "PAM failed"}]), encoding="utf-8"
+    )
     indexed = []
 
     def fake_index():
         indexed.append(True)
+        corpus = rule_rag._load_corpus()
+        rule_rag._write_manifest(rule_rag._manifest_for(corpus))
+        collection.document_count = len(corpus["ids"])
         return 19
 
     monkeypatch.setattr(rule_rag, "index", fake_index)
 
     assert rule_rag.ensure_indexed() == 19
-    collection.document_count = 19
     assert rule_rag.ensure_indexed() == 0
     assert indexed == [True]
     assert ollama_kwargs["timeout"] == 13
+
+
+def test_rule_rag_reindexes_stale_corpus_and_deletes_removed_documents(monkeypatch, tmp_path):
+    class FakeCollection:
+        def __init__(self):
+            self.documents = {}
+            self.deleted = []
+
+        def count(self):
+            return len(self.documents)
+
+        def get(self, **kwargs):
+            return {"ids": list(self.documents)}
+
+        def delete(self, *, ids):
+            self.deleted.append(ids)
+            for document_id in ids:
+                self.documents.pop(document_id, None)
+
+        def upsert(self, *, ids, documents, **kwargs):
+            self.documents.update(dict(zip(ids, documents)))
+
+    collection = FakeCollection()
+
+    class FakeChromaClient:
+        def get_or_create_collection(self, name):
+            return collection
+
+    monkeypatch.setattr(rag.chromadb, "PersistentClient", lambda path: FakeChromaClient())
+    monkeypatch.setattr(rag.ollama_sdk, "Client", lambda **kwargs: object())
+    source = tmp_path / "wazuh_rules.json"
+    source.write_text(json.dumps([
+        {"id": "1", "description": "first"},
+        {"id": "2", "description": "removed"},
+    ]), encoding="utf-8")
+    rule_rag = rag.RuleRAG(data_dir=tmp_path)
+    monkeypatch.setattr(rule_rag, "_embed", lambda text: [1.0])
+
+    assert rule_rag.ensure_indexed() == 2
+    manifest = json.loads(rule_rag.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["document_count"] == 2
+    assert len(manifest["corpus_digest"]) == 64
+    assert len(manifest["embedding_schema_digest"]) == 64
+
+    source.write_text(json.dumps([
+        {"id": "1", "description": "updated"},
+    ]), encoding="utf-8")
+
+    assert rule_rag.ensure_indexed() == 1
+    assert collection.deleted == [["rule-2"]]
+    assert collection.documents == {"rule-1": "Rule 1: updated"}
+    assert rule_rag.ensure_indexed() == 0
+
+
+def test_rule_rag_swaps_a_complete_staging_generation_and_records_embedding_digest(monkeypatch, tmp_path):
+    class FakeCollection:
+        def __init__(self):
+            self.documents = {}
+
+        def count(self):
+            return len(self.documents)
+
+        def get(self, **kwargs):
+            return {"ids": list(self.documents)}
+
+        def delete(self, *, ids):
+            for document_id in ids:
+                self.documents.pop(document_id, None)
+
+        def upsert(self, *, ids, documents, **kwargs):
+            self.documents.update(dict(zip(ids, documents)))
+
+    class FakeChromaClient:
+        def __init__(self):
+            self.collections = {}
+
+        def get_or_create_collection(self, name):
+            return self.collections.setdefault(name, FakeCollection())
+
+    client = FakeChromaClient()
+
+    class FakeOllamaClient:
+        def list(self):
+            return {"models": [{"name": "embed", "digest": "sha256:embed-v1"}]}
+
+    monkeypatch.setattr(rag.chromadb, "PersistentClient", lambda path: client)
+    monkeypatch.setattr(rag.ollama_sdk, "Client", lambda **kwargs: FakeOllamaClient())
+    source = tmp_path / "wazuh_rules.json"
+    source.write_text(json.dumps([{"id": "1", "description": "first"}]), encoding="utf-8")
+    rule_rag = rag.RuleRAG(data_dir=tmp_path, embedding_model="embed")
+    monkeypatch.setattr(rule_rag, "_embed", lambda text: [1.0])
+
+    assert rule_rag.ensure_indexed() == 1
+    first_manifest = json.loads(rule_rag.manifest_path.read_text(encoding="utf-8"))
+    first_name = first_manifest["collection_name"]
+    assert first_name != rag.BASE_COLLECTION_NAME
+    assert first_manifest["embedding_model_digest"] == "sha256:embed-v1"
+    assert first_manifest["embedding_model_digest_source"] == "ollama.Client.list.pre_index"
+
+    source.write_text(json.dumps([{"id": "2", "description": "second"}]), encoding="utf-8")
+    assert rule_rag.ensure_indexed() == 1
+    second_manifest = json.loads(rule_rag.manifest_path.read_text(encoding="utf-8"))
+    assert second_manifest["collection_name"] != first_name
+    assert rule_rag.collection.documents == {"rule-2": "Rule 2: second"}
+    assert client.collections[first_name].documents == {"rule-1": "Rule 1: first"}
+
+
+def test_rule_rag_keeps_active_generation_when_staging_embedding_fails(monkeypatch, tmp_path):
+    class FakeCollection:
+        def __init__(self):
+            self.documents = {}
+
+        def count(self):
+            return len(self.documents)
+
+        def get(self, **kwargs):
+            return {"ids": list(self.documents)}
+
+        def upsert(self, *, ids, documents, **kwargs):
+            self.documents.update(dict(zip(ids, documents)))
+
+    class FakeChromaClient:
+        def __init__(self):
+            self.collections = {}
+
+        def get_or_create_collection(self, name):
+            return self.collections.setdefault(name, FakeCollection())
+
+    client = FakeChromaClient()
+    monkeypatch.setattr(rag.chromadb, "PersistentClient", lambda path: client)
+    monkeypatch.setattr(rag.ollama_sdk, "Client", lambda **kwargs: object())
+    source = tmp_path / "wazuh_rules.json"
+    source.write_text(json.dumps([{"id": "1", "description": "first"}]), encoding="utf-8")
+    rule_rag = rag.RuleRAG(data_dir=tmp_path)
+    monkeypatch.setattr(rule_rag, "_embed", lambda text: [1.0])
+    assert rule_rag.ensure_indexed() == 1
+    active_manifest = rule_rag.manifest_path.read_text(encoding="utf-8")
+    active_name = rule_rag.collection_name
+
+    source.write_text(json.dumps([{"id": "2", "description": "second"}]), encoding="utf-8")
+    monkeypatch.setattr(
+        rule_rag, "_embed", lambda text: (_ for _ in ()).throw(RuntimeError("embedding unavailable")),
+    )
+    try:
+        rule_rag.ensure_indexed()
+    except RuntimeError as exc:
+        assert "embedding unavailable" in str(exc)
+    else:
+        raise AssertionError("A failed staging build must surface an error")
+
+    assert rule_rag.collection_name == active_name
+    assert rule_rag.manifest_path.read_text(encoding="utf-8") == active_manifest
+    assert rule_rag.collection.documents == {"rule-1": "Rule 1: first"}
+
+
+def test_rule_rag_filters_by_distance_and_returns_distance_field(monkeypatch, tmp_path):
+    class FakeCollection:
+        def query(self, **kwargs):
+            return {
+                "documents": [["near", "far"]],
+                "metadatas": [[
+                    {"source": "wazuh_rule", "rule_id": "5503"},
+                    {"source": "mitre", "technique_id": "T1110"},
+                ]],
+                "distances": [[0.2, 1.2]],
+            }
+
+    class FakeChromaClient:
+        def get_or_create_collection(self, name):
+            return FakeCollection()
+
+    monkeypatch.setattr(rag.chromadb, "PersistentClient", lambda path: FakeChromaClient())
+    monkeypatch.setattr(rag.ollama_sdk, "Client", lambda **kwargs: object())
+    rule_rag = rag.RuleRAG(data_dir=tmp_path, relevance_threshold=0.5)
+    monkeypatch.setattr(rule_rag, "_embed", lambda text: [1.0])
+
+    assert rule_rag.query("5503", "PAM failed") == [{
+        "source": "wazuh_rule", "reference_id": "5503", "text": "near", "distance": 0.2,
+    }]
 
 
 def test_configure_console_encoding_uses_utf8(monkeypatch):
@@ -599,3 +819,70 @@ def test_main_initializes_rag_index_and_passes_timeout(monkeypatch):
     assert analyze_kwargs["language"] == "vi"
     assert analyze_kwargs["include_provenance"] is True
     assert analyze_kwargs["allow_remote"] is False
+
+
+def test_main_hides_raw_logs_and_records_disabled_rag_provenance(monkeypatch, capsys):
+    raw_log = "password=CLI_SECRET token=CLI_TOKEN"
+    cfg = {
+        "ollama": {"base_url": "http://localhost:11434", "model": "qwen2.5:3b"},
+        "wazuh_indexer": {"host": "siem.invalid", "port": 9200},
+        "extractor": {"fields": ["rule.id", "full_log"]},
+        "rag": {"enabled": False},
+    }
+    captured = {}
+
+    def fake_analyze_alert(**kwargs):
+        captured.update(kwargs)
+        return ({
+            "summary": f"Model echo: {raw_log}", "root_cause": "cause", "severity": "low",
+            "mitre": "", "next_steps": [],
+        }, {"provider": "ollama"})
+
+    monkeypatch.setattr(main, "load_config", lambda path: cfg)
+    monkeypatch.setattr(main, "load_sample_alerts", lambda path: [{
+        "rule": {"id": "5503"}, "full_log": raw_log,
+    }])
+    monkeypatch.setattr(main, "analyze_alert", fake_analyze_alert)
+    monkeypatch.setattr(sys, "argv", ["main.py", "--demo"])
+
+    main.main()
+    output = capsys.readouterr().out
+
+    assert raw_log in captured["alert_text"]
+    assert raw_log not in output
+    assert "[Alert metadata]" in output
+    assert '"fallback": "rag_disabled"' in output
+
+
+def test_main_records_truthful_rag_initialization_fallback(monkeypatch, capsys):
+    unsafe_error = "RAG failure with SECRET_LOG_CONTENT"
+    cfg = {
+        "ollama": {"base_url": "http://localhost:11434", "model": "qwen2.5:3b"},
+        "wazuh_indexer": {"host": "siem.invalid", "port": 9200},
+        "extractor": {"fields": ["rule.id"]},
+        "rag": {"enabled": True, "data_dir": "rag_data", "embedding_model": "nomic-embed-text"},
+    }
+    captured = {}
+
+    class BrokenRAG:
+        def __init__(self, **kwargs):
+            raise RuntimeError(unsafe_error)
+
+    def fake_analyze_alert(**kwargs):
+        captured.update(kwargs)
+        return ({"summary": "summary", "root_cause": "cause", "severity": "low", "mitre": "", "next_steps": []}, {})
+
+    monkeypatch.setattr(main, "load_config", lambda path: cfg)
+    monkeypatch.setattr(main, "load_sample_alerts", lambda path: [{"rule": {"id": "5503"}}])
+    monkeypatch.setattr(main, "RuleRAG", BrokenRAG)
+    monkeypatch.setattr(main, "analyze_alert", fake_analyze_alert)
+    monkeypatch.setattr(sys, "argv", ["main.py", "--demo"])
+
+    main.main()
+    output = capsys.readouterr().out
+
+    assert captured["rag_context"] == ""
+    assert '"state": "unavailable"' in output
+    assert '"fallback": "initialization_failed"' in output
+    assert "RuntimeError" in output
+    assert unsafe_error not in output

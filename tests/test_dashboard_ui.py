@@ -71,6 +71,27 @@ def test_batch_table_grid_item_can_shrink_on_narrow_viewports():
     assert ".table-scroll { overflow-x: auto; }" in css
 
 
+def test_batch_table_has_bounded_vertical_scroll_and_sticky_header():
+    css = CSS_PATH.read_text(encoding="utf-8")
+
+    assert ".batch-table-scroll { max-height: 420px; overflow-y: auto;" in css
+    assert ".batch-table th { position: sticky; top: 0;" in css
+
+
+def test_dashboard_uses_wider_desktop_content_container():
+    css = CSS_PATH.read_text(encoding="utf-8")
+
+    assert "calc((100vw - 1500px) / 2)" in css
+    assert "main { max-width: 1500px;" in css
+
+
+def test_alert_dialog_does_not_claim_to_show_the_raw_full_alert():
+    javascript = JS_PATH.read_text(encoding="utf-8")
+
+    assert "Chi tiết alert đã lọc" in javascript
+    assert "text(button, 'Full alert')" not in javascript
+
+
 def test_dashboard_has_timeline_language_and_theme_controls():
     html = HTML_PATH.read_text(encoding="utf-8")
     javascript = JS_PATH.read_text(encoding="utf-8")
