@@ -1,8 +1,8 @@
 # Handoff — local-ai-siem-analyzer
 
 Ngày cập nhật: 2026-08-05
-Baseline đã merge: `origin/main` commit `700416d` qua PR #2.
-Hardening branch hiện tại: `codex/verified-hardening`; release note/verification đã sẵn sàng để commit, push và tạo PR vào `main`.
+Hardening đã merge: `origin/main` commit `04cae1b` qua PR #4; cả bốn job CI Ubuntu/Windows × Python 3.11/3.12 xanh.
+Closeout branch hiện tại: `codex/pr4-closeout`, chỉ đồng bộ ledger merge này trước khi kết thúc phiên.
 Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần chạy `git config core.hooksPath .githooks` để bật ledger gate.
 `eval/run_eval.py` tồn tại trong checkout; path case đã resolve theo repo root, không phụ thuộc CWD.
 
