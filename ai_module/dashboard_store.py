@@ -514,6 +514,48 @@ class DashboardStore:
                   latency_s, revision, utc_now()),
             )
 
+    def save_result_and_complete_if_not_cancelled(
+            self, job_id, scope, scope_key, result, *, coverage=None, warnings=None,
+            provenance=None, latency_s=0, revision=1, status="succeeded",
+            progress_current=None, progress_total=None):
+        """Atomically persist a terminal result only while cancellation has not won.
+
+        A model call cannot be interrupted portably, so the durable commit is the
+        cancellation boundary: a cancel request that is committed first prevents
+        both the result row and a success state from being stored.
+        """
+        if status not in {"succeeded", "partial"}:
+            raise ValueError("Result chỉ có thể hoàn tất job succeeded hoặc partial")
+        with self.transaction() as connection:
+            phase = "completed"
+            updates = ["status=?", "phase=?", "error=''", "finished_at=?"]
+            values = [status, phase, utc_now()]
+            if progress_current is not None:
+                updates.append("progress_current=?")
+                values.append(progress_current)
+            if progress_total is not None:
+                updates.append("progress_total=?")
+                values.append(progress_total)
+            values.extend([job_id])
+            changed = connection.execute(
+                f"""UPDATE jobs SET {','.join(updates)}
+                    WHERE id=? AND status='running' AND cancel_requested=0""",
+                values,
+            ).rowcount
+            if not changed:
+                return False
+            connection.execute(
+                """INSERT INTO analysis_results(job_id,scope,scope_key,result_json,
+                   coverage_json,warnings_json,provenance_json,latency_s,revision,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (job_id, scope, scope_key, json.dumps(result, ensure_ascii=False),
+                 json.dumps(coverage or {}, ensure_ascii=False),
+                 json.dumps(warnings or [], ensure_ascii=False),
+                 json.dumps(provenance or {}, ensure_ascii=False),
+                 latency_s, revision, utc_now()),
+            )
+            return True
+
     def get_job_detail(self, job_id):
         with closing(self._connect()) as connection:
             job_row = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()

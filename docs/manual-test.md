@@ -12,7 +12,7 @@ Tài liệu này dành cho người kiểm thử thực tế. Làm theo đúng t
 | Kali | `192.168.100.30` | `kali` | Sinh SSH/web traffic có giới hạn |
 | Victim Windows | `192.168.100.40` | VMware console | Wazuh agent; Sysmon chưa xác nhận |
 
-**Credential lab dùng chung:** theo xác nhận của chủ lab ngày 2026-07-31, mật khẩu đăng nhập/sudo cho tất cả VM là `kali`. Ưu tiên SSH key trong các lệnh tự động; chỉ dùng mật khẩu này khi console hoặc `sudo` yêu cầu. Đây là credential riêng của lab cô lập, không tái sử dụng ngoài lab. Password Indexer vẫn là credential khác và không được ghi vào repo.
+**Credential lab:** không ghi hoặc truyền mật khẩu qua runbook. Dùng SSH key hoặc secret manager/config gitignored do operator quản lý; chỉ định danh placeholder trong mọi bằng chứng và báo cáo.
 
 Luồng cần chứng minh:
 

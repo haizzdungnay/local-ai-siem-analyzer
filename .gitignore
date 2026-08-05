@@ -37,6 +37,8 @@ desktop.ini
 
 # Local one-shot data generator; canonical RAG data is tracked directly
 ai_module/create_rag_data.py
+# Superseded experimental lock output; use the tracked root pylock.toml.
+ai_module/requirements.lock.toml
 
 # Local dashboard runtime data
 ai_module/dashboard_data/

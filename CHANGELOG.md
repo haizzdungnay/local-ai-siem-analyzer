@@ -6,6 +6,12 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ## [Unreleased]
 
 ### Added
+- Verified hardening slice 2026-08-05: dashboard window retrieval dùng RAG theo rule group đã sanitize, có threshold distance, context bound, provenance/export scrub và trạng thái truthful. RAG build sang Chroma collection generation mới, chỉ atomically đổi manifest active sau khi đầy đủ embedding; manifest ghi corpus/schema và embedding-model digest khi Ollama cung cấp metadata.
+- Cancellation terminal commit: worker lưu result và trạng thái `succeeded|partial` trong một SQLite transaction chỉ khi `cancel_requested=0`; cancel thắng ở pha `saving_result` không tạo result row hay success giả.
+- Local safety/governance: request JSON cap 64 KiB/HTTP 413, alert detail DTO redact, TLS verify mặc định, CLI raw alert opt-in, secret scan ở staged/CI và runbook dùng placeholder. Dependency lock/SBOM/SCA có pin Actions, quyền read-only và exception `pip-audit` hết hạn rõ ràng.
+- Automated verification của hardening: `119 passed` (4.93s), compileall, JavaScript syntax, Git Bash syntax, secret scan, dependency audit, CSV integrity/eval summary và `git diff --check` PASS. AI-judge baseline chỉ là chỉ số phụ; human review chưa hoàn tất.
+- Kế hoạch cải thiện có kiểm chứng tại `docs/improvement-plan.md`: ưu tiên truthful dashboard/RAG contract, index freshness/provenance, cancellation/output safety, two-reviewer human evaluation, reproducibility và release gates; giữ private chain-of-thought ngoài product data.
+- Báo cáo đánh giá read-only được chuyển thành `docs/improvement-plan.md`: chốt backlog AI/RAG/eval/security theo evidence, không sửa code hoặc chạy lại live lab trong bước khảo sát.
 - Release closeout after PR #2: all four GitHub matrix jobs (Ubuntu/Windows × Python 3.11/3.12) are green; squash merge landed at `origin/main` `700416d`. Dashboard was safely restarted with an empty queue on `127.0.0.1:8765` (PID `41728`), schema v4 preserved 23 jobs, and dependency probes reported Ollama/Indexer `ok`.
 - Local SOC completion slice 2026-08-05: roadmap khảo sát Wazuh Dashboard, Security Onion và OpenSearch Security Analytics tại `docs/product-roadmap.md`; phạm vi chốt localhost, không tự remediation hay mở remote khi chưa có auth/TLS/RBAC.
 - Dashboard operations schema v4: append-only analyst review (`new|acknowledged|investigating|resolved|false_positive`), severity override/tags/note, immutable history, bounded search pivots, dependency/queue/database health và retention prune chỉ terminal jobs với `confirm: true`.
@@ -63,7 +69,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - README/setup/manual runbook và kế hoạch tổng thể đã mô tả `max_alerts_per_job` là detail cap, quy trình acceptance aggregate-only/timeline subjob, lựa chọn AI `vi/en`, persisted light theme và giới hạn không bulk raw log.
 - Mở rộng kế hoạch dashboard theo phản hồi UI: selected-job alert timeline có drill-down bucket; aggregate-only fallback cho cửa sổ vượt detail cap; ngôn ngữ AI `vi/en` lưu theo job/schedule; theme `dark/light` lưu ở browser. Scale path chỉ lấy count/histogram/cardinality/rule-code bucket và field mẫu giới hạn, không tải/lưu raw log hàng loạt.
 - `scripts/attacks/web-attack.sh` tách mode `baseline/error-burst/signatures/nikto/all`, whitelist Victim `.20`, cap burst 3–10 request và in UTC boundary; Nikto bị loại khỏi default/`all`, yêu cầu explicit confirmation, đồng thời có `-maxtime 45s` trong hard wall 50s/kill-after 5s. Syntax/target/Nikto guards PASS mà không rerun scan.
-- DVWA runbook mô tả review AI theo từng mode và ghi credential VM lab dùng chung `kali` theo chỉ định của chủ lab; Indexer password vẫn tách riêng và không tracked.
+- DVWA runbook mô tả review AI theo từng mode; mọi credential lab/Indexer đều dùng placeholder hoặc config gitignored, không lưu giá trị hoạt động trong release note.
 - Ignore `.claude/`, `*.bak` và local one-shot `ai_module/create_rag_data.py` để trạng thái Git chỉ hiện source cần quản lý.
 - README và `KE_HOACH.md` cập nhật trạng thái GĐ4, đường dẫn chạy eval và phần việc human review còn lại.
 - Đồng bộ tài liệu lab: alert đọc từ Indexer `:9200`, Manager `:55000` chỉ quản trị; Windows agent `.40` đã Active; Bước 8/SSH và FIM marker realtime được ghi đúng vị trí.
@@ -165,7 +171,7 @@ Hoàn tất toàn bộ GĐ2 — cả 3 kịch bản sinh cảnh báo đã xác n
 
 ### Fixed
 - **FIM không bắn alert dù script chạy đúng** — do Wazuh FIM mặc định chỉ quét theo lịch 12 tiếng/lần, không realtime. Fix bằng cách thêm `realtime="yes"` vào thẻ `<directories>` trong `ossec.conf` của Victim.
-- **DVWA không kết nối được MySQL** — do password trong `config.inc.php` (`kali`) không khớp với password user MySQL đã tạo (`dvwa123`). Fix bằng `ALTER USER` đồng bộ lại password.
+- **DVWA MySQL configuration issue** — historical lab note sanitized; credentials are no longer stored in tracked release notes.
 
 ### Changed
 - Rule thực tế cho từng kịch bản (xem chi tiết `docs/attacks.md`):
@@ -184,7 +190,7 @@ Hoàn tất GĐ1 (dựng lab SIEM) và kịch bản đầu tiên của GĐ2 (SSH
 ### Fixed
 - **Mất IP tĩnh sau mỗi lần reboot VM** (SIEM, Victim) — do cloud-init tự sinh lại `/etc/netplan/50-cloud-init.yaml` ghi đè cấu hình. Fix bằng `/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg`.
 - **SIEM không ping được Kali/Victim dù IP đúng dải** — do VMware gán nhầm virtual switch cho card mạng khi đổi Network Adapter lúc VM đang chạy. Fix bằng cách đổi tạm sang Bridged → NAT/Host-only → Power Off/Power On.
-- **Alert không hiển thị trên Dashboard dù Manager đã xử lý đúng** (`alerts.json` có rule 5503 nhưng Indexer không nhận) — do Filebeat trong container Manager vẫn dùng password mặc định `SecretPassword` sau khi đổi password admin qua Dashboard UI, dẫn tới lỗi `401 Unauthorized` giữa Manager và Indexer. Fix bằng quy trình đổi password đồng bộ (xem docs/setup.md Bước 4.5).
+- **Alert không hiển thị trên Dashboard dù Manager đã xử lý đúng** (`alerts.json` có rule 5503 nhưng Indexer không nhận) — do Filebeat trong container Manager vẫn dùng password mặc định `<REDACTED_DEFAULT>` sau khi đổi password admin qua Dashboard UI, dẫn tới lỗi `401 Unauthorized` giữa Manager và Indexer. Fix bằng quy trình đổi password đồng bộ (xem docs/setup.md Bước 4.5).
 - **Lỗi `500 Internal Server Error` khi truy cập Dashboard sau khi đổi password** — do session cookie cũ còn tồn tại trong trình duyệt. Fix bằng cách dùng tab ẩn danh hoặc xóa cookie trước khi đăng nhập lại.
 
 ### Changed

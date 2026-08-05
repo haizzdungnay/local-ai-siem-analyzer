@@ -3,6 +3,7 @@ import ipaddress
 import json
 import math
 import re
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
@@ -18,6 +19,7 @@ SAMPLES_DIR = MODULE_DIR.parent / "eval" / "samples"
 ALERT_INDEX_PATTERN = "wazuh-alerts-*"
 _ALERT_INDEX_RE = re.compile(r"^wazuh-alerts-[A-Za-z0-9._-]+$")
 _TIMELINE_INTERVALS = (1, 5, 10, 30, 60, 300, 900, 1800, 3600, 21600, 43200, 86400)
+CARDINALITY_PRECISION_THRESHOLD = 40000
 _AGGREGATE_SOURCE_FIELDS = [
     "timestamp",
     "rule.id",
@@ -75,6 +77,38 @@ def _validate_ollama_config(ollama_cfg: dict) -> None:
     validate_ollama_base_url(ollama_cfg["base_url"], allow_remote=allow_remote)
 
 
+def _tls_verify_value(service_cfg: dict, section_name: str):
+    """Return Requests' verification value with certificate verification as the default."""
+    ca_bundle = service_cfg.get("ca_bundle")
+    if ca_bundle is not None:
+        if not isinstance(ca_bundle, str) or not ca_bundle.strip():
+            raise ValueError(f"{section_name}.ca_bundle must be a non-empty path")
+        return ca_bundle
+
+    verify_ssl = service_cfg.get("verify_ssl", True)
+    if not isinstance(verify_ssl, bool):
+        raise ValueError(f"{section_name}.verify_ssl must be a boolean")
+    return verify_ssl
+
+
+def _validate_tls_config(cfg: dict) -> None:
+    """Warn when a configuration deliberately disables TLS certificate checks."""
+    for section_name in ("wazuh", "wazuh_indexer"):
+        service_cfg = cfg.get(section_name)
+        if service_cfg is None:
+            continue
+        if not isinstance(service_cfg, dict):
+            raise ValueError(f"{section_name} config must be an object")
+        verify_value = _tls_verify_value(service_cfg, section_name)
+        if verify_value is False:
+            warnings.warn(
+                f"{section_name}.verify_ssl=false disables TLS certificate verification; "
+                "use this only for an isolated lab with an explicit risk acceptance.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+
 def load_config(path: str | Path = MODULE_DIR / "config.yaml") -> dict:
     """Load and minimally validate YAML config."""
     with open(path, encoding="utf-8") as f:
@@ -87,6 +121,7 @@ def load_config(path: str | Path = MODULE_DIR / "config.yaml") -> dict:
     if not isinstance(cfg["extractor"].get("fields"), list):
         raise ValueError("extractor.fields phải là list")
     _validate_ollama_config(cfg["ollama"])
+    _validate_tls_config(cfg)
     return cfg
 
 
@@ -109,7 +144,7 @@ def get_wazuh_token(cfg: dict) -> str:
     r = requests.post(
         url,
         auth=(wazuh_cfg["user"], wazuh_cfg["password"]),
-        verify=wazuh_cfg.get("verify_ssl", False),
+        verify=_tls_verify_value(wazuh_cfg, "wazuh"),
         timeout=wazuh_cfg.get("timeout", 30),
     )
     r.raise_for_status()
@@ -126,7 +161,7 @@ def _request_kwargs(cfg: dict) -> dict:
     idx_cfg = cfg["wazuh_indexer"]
     return {
         "auth": (idx_cfg["user"], idx_cfg["password"]),
-        "verify": idx_cfg.get("ca_bundle", idx_cfg.get("verify_ssl", True)),
+        "verify": _tls_verify_value(idx_cfg, "wazuh_indexer"),
         "timeout": idx_cfg.get("timeout", 30),
     }
 
@@ -368,6 +403,8 @@ def _parse_window_aggregations(
         "unique_rules": _aggregation_value(aggregations, "unique_rules"),
         "unique_agents": _aggregation_value(aggregations, "unique_agents"),
         "unique_source_ips": _aggregation_value(aggregations, "unique_source_ips"),
+        "unique_counts_approximate": True,
+        "cardinality_precision_threshold": CARDINALITY_PRECISION_THRESHOLD,
     }
 
 
@@ -420,9 +457,9 @@ def fetch_alerts_window(
                     },
                 },
             },
-            "unique_rules": {"cardinality": {"field": "rule.id"}},
-            "unique_agents": {"cardinality": {"field": "agent.id"}},
-            "unique_source_ips": {"cardinality": {"field": "data.srcip"}},
+            "unique_rules": {"cardinality": {"field": "rule.id", "precision_threshold": CARDINALITY_PRECISION_THRESHOLD}},
+            "unique_agents": {"cardinality": {"field": "agent.id", "precision_threshold": CARDINALITY_PRECISION_THRESHOLD}},
+            "unique_source_ips": {"cardinality": {"field": "data.srcip", "precision_threshold": CARDINALITY_PRECISION_THRESHOLD}},
         },
     }
     url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"

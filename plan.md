@@ -69,6 +69,23 @@ Không chạy lại traffic tấn công hoặc Nikto trong lượt hoàn thiện
 và evidence live đã có. Human semantic scoring vẫn là hoạt động đánh giá sau release, không phải
 blocker code.
 
+## Kế hoạch cải thiện có kiểm chứng — 2026-08-05
+
+Phân tích read-only tại `check.md` xác định giai đoạn tiếp theo là nâng tính
+đúng, evidence và reproducibility thay vì thêm feature rộng. Kế hoạch đầy đủ,
+acceptance criteria và release gates nằm tại `docs/improvement-plan.md`.
+
+- [x] Milestone 0: truthful dashboard contract cho RAG/aggregate/provenance.
+- [x] Milestone 1: manifest/digest embedding quan sát được, staging collection swap atomically,
+  threshold, dashboard retrieval và export provenance.
+- [x] Milestone 2: cancellation, strict output validation, request/raw-data safety.
+- [ ] Milestone 3: two-reviewer human evaluation, paired RAG study, analyst-time benchmark.
+- [~] Milestone 4: dependency/SBOM/SCA, secret governance, safety/performance regression; automation đã xong, credential rotation/history decision còn owner.
+
+Không yêu cầu manual UI test trong giai đoạn đang hoàn thiện code; mỗi milestone
+phải có automated regression evidence. Human evaluation là study chất lượng
+tách biệt, thực hiện khi analysis contract đã freeze.
+
 ## Nhật ký thực hiện
 
 ### 2026-07-31 — Baseline đầu phiên

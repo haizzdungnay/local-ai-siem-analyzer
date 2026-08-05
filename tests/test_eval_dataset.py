@@ -134,6 +134,10 @@ def test_eval_schema_remains_legacy_five_fields():
 
     assert runner.valid_output(valid)
     assert not runner.valid_output({**valid, "response_language": "en"})
+    assert not runner.valid_output({**valid, "summary": "  "})
+    assert not runner.valid_output({**valid, "root_cause": ""})
+    assert not runner.valid_output({**valid, "next_steps": []})
+    assert not runner.valid_output({**valid, "next_steps": [" "]})
 
 
 def test_eval_runner_configures_utf8_console(monkeypatch):
@@ -151,6 +155,55 @@ def test_eval_runner_configures_utf8_console(monkeypatch):
     monkeypatch.setattr(runner.sys, "stderr", FakeStream())
 
     runner._configure_console_encoding()
+
+    assert calls == [
+        {"encoding": "utf-8", "errors": "replace"},
+        {"encoding": "utf-8", "errors": "replace"},
+    ]
+
+
+@pytest.mark.parametrize("mutation", ("duplicate", "unknown", "missing"))
+def test_result_summary_rejects_incomplete_or_invalid_case_coverage(tmp_path, mutation):
+    summary_path = EVAL_DIR / "summarize_results.py"
+    spec = importlib.util.spec_from_file_location("summarize_results_coverage", summary_path)
+    summary_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(summary_module)
+
+    with (EVAL_DIR / "results.csv").open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = reader.fieldnames
+        rows = list(reader)
+
+    if mutation == "duplicate":
+        rows[-1]["case_id"] = rows[0]["case_id"]
+    elif mutation == "unknown":
+        rows[-1]["case_id"] = "not-in-manifest"
+    else:
+        rows = rows[:-1]
+    output = tmp_path / f"{mutation}.csv"
+    with output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    with pytest.raises(ValueError, match="coverage mismatch"):
+        summary_module.summarize(output)
+
+
+def test_summary_configures_utf8_console(monkeypatch):
+    summary_path = EVAL_DIR / "summarize_results.py"
+    spec = importlib.util.spec_from_file_location("summarize_results_console", summary_path)
+    summary_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(summary_module)
+    calls = []
+
+    class FakeStream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(summary_module.sys, "stdout", FakeStream())
+    monkeypatch.setattr(summary_module.sys, "stderr", FakeStream())
+    summary_module._configure_console_encoding()
 
     assert calls == [
         {"encoding": "utf-8", "errors": "replace"},

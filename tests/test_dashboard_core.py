@@ -193,6 +193,9 @@ def test_fetch_alerts_window_switches_to_aggregate_without_bulk_source(monkeypat
     assert result["alerts"] == []
     assert result["rule_buckets"][0]["rule_id"] == "31101"
     assert result["timeline"][0]["count"] == 5737
+    cardinality = captured[0]["json"]["aggs"]["unique_rules"]["cardinality"]
+    assert cardinality["precision_threshold"] == reader.CARDINALITY_PRECISION_THRESHOLD
+    assert result["unique_counts_approximate"] is True
 
 
 def test_aggregate_rule_buckets_never_invents_sample_log():
@@ -213,6 +216,24 @@ def test_aggregate_rule_buckets_never_invents_sample_log():
     assert aggregate["alerts"] == []
     assert aggregate["groups"][0]["sample_log"] == ""
     assert aggregate["groups"][0]["description"] == "Web error"
+    assert aggregate["unique_counts_approximate"] is True
+
+
+def test_aggregate_prompt_marks_cardinality_values_as_approximate():
+    aggregate = analysis_service.aggregate_rule_buckets({
+        **reader._parse_window_aggregations(
+            _aggregate_response(),
+            start=datetime(2026, 7, 30, 11, 50, tzinfo=timezone.utc),
+            end=NOW,
+            interval_seconds=60,
+        ),
+        "total": 5737,
+    })
+
+    prompt, coverage = analysis_service.format_window_for_llm(aggregate)
+
+    assert "Unique rules (approximate cardinality)" in prompt
+    assert coverage["unique_counts_approximate"] is True
 
 
 def test_aggregate_alerts_is_deterministic_and_counts_without_llm():
@@ -247,6 +268,8 @@ def test_window_prompt_reports_truncation_coverage():
         "represented_alerts": 1,
         "total_alerts": 2,
         "truncated": True,
+        "unique_counts_approximate": False,
+        "cardinality_precision_threshold": None,
     }
     assert "Coverage:" in prompt
 
@@ -407,3 +430,184 @@ def test_analysis_service_redacts_exact_sample_log_echo_before_persistence(monke
     assert "[REDACTED_ECHOED_SAMPLE_LOG]" in serialized
     assert output["provenance"]["redacted_exact_sample_log_echoes"] == 3
     assert output["partial"] is True
+
+
+def test_analysis_service_uses_window_rag_with_sanitized_provenance(monkeypatch, tmp_path):
+    aggregate = {
+        "analysis_mode": "aggregate", "total_alerts": 4, "total_groups": 1,
+        "unique_rules": 1, "unique_agents": 0, "unique_source_ips": 0,
+        "groups": [{
+            "group_key": "g", "count": 4, "max_level": 5, "rule_id": "5503",
+            "first_seen": "", "last_seen": "", "description": "PAM\x00 failed",
+            "mitre": [], "agent": "", "source_ip": "", "syscheck_path": "", "sample_log": "",
+        }],
+        "alerts": [], "timeline": [], "source_truncated": False,
+    }
+    cfg = {
+        "ollama": {"base_url": "http://localhost:11434", "allow_remote": False},
+        "extractor": {"fields": []},
+        "rag": {
+            "enabled": True, "data_dir": str(tmp_path), "embedding_model": "embed",
+        },
+        "dashboard": {},
+    }
+    captured = {}
+
+    class FakeRAG:
+        def __init__(self, **kwargs):
+            captured["rag_init"] = kwargs
+
+        def ensure_indexed(self):
+            return 0
+
+        def query(self, rule_id, description):
+            captured["query"] = (rule_id, description)
+            return [{
+                "source": "wazuh_rule", "reference_id": "5503",
+                "text": "Local reference for the rule", "distance": 0.25,
+            }]
+
+    monkeypatch.setattr(analysis_service, "RuleRAG", FakeRAG)
+    monkeypatch.setattr(
+        analysis_service, "analyze_window",
+        lambda prompt, **kwargs: (
+            captured.setdefault("prompt", prompt) and {
+                "summary": "summary", "severity": "low", "key_findings": [],
+                "mitre": [], "next_steps": [],
+            },
+            {"output_origin": "ollama_model"},
+        ),
+    )
+
+    output = analysis_service.AnalysisService(cfg).analyze_aggregate(aggregate, "qwen2.5:7b")
+
+    assert captured["query"] == ("5503", "PAM failed")
+    assert "Retrieved local reference context" in captured["prompt"]
+    assert "Local reference for the rule" in captured["prompt"]
+    rag_provenance = output["provenance"]["rag"]
+    assert rag_provenance["status"] == "used"
+    assert rag_provenance["references"] == [{
+        "source": "wazuh_rule", "reference_id": "5503", "distance": 0.25,
+    }]
+    assert "PAM failed" not in json.dumps(rag_provenance)
+    assert rag_provenance["context_chars"] <= analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS
+    assert rag_provenance["context_chars"] <= analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS
+
+
+def test_analysis_service_records_no_rag_window_truthfully(monkeypatch):
+    aggregate = {
+        "analysis_mode": "full", "total_alerts": 1, "total_groups": 1,
+        "unique_rules": 1, "unique_agents": 0, "unique_source_ips": 0,
+        "groups": [{
+            "group_key": "g", "count": 1, "max_level": 3, "rule_id": "1",
+            "first_seen": "", "last_seen": "", "description": "one", "mitre": [],
+            "agent": "", "source_ip": "", "syscheck_path": "", "sample_log": "",
+        }],
+        "alerts": [], "timeline": [], "source_truncated": False,
+    }
+    cfg = {
+        "ollama": {"base_url": "http://localhost:11434", "allow_remote": False},
+        "extractor": {"fields": []}, "rag": {"enabled": False}, "dashboard": {},
+    }
+    captured = {}
+    monkeypatch.setattr(
+        analysis_service, "analyze_window",
+        lambda prompt, **kwargs: (
+            captured.setdefault("prompt", prompt) and {
+                "summary": "summary", "severity": "low", "key_findings": [],
+                "mitre": [], "next_steps": [],
+            },
+            {"output_origin": "ollama_model"},
+        ),
+    )
+
+    output = analysis_service.AnalysisService(cfg).analyze_aggregate(aggregate, "qwen2.5:7b")
+
+    assert "No retrieved reference context was used" in captured["prompt"]
+    assert output["provenance"]["rag"]["status"] == "disabled"
+
+
+def test_analysis_service_bounds_total_window_rag_context(monkeypatch):
+    aggregate = {
+        "analysis_mode": "aggregate", "total_alerts": 2, "total_groups": 2,
+        "unique_rules": 2, "unique_agents": 0, "unique_source_ips": 0,
+        "groups": [
+            {"rule_id": "1", "description": "one", "count": 1, "max_level": 3,
+             "first_seen": "", "last_seen": "", "agent": "", "source_ip": "",
+             "syscheck_path": "", "mitre": [], "sample_log": ""},
+            {"rule_id": "2", "description": "two", "count": 1, "max_level": 3,
+             "first_seen": "", "last_seen": "", "agent": "", "source_ip": "",
+             "syscheck_path": "", "mitre": [], "sample_log": ""},
+        ], "alerts": [], "timeline": [], "source_truncated": False,
+    }
+    cfg = {
+        "ollama": {"base_url": "http://localhost:11434", "allow_remote": False},
+        "extractor": {"fields": []},
+        "rag": {"enabled": True, "data_dir": "rag_data", "embedding_model": "embed"},
+        "dashboard": {},
+    }
+
+    class FakeRAG:
+        def __init__(self, **kwargs):
+            pass
+
+        def ensure_indexed(self):
+            return 0
+
+        def query(self, rule_id, description):
+            return [{"source": "rule", "reference_id": rule_id, "distance": 0.1,
+                     "text": "x" * analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS}]
+
+    monkeypatch.setattr(analysis_service, "RuleRAG", FakeRAG)
+    monkeypatch.setattr(
+        analysis_service, "analyze_window",
+        lambda *_args, **_kwargs: ({"summary": "summary", "severity": "low", "key_findings": ["finding"],
+                                    "mitre": [], "next_steps": ["review"]}, {}),
+    )
+    output = analysis_service.AnalysisService(cfg).analyze_aggregate(aggregate, "qwen2.5:7b")
+
+    rag_provenance = output["provenance"]["rag"]
+    assert rag_provenance["context_chars"] <= analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS
+
+
+def test_analysis_service_bounds_total_window_rag_context(monkeypatch):
+    aggregate = {
+        "analysis_mode": "aggregate", "total_alerts": 2, "total_groups": 2,
+        "unique_rules": 2, "unique_agents": 0, "unique_source_ips": 0,
+        "groups": [
+            {"rule_id": "1", "description": "one", "count": 1, "max_level": 3,
+             "first_seen": "", "last_seen": "", "agent": "", "source_ip": "",
+             "syscheck_path": "", "mitre": [], "sample_log": ""},
+            {"rule_id": "2", "description": "two", "count": 1, "max_level": 3,
+             "first_seen": "", "last_seen": "", "agent": "", "source_ip": "",
+             "syscheck_path": "", "mitre": [], "sample_log": ""},
+        ], "alerts": [], "timeline": [], "source_truncated": False,
+    }
+    cfg = {
+        "ollama": {"base_url": "http://localhost:11434", "allow_remote": False},
+        "extractor": {"fields": []},
+        "rag": {"enabled": True, "data_dir": "rag_data", "embedding_model": "embed"},
+        "dashboard": {},
+    }
+
+    class FakeRAG:
+        def __init__(self, **kwargs):
+            pass
+
+        def ensure_indexed(self):
+            return 0
+
+        def query(self, rule_id, description):
+            return [{"source": "rule", "reference_id": rule_id, "distance": 0.1,
+                     "text": "x" * analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS}]
+
+    monkeypatch.setattr(analysis_service, "RuleRAG", FakeRAG)
+    monkeypatch.setattr(
+        analysis_service, "analyze_window",
+        lambda *_args, **_kwargs: ({"summary": "summary", "severity": "low", "key_findings": ["finding"],
+                                    "mitre": [], "next_steps": ["review"]}, {}),
+    )
+    output = analysis_service.AnalysisService(cfg).analyze_aggregate(aggregate, "qwen2.5:7b")
+
+    rag_provenance = output["provenance"]["rag"]
+    assert rag_provenance["context_chars"] <= analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS
