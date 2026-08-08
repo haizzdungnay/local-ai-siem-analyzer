@@ -1,6 +1,7 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-08-05
+Ngày cập nhật: 2026-08-06
+Đã xuất dữ liệu Chương 4: toàn bộ số liệu thực nghiệm đo đạc thực tế từ repo đã được xuất ra file `SoLieuC4.md` (môi trường, bộ dữ liệu 33 case, kiểm thử FR-01->FR-08, tỷ lệ schema 97.0% vs 100%, điểm AI-judge 3.44 vs 3.30, latency 2.716s vs 2.173s, VRAM 4.7GB vs 2.5GB). Đã kích hoạt mô hình `CyberCrew/notmythos-8b:latest` trên Web UI dropdown thông qua `config.yaml`. Đã thực hiện kiểm thử tấn công thực tế từ Kali (`192.168.100.30`) đến Victim (`192.168.100.20`), đẩy alert lên Wazuh Indexer và chạy window analysis trên Web UI (`127.0.0.1:8765`), lưu trữ kết quả kiểm thử vào SQLite Database (`dashboard_data/dashboard.db`) cho cả 2 mô hình (Job #26 `qwen2.5:7b` thành công `succeeded` và Job #27 `CyberCrew/notmythos-8b:latest` rơi vào `local_fallback` `partial` do vi phạm strict JSON schema trên prompt aggregate window). Đã cập nhật Mục 4.6 Bảng 4.4 vào `SoLieuC4.md`. Không sửa code ứng dụng core hay giả lập số liệu.
 Hardening đã merge: `origin/main` commit `04cae1b` qua PR #4; cả bốn job CI Ubuntu/Windows × Python 3.11/3.12 xanh.
 Closeout branch hiện tại: `codex/pr4-closeout`, chỉ đồng bộ ledger merge này trước khi kết thúc phiên.
 Continuity: đã thêm `CLAUDE.md` và `.githooks/pre-commit`; mỗi clone cần chạy `git config core.hooksPath .githooks` để bật ledger gate.

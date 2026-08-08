@@ -6,6 +6,11 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ## [Unreleased]
 
 ### Added
+- Thêm `CyberCrew/notmythos-8b` và `CyberCrew/notmythos-8b:latest` vào `dashboard.allowed_models` trong `ai_module/config.yaml`.
+- Thực thi kiểm thử tấn công thực tế từ Kali (`192.168.100.30`) trên Web UI (`127.0.0.1:8765`), lưu trữ kết quả kiểm thử đối chứng vào SQLite Database (`dashboard_data/dashboard.db`) (Job #26 `qwen2.5:7b` - `succeeded` và Job #27 `CyberCrew/notmythos-8b:latest` - `partial`).
+- Cập nhật Mục 4.6 Bảng 4.4 và nhận xét so sánh kiểm thử thực tế Web UI / SQLite vào `SoLieuC4.md`.
+- Chạy benchmark mô hình đối chứng `CyberCrew/notmythos-8b` trên 33 case eval và cập nhật bảng so sánh 2 mô hình vào `SoLieuC4.md` (độ trễ 2.173s vs 2.716s, điểm AI Judge 3.30 vs 3.44, JSON valid 100% vs 97.0%, VRAM 2.5GB vs 4.7GB).
+- Xuất toàn bộ số liệu thực nghiệm đo đạc thực tế từ repo ra file `SoLieuC4.md` phục vụ biên soạn Báo cáo Chương 4 (môi trường phần cứng/phần mềm, kho tri thức RAG, bộ dữ liệu 33 case sanitized-live, kiểm thử chức năng, tỷ lệ JSON valid 97.0%, điểm chất lượng AI judge, độ trễ và tài nguyên tiêu thụ).
 - Release closeout PR #4: all four GitHub matrix jobs (Ubuntu/Windows × Python 3.11/3.12) passed; squash merge landed at `origin/main` `04cae1b`.
 - Verified hardening slice 2026-08-05: dashboard window retrieval dùng RAG theo rule group đã sanitize, có threshold distance, context bound, provenance/export scrub và trạng thái truthful. RAG build sang Chroma collection generation mới, chỉ atomically đổi manifest active sau khi đầy đủ embedding; manifest ghi corpus/schema và embedding-model digest khi Ollama cung cấp metadata.
 - Cancellation terminal commit: worker lưu result và trạng thái `succeeded|partial` trong một SQLite transaction chỉ khi `cancel_requested=0`; cancel thắng ở pha `saving_result` không tạo result row hay success giả.
