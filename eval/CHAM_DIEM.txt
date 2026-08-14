@@ -1,0 +1,938 @@
+======================================================================
+CASE 1/20 : ambiguous-506-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "extra_data": "victim-ubuntu->any"
+  },
+  "rule": {
+    "id": "506",
+    "level": 3,
+    "description": "Wazuh agent stopped.",
+    "mitre": {
+      "technique": [
+        "Disable or Modify Tools"
+      ],
+      "id": [
+        "T1562.001"
+      ],
+      "tactic": [
+        "Defense Evasion"
+      ]
+    }
+  },
+  "full_log": "ossec: Agent stopped: 'victim-ubuntu->any'."
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Wazuh agent đã bị dừng hoạt động trên máy chủ victim-ubuntu.",
+  "root_cause": "Nguyên nhân có thể do người dùng cố gắng thay đổi cấu hình hoặc diệt phần mềm giám sát Wazuh, nhằm tránh phát hiện các hành động gây nghi ngờ.",
+  "severity": "medium",
+  "mitre": "T1562.001 / Defense Evasion",
+  "next_steps": [
+    "Kiểm tra lại trạng thái và cấu hình của agent Wazuh để đảm bảo hoạt động bình thường",
+    "Theo dõi các log khác của hệ thống để phát hiện bất kỳ hành vi nghi ngờ nào",
+    "Nếu tình trạng này tiếp diễn, cân nhắc tăng cường giám sát và bảo vệ bổ sung cho máy chủ."
+  ]
+}
+
+======================================================================
+CASE 2/20 : ambiguous-510-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "file": "/usr/bin/diff",
+    "title": "Trojaned version of file detected."
+  },
+  "rule": {
+    "id": "510",
+    "level": 7,
+    "description": "Host-based anomaly detection event (rootcheck)."
+  },
+  "full_log": "Trojaned version of file '/usr/bin/diff' detected. Signature used: 'bash|^/bin/sh|file\\.h|proc\\.h|/dev/[^n]|^/bin/.*sh' (Generic)."
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Tài khoản root hoặc chương trình chạy dưới quyền root phát hiện được một biến thể độc hại của file '/usr/bin/diff'.",
+  "root_cause": "File '/usr/bin/diff' bị thay đổi, có khả năng bị làm gián điệp (trojaned).",
+  "severity": "medium",
+  "mitre": "T1059.002 / Command and Scripting Interpreter: Restricted Privileges, T1136 / External Tool",
+  "next_steps": [
+    "Kiểm tra lịch sử thay đổi file '/usr/bin/diff' để xác định ai đã thực hiện việc này và vì sao.",
+    "Xác minh tính toàn vẹn của các file quan trọng khác trên hệ thống.",
+    "Theo dõi hoạt động mạng và log hệ thống trong vài giờ tới, xem có dấu hiệu tấn công web nào không."
+  ]
+}
+
+======================================================================
+CASE 3/20 : benign-23502-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "vulnerability": {
+      "reference": "https://bugzilla.samba.org/show_bug.cgi?id=15103, https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/ZTTOLTHUHOV4SHCHCB5TAA4FQVJAWN4P/, https://gitlab.com/samba-team/samba/-/merge_requests/2644, https://security.gentoo.org/glsa/202309-06",
+      "severity": "Medium",
+      "cve": "CVE-2022-1615",
+      "package": {
+        "name": "samba-libs",
+        "version": "2:4.15.13+dfsg-0ubuntu1.12",
+        "architecture": "amd64"
+      },
+      "published": "2022-09-01T21:15:08Z",
+      "enumeration": "CVE",
+      "title": "CVE-2022-1615 affecting samba-libs was solved",
+      "type": "Packages",
+      "cvss": {
+        "cvss3": {
+          "base_score": "5.500000"
+        }
+      },
+      "updated": "2025-08-22T20:19:52Z",
+      "status": "Solved"
+    }
+  },
+  "rule": {
+    "id": "23502",
+    "level": 3,
+    "description": "The CVE-2022-1615 that affected samba-libs was solved due to an update in the agent or feed."
+  }
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Hệ thống đã nhận được bản cập nhật liên quan đến CVE-2022-1615, một lỗ hổng ảnh hưởng đến samba-libs.",
+  "root_cause": "Lỗ hổng đã được ghi nhận và khắc phục thông qua bản cập nhật hệ thống.",
+  "severity": "unknown",
+  "mitre": "T1190 / Exploit Public-Facing Application (trong cảnh báo bổ sung)",
+  "next_steps": [
+    "Kiểm tra log chi tiết để xem có dấu hiệu tấn công web nào không, đặc biệt là SQL injection hoặc XSS.",
+    "Xác minh rằng tất cả các dịch vụ đang chạy trên hệ thống đều đã được cập nhật đúng bản mới nhất."
+  ]
+}
+
+======================================================================
+CASE 4/20 : benign-23502-02
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "vulnerability": {
+      "reference": "https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/5c578b15-d619-408d-ba17-380714b89fd1, https://bugzilla.samba.org/show_bug.cgi?id=14833, https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/ZTTOLTHUHOV4SHCHCB5TAA4FQVJAWN4P/, https://security.gentoo.org/glsa/202309-06",
+      "severity": "High",
+      "cve": "CVE-2022-32743",
+      "package": {
+        "name": "samba-libs",
+        "version": "2:4.15.13+dfsg-0ubuntu1.12",
+        "architecture": "amd64"
+      },
+      "published": "2022-09-01T21:15:10Z",
+      "enumeration": "CVE",
+      "title": "CVE-2022-32743 affecting samba-libs was solved",
+      "type": "Packages",
+      "cvss": {
+        "cvss3": {
+          "base_score": "7.500000"
+        }
+      },
+      "updated": "2025-08-22T10:31:41Z",
+      "status": "Solved"
+    }
+  },
+  "rule": {
+    "id": "23502",
+    "level": 3,
+    "description": "The CVE-2022-32743 that affected samba-libs was solved due to an update in the agent or feed."
+  }
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Hệ thống đã nhận bản cập nhật fix lỗ hổng CVE-2022-32743 trong samba-libs.",
+  "root_cause": "Lỗ hổng đã được xác định và vá qua bản cập nhật hệ thống.",
+  "severity": "low",
+  "mitre": "T1190 / Exploit Public-Facing Application",
+  "next_steps": [
+    "Xác minh rằng tất cả các dịch vụ liên quan đã được cập nhật.",
+    "Kiểm tra log hệ thống cho dấu hiệu bất thường sau cập nhật."
+  ]
+}
+
+======================================================================
+CASE 5/20 : benign-23502-03
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "vulnerability": {
+      "reference": "https://bugzilla.samba.org/show_bug.cgi?id=15103, https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/ZTTOLTHUHOV4SHCHCB5TAA4FQVJAWN4P/, https://gitlab.com/samba-team/samba/-/merge_requests/2644, https://security.gentoo.org/glsa/202309-06",
+      "severity": "Medium",
+      "cve": "CVE-2022-1615",
+      "package": {
+        "name": "libwbclient0",
+        "version": "2:4.15.13+dfsg-0ubuntu1.12",
+        "architecture": "amd64"
+      },
+      "published": "2022-09-01T21:15:08Z",
+      "enumeration": "CVE",
+      "title": "CVE-2022-1615 affecting libwbclient0 was solved",
+      "type": "Packages",
+      "cvss": {
+        "cvss3": {
+          "base_score": "5.500000"
+        }
+      },
+      "updated": "2025-08-22T20:19:52Z",
+      "status": "Solved"
+    }
+  },
+  "rule": {
+    "id": "23502",
+    "level": 3,
+    "description": "The CVE-2022-1615 that affected libwbclient0 was solved due to an update in the agent or feed."
+  }
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Hệ thống đã cập nhật libwbclient0 sau khi phát hiện lỗ hổng CVE-2022-1615.",
+  "root_cause": "Lỗ hổng đã được xác định và hệ thống đã tự động cập nhật.",
+  "severity": "low",
+  "mitre": "N/A",
+  "next_steps": [
+    "Kiểm tra log chi tiết của cập nhật để đảm bảo quá trình update không gặp vấn đề."
+  ]
+}
+
+======================================================================
+CASE 6/20 : benign-23502-05
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "vulnerability": {
+      "reference": "https://bugzilla.samba.org/show_bug.cgi?id=15103, https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/ZTTOLTHUHOV4SHCHCB5TAA4FQVJAWN4P/, https://gitlab.com/samba-team/samba/-/merge_requests/2644, https://security.gentoo.org/glsa/202309-06",
+      "severity": "Medium",
+      "cve": "CVE-2022-1615",
+      "package": {
+        "name": "libsmbclient",
+        "version": "2:4.15.13+dfsg-0ubuntu1.12",
+        "architecture": "amd64"
+      },
+      "published": "2022-09-01T21:15:08Z",
+      "enumeration": "CVE",
+      "title": "CVE-2022-1615 affecting libsmbclient was solved",
+      "type": "Packages",
+      "cvss": {
+        "cvss3": {
+          "base_score": "5.500000"
+        }
+      },
+      "updated": "2025-08-22T20:19:52Z",
+      "status": "Solved"
+    }
+  },
+  "rule": {
+    "id": "23502",
+    "level": 3,
+    "description": "The CVE-2022-1615 that affected libsmbclient was solved due to an update in the agent or feed."
+  }
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Hệ thống đã nhận bản cập nhật libsmbclient để修补 CVE-2022-1615。同时，服务器接收到HTTP 200响应的潜在攻击请求，检测到新文件添加，并成功调度了Windows软件保护服务。",
+  "root_cause": "系统已更新libsmbclient以修复CVE-2022-1615漏洞；然而，存在可疑的Web攻击请求和新增文件可能指示潜在威胁。",
+  "severity": "medium",
+  "mitre": "T1190 / Web-based Exploitation, T1073.101 / Create Process or Job (web attack), T1053.204 / Execute Command",
+  "next_steps": [
+    "审核并确认此次libsmbclient更新的具体内容和原因，确保是预期的修复。",
+    "调查HTTP 200响应的可疑请求，检查是否有SQL注入、XSS或其他Web攻击特征。",
+    "监控新增文件，确定其来源和用途，并执行必要的安全扫描以检测恶意软件或后门程序。",
+    "审查Windows软件保护服务的日志，确认其正常调度，排除误报可能性。"
+  ]
+}
+
+======================================================================
+CASE 7/20 : benign-23502-06
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "vulnerability": {
+      "reference": "https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/5c578b15-d619-408d-ba17-380714b89fd1, https://bugzilla.samba.org/show_bug.cgi?id=14833, https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/ZTTOLTHUHOV4SHCHCB5TAA4FQVJAWN4P/, https://security.gentoo.org/glsa/202309-06",
+      "severity": "High",
+      "cve": "CVE-2022-32743",
+      "package": {
+        "name": "libsmbclient",
+        "version": "2:4.15.13+dfsg-0ubuntu1.12",
+        "architecture": "amd64"
+      },
+      "published": "2022-09-01T21:15:10Z",
+      "enumeration": "CVE",
+      "title": "CVE-2022-32743 affecting libsmbclient was solved",
+      "type": "Packages",
+      "cvss": {
+        "cvss3": {
+          "base_score": "7.500000"
+        }
+      },
+      "updated": "2025-08-22T10:31:41Z",
+      "status": "Solved"
+    }
+  },
+  "rule": {
+    "id": "23502",
+    "level": 3,
+    "description": "The CVE-2022-32743 that affected libsmbclient was solved due to an update in the agent or feed."
+  }
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Đã có một cập nhật mới cho agent, giải quyết vấn đề CVE-2022-32743 liên quan đến libsmbclient.",
+  "root_cause": "Có thể có hoạt động hợp lệ (cài đặt phần mềm) hoặc tấn công tiềm năng (như web attack)",
+  "severity": "low",
+  "mitre": "T1569.002 / Software Token manipulation, T1134.003 / Normal Service Operation (nếu là update bình thường của Windows)",
+  "next_steps": [
+    "Kiểm tra lịch sử cập nhật trên hệ thống để xác nhận rằng đây là một cập nhật chính thức từ nhà cung cấp",
+    "Theo dõi các cảnh báo liên quan khác như web attack và file added to the system"
+  ]
+}
+
+======================================================================
+CASE 8/20 : benign-503-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "extra_data": "victim-ubuntu->any"
+  },
+  "rule": {
+    "id": "503",
+    "level": 3,
+    "description": "Wazuh agent started."
+  },
+  "full_log": "ossec: Agent started: 'victim-ubuntu->any'."
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Wazuh agent đã khởi động trên máy chủ victim-ubuntu.",
+  "root_cause": "Khởi động lại hệ thống hoặc cài đặt/pauses wazuh-agent.",
+  "severity": "low",
+  "mitre": "T1053.002 - System Service Management (Windows Services)",
+  "next_steps": [
+    "Kiểm tra log Windows và Wazuh để xác định nguyên nhân cụ thể của việc khởi động lại agent.",
+    "Nếu không có sự kiện đặc biệt khác thường, không cần xử lý ngay."
+  ]
+}
+
+======================================================================
+CASE 9/20 : benign-5502-02
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "5502",
+    "level": 3,
+    "description": "PAM: Login session closed."
+  },
+  "full_log": "victim-ubuntu sudo: pam_unix(sudo:session): session closed for user root"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Tài khoản root đã đóng session sau một phiên sử dụng sudo.",
+  "root_cause": "Việc dùng sudo để thực hiện lệnh quản trị tự nhiên sẽ dẫn đến việc đóng session PAM.",
+  "severity": "low",
+  "mitre": "N/A",
+  "next_steps": [
+    "Theo dõi log hệ thống và kiểm tra các hành động khác liên quan đến tài khoản root."
+  ]
+}
+
+======================================================================
+CASE 10/20 : fim-554-02
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "syscheck": {
+    "uname_after": "root",
+    "mtime_after": "2026-07-29T01:11:33",
+    "size_after": "381",
+    "gid_after": "7",
+    "mode": "realtime",
+    "path": "/etc/cups/subscriptions.conf.N",
+    "sha1_after": "c1a75f1b46ad34f1543a9b96c150bd1e4c49e7a8",
+    "gname_after": "lp",
+    "uid_after": "0",
+    "perm_after": "rw-r-----",
+    "event": "added",
+    "md5_after": "9487347a51298d3f2278428ec5f7b15d",
+    "sha256_after": "2d49e29ffae4b9cf09c65e064ffd3b1967ac630664fed657ed00c32b84072ab6",
+    "inode_after": 1837497
+  },
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "rule": {
+    "id": "554",
+    "level": 5,
+    "description": "File added to the system."
+  },
+  "full_log": "File '/etc/cups/subscriptions.conf.N' added\nMode: realtime\n"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Một file mới '/etc/cups/subscriptions.conf.N' đã được thêm vào hệ thống.",
+  "root_cause": "Hoạt động cài đặt phần mềm hoặc thay đổi cấu hình.",
+  "severity": "low",
+  "mitre": "T1070.002 Data and Content Modification - Modify System or User Configuration",
+  "next_steps": [
+    "Kiểm tra lịch sử thay đổi file và xem liệu có sự cài đặt mới hoặc cập nhật hệ thống nào gần đây không.",
+    "Xác minh mục tiêu của việc thay đổi cấu hình CUPS (Common Unix Printing System) này."
+  ]
+}
+
+======================================================================
+CASE 11/20 : ssh-2502-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcip": "10.0.0.30",
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "2502",
+    "level": 10,
+    "description": "syslog: User missed the password more than one time",
+    "mitre": {
+      "technique": [
+        "Brute Force"
+      ],
+      "id": [
+        "T1110"
+      ],
+      "tactic": [
+        "Credential Access"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: PAM 4 more authentication failures; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.0.0.30  user=root"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Hệ thống đã nhận được 5 lần đăng nhập SSH thất bại liên tiếp từ IP 10.0.0.30 vào tài khoản root.",
+  "root_cause": "Có khả năng đang xảy ra tấn công dò mật khẩu (brute-force) qua SSH nhắm vào tài khoản root.",
+  "severity": "high",
+  "mitre": "T1110 / Credential Access",
+  "next_steps": [
+    "Kiểm tra lại danh sách IP có nghi ngờ để xem nếu nó đã được chặn trước đó",
+    "Thay đổi mật khẩu cho tài khoản root và các tài khoản khác nếu cần thiết",
+    "Cập nhật firewall rules để hạn chế kết nối từ nguồn IP bất thường",
+    "Xem xét việc sử dụng rate-limiting trên SSH"
+  ]
+}
+
+======================================================================
+CASE 12/20 : ssh-5503-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "uid": "0",
+    "srcip": "10.0.0.30",
+    "euid": "0",
+    "dstuser": "root",
+    "tty": "ssh"
+  },
+  "rule": {
+    "id": "5503",
+    "level": 5,
+    "description": "PAM: User login failed.",
+    "mitre": {
+      "technique": [
+        "Password Guessing"
+      ],
+      "id": [
+        "T1110.001"
+      ],
+      "tactic": [
+        "Credential Access"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.0.0.30  user=root"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Đăng nhập SSH thất bại từ IP 10.0.0.30 vào tài khoản root.",
+  "root_cause": "Tài khoản root có thể bị dò mật khẩu (brute-force) qua SSH.",
+  "severity": "medium",
+  "mitre": "T1110 / Credential Access",
+  "next_steps": [
+    "Kiểm tra lịch sử login gần đây để xem nếu còn nhiều lần thất bại khác từ IP này.",
+    "Xác minh lại mật khẩu root và thay đổi nếu cần thiết.",
+    "Bật rate-limiting cho SSH hoặc chặn IP nguồn 10.0.0.30 trong firewall."
+  ]
+}
+
+======================================================================
+CASE 13/20 : ssh-5503-03
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "uid": "0",
+    "srcip": "10.0.0.1",
+    "euid": "0",
+    "tty": "ssh"
+  },
+  "rule": {
+    "id": "5503",
+    "level": 5,
+    "description": "PAM: User login failed.",
+    "mitre": {
+      "technique": [
+        "Password Guessing"
+      ],
+      "id": [
+        "T1110.001"
+      ],
+      "tactic": [
+        "Credential Access"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.0.0.1 "
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Số lần đăng nhập SSH thất bại từ IP 10.0.0.1 vào hệ thống victim-ubuntu.",
+  "root_cause": "Dò mật khẩu (brute-force) thông qua các thất bại trong việc xác thực tài khoản SSH.",
+  "severity": "medium",
+  "mitre": "T1110 / Credential Access",
+  "next_steps": [
+    "Kiểm tra lịch sử đăng nhập để xem nếu có nhiều lần thất bại từ IP này",
+    "Cân nhắc tăng cường bảo mật SSH như kích hoạt fail2ban hoặc chặn IP.",
+    "Kiểm tra các log khác để xác định có dấu hiệu dò quét tài khoản không"
+  ]
+}
+
+======================================================================
+CASE 14/20 : ssh-5710-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcuser": "invalid-user-b",
+    "srcip": "10.0.0.1"
+  },
+  "rule": {
+    "id": "5710",
+    "level": 5,
+    "description": "sshd: Attempt to login using a non-existent user",
+    "mitre": {
+      "technique": [
+        "Password Guessing",
+        "SSH"
+      ],
+      "id": [
+        "T1110.001",
+        "T1021.004"
+      ],
+      "tactic": [
+        "Credential Access",
+        "Lateral Movement"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: Failed password for invalid user invalid-user-b from 10.0.0.1 port 40000 ssh2"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Thành viên mạng cố gắng đăng nhập SSH bằng một tài khoản không tồn tại.",
+  "root_cause": "Một người dùng đang thực hiện việc dò quét tài khoản (user enumeration) để tìm kiếm tài khoản SSH khả dụng trước khi tiến hành tấn công brute-force.",
+  "severity": "medium",
+  "mitre": "T1110.001 / Credential Access, T1021.004 / Password Guessing",
+  "next_steps": [
+    "Kiểm tra lịch sử đăng nhập SSH để xác minh liệu có dấu hiệu tấn công brute-force không.",
+    "Xem xét việc giới hạn số lần thử đăng nhập thất bại trước khi khóa tài khoản hoặc IP nguồn."
+  ]
+}
+
+======================================================================
+CASE 15/20 : ssh-5710-02
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcuser": "invalid-user-b",
+    "srcip": "10.0.0.1"
+  },
+  "rule": {
+    "id": "5710",
+    "level": 5,
+    "description": "sshd: Attempt to login using a non-existent user",
+    "mitre": {
+      "technique": [
+        "Password Guessing",
+        "SSH"
+      ],
+      "id": [
+        "T1110.001",
+        "T1021.004"
+      ],
+      "tactic": [
+        "Credential Access",
+        "Lateral Movement"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: Invalid user invalid-user-b from 10.0.0.1 port 40000"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Có một cố gắng đăng nhập SSH bằng tên người dùng không tồn tại từ địa chỉ IP 10.0.0.1.",
+  "root_cause": "Tấn công viên đang thực hiện user enumeration để tìm tài khoản SSH có thể tấn công.",
+  "severity": "low",
+  "mitre": "T1110 / Credential Access, T1021.004 / Password Guessing",
+  "next_steps": [
+    "Theo dõi các attempt login khác từ IP này trong một khoảng thời gian để xem có sự cố gắng brute-force không.",
+    "Cập nhật danh sách chặn IP nếu cần thiết."
+  ]
+}
+
+======================================================================
+CASE 16/20 : ssh-5760-02
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "rule": {
+    "id": "5760",
+    "level": 5,
+    "description": "sshd: authentication failed.",
+    "mitre": {
+      "technique": [
+        "Password Guessing",
+        "SSH"
+      ],
+      "id": [
+        "T1110.001",
+        "T1021.004"
+      ],
+      "tactic": [
+        "Credential Access",
+        "Lateral Movement"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: message repeated 4 times: [ Failed password for root from 10.0.0.30 port 40000 ssh2]"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Nhiều lần thất bại khi đăng nhập SSH vào tài khoản root từ một địa chỉ IP cụ thể.",
+  "root_cause": "Đây có thể là hành động brute-force để tìm ra mật khẩu của tài khoản root.",
+  "severity": "medium",
+  "mitre": "T1110 / Credential Access, T1021.004 / Password Guessing",
+  "next_steps": [
+    "Kiểm tra IP nguồn 10.0.0.30 xem có phải là từ một nguồn đáng nghi ngờ hay không.",
+    "Bật rate-limit cho SSH để ngăn chặn việc thử mật khẩu lặp đi lặp lại.",
+    "Xem xét việc triển khai CAPTCHA hoặc hai yếu tố xác thực cho SSH."
+  ]
+}
+
+======================================================================
+CASE 17/20 : ssh-5760-03
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "srcip": "10.0.0.1",
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "5760",
+    "level": 5,
+    "description": "sshd: authentication failed.",
+    "mitre": {
+      "technique": [
+        "Password Guessing",
+        "SSH"
+      ],
+      "id": [
+        "T1110.001",
+        "T1021.004"
+      ],
+      "tactic": [
+        "Credential Access",
+        "Lateral Movement"
+      ]
+    }
+  },
+  "full_log": "victim-ubuntu sshd[1000]: Failed password for root from 10.0.0.1 port 40000 ssh2"
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Có một yêu cầu đăng nhập SSH thất bại từ IP 10.0.0.1 vào tài khoản root.",
+  "root_cause": "IP nguồn đang cố gắng thử nhiều mật khẩu cho tài khoản root qua SSH, đây là dấu hiệu của tấn công dò mật khẩu (brute-force).",
+  "severity": "medium",
+  "mitre": "T1110 / Credential Access, T1021.004 / Password Guessing",
+  "next_steps": [
+    "Kiểm tra xem IP 10.0.0.1 có trong danh sách đen không và nếu chưa thì nên chặn nó.",
+    "Bật rate-limit cho SSH trên hệ thống victim-ubuntu để ngăn chặn việc tấn công dò mật khẩu.",
+    "Theo dõi log của SSH để phát hiện các hoạt động bất thường khác."
+  ]
+}
+
+======================================================================
+CASE 18/20 : web-31101-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "protocol": "GET",
+    "srcip": "10.0.0.30",
+    "id": "404",
+    "url": "/etc/passwd"
+  },
+  "rule": {
+    "level": 5,
+    "description": "Web server 400 error code.",
+    "id": "31101"
+  },
+  "full_log": "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /etc/passwd HTTP/1.1\" 404 437 \"-\" \"curl/8.18.0\""
+}
+
+--- KET QUA AI ---
+{
+  "summary": "IP 10.0.0.30 đã thực hiện yêu cầu GET đến tệp /etc/passwd của máy chủ web, dẫn đến phản hồi HTTP 404.",
+  "root_cause": "Yêu cầu được gửi từ IP này có thể chứa dấu hiệu SQL injection hoặc path traversal, nhưng không đủ thông tin để xác định chắc chắn.",
+  "severity": "low",
+  "mitre": "T1190 / Exploit Public-Facing Application",
+  "next_steps": [
+    "Kiểm tra nhật ký web server cho các yêu cầu tương tự từ IP 10.0.0.30 để xác định xu hướng",
+    "Thực hiện phân tích sâu hơn vào đầu vào request có dấu hiệu SQL injection hoặc path traversal",
+    "Nếu cần thiết, chặn IP này hoặc áp dụng rate limiting"
+  ]
+}
+
+======================================================================
+CASE 19/20 : web-31105-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "protocol": "GET",
+    "srcip": "10.0.0.30",
+    "id": "404",
+    "url": "/<script>alert(1)</script>"
+  },
+  "rule": {
+    "level": 6,
+    "description": "XSS (Cross Site Scripting) attempt.",
+    "mitre": {
+      "technique": [
+        "JavaScript"
+      ],
+      "id": [
+        "T1059.007"
+      ],
+      "tactic": [
+        "Execution"
+      ]
+    },
+    "id": "31105"
+  },
+  "full_log": "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /<script>alert(1)</script> HTTP/1.1\" 404 437 \"-\" \"curl/8.18.0\""
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Nổi bật một yêu cầu GET chứa script độc hại đến từ IP 10.0.0.30, có thể là nỗ lực thực thi mã JavaScript không mong muốn.",
+  "root_cause": "Yêu cầu GET bao gồm mã script độc hại, gợi ý khả năng dò tìm hoặc tấn công XSS.",
+  "severity": "medium",
+  "mitre": "T1059.007 / Execution / JavaScript",
+  "next_steps": [
+    "Kiểm tra các yêu cầu tương tự từ IP 10.0.0.30 trong thời gian gần đây để xem có dấu hiệu tấn công khác không.",
+    "Cân nhắc kiểm tra nhật ký hệ thống webserver cho các yêu cầu tương tự.",
+    "Nếu cần, thực hiện biện pháp bảo vệ chống XSS trên ứng dụng hoặc trang web."
+  ]
+}
+
+======================================================================
+CASE 20/20 : web-31151-01
+======================================================================
+
+--- CANH BAO GOC ---
+{
+  "agent": {
+    "ip": "10.0.0.20",
+    "name": "victim-ubuntu",
+    "id": "001"
+  },
+  "data": {
+    "protocol": "GET",
+    "srcip": "10.0.0.30",
+    "id": "404",
+    "url": "/level/16/level/16/exec//show/interfaces/status"
+  },
+  "rule": {
+    "level": 10,
+    "description": "Multiple web server 400 error codes from same source ip.",
+    "mitre": {
+      "technique": [
+        "Vulnerability Scanning"
+      ],
+      "id": [
+        "T1595.002"
+      ],
+      "tactic": [
+        "Reconnaissance"
+      ]
+    },
+    "id": "31151"
+  },
+  "full_log": "10.0.0.30 - - [01/Jan/2026:00:00:00 +0000] \"GET /level/16/level/16/exec//show/interfaces/status HTTP/1.1\" 404 492 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.6282.50 Safari/537.36 OPR/104.0.0.0\""
+}
+
+--- KET QUA AI ---
+{
+  "summary": "Source IP 10.0.0.30 gửi nhiều yêu cầu GET không hợp lệ đến web server của victim-ubuntu, dẫn đến phản hồi HTTP 404.",
+  "root_cause": "Yêu cầu GET có chứa chuỗi ký tự nghi vấn SQL injection hoặc path traversal, gây ra lỗi không tìm thấy (HTTP 404).",
+  "severity": "medium",
+  "mitre": "T1595.002 / Reconnaissance / Vulnerability Scanning",
+  "next_steps": [
+    "Kiểm tra logs web server để xác định xem có yêu cầu giống như này đã thành công thay đổi trạng thái của hệ thống hay chưa.",
+    "Cân nhắc chặn IP nguồn 10.0.0.30 nếu số lượng yêu cầu bất thường tiếp tục tăng.",
+    "Rà soát và cập nhật các quy tắc lọc để ngăn chặn các chuỗi ký tự nghi vấn SQL injection."
+  ]
+}

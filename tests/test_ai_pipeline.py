@@ -205,6 +205,51 @@ def test_analyze_alert_forwards_timeout_to_ollama(monkeypatch):
     assert captured == {"host": "http://localhost:11434", "timeout": 9}
 
 
+def test_advanced_llm_parameters_reach_ollama_without_exposing_custom_prompt(monkeypatch):
+    captured = {}
+
+    class Client:
+        def __init__(self, **kwargs):
+            return None
+
+        def chat(self, **kwargs):
+            captured.update(kwargs)
+            return {"message": {"content": json.dumps({
+                "summary": "summary", "root_cause": "cause", "severity": "low",
+                "mitre": "", "next_steps": ["Review the alert."],
+            })}}
+
+    monkeypatch.setattr(llm.ollama_sdk, "Client", Client)
+    _, provenance = llm.analyze_alert(
+        "alert", include_provenance=True,
+        llm_parameters={
+            "temperature": 0.35, "top_p": 0.7, "max_tokens": 512,
+            "system_prompt": "Prioritize evidence from the endpoint telemetry.",
+        },
+    )
+
+    assert captured["options"] == {
+        "temperature": 0.35, "top_p": 0.7, "num_predict": 512, "seed": 42,
+    }
+    assert "TRUSTED_OPERATOR_GUIDANCE" in captured["messages"][0]["content"]
+    assert "system_prompt" not in provenance
+    assert "endpoint telemetry" not in json.dumps(provenance)
+
+
+def test_advanced_llm_parameters_reject_unsafe_values_and_credentials():
+    invalid = [
+        {"temperature": 2.1}, {"top_p": 0}, {"max_tokens": 63},
+        {"system_prompt": "token=not-a-secret-to-store"},
+    ]
+    for parameters in invalid:
+        try:
+            llm.normalize_llm_parameters(parameters)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"parameters should be rejected: {parameters}")
+
+
 def test_soc_prompt_is_versioned_localized_and_treats_input_as_untrusted():
     vietnamese = llm.build_soc_system_prompt("alert", "vi")
     english = llm.build_soc_system_prompt("window", "en")

@@ -100,10 +100,16 @@ Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
 - Một fixed-window schedule, ingest delay và bounded catch-up; SQLite giữ job/watermark tại `ai_module/dashboard_data/` (gitignored).
 - Analyst UX local: lọc/pivot lịch sử, case-lite review (status/severity/tags/note), dependency/queue/database health và retention prune có xác nhận rõ.
 
-Tham khảo có chủ đích từ [Wazuh Dashboard](https://documentation.wazuh.com/current/user-manual/wazuh-dashboard/index.html), [Security Onion Alerts](https://docs.securityonion.net/en/2.4/alerts.html), [Security Onion Cases](https://docs.securityonion.net/en/2.4/cases.html) và [OpenSearch Security Analytics](https://docs.opensearch.org/latest/security-analytics/). Scope này không triển khai multi-user RBAC, PCAP pipeline, notification bên ngoài, auto-remediation hay enterprise correlation graph.
+Tham khảo có chủ đích từ [Wazuh Dashboard](https://documentation.wazuh.com/current/user-manual/wazuh-dashboard/index.html), [Security Onion Alerts](https://docs.securityonion.net/en/2.4/alerts.html), [Security Onion Cases](https://docs.securityonion.net/en/2.4/cases.html) và [OpenSearch Security Analytics](https://docs.opensearch.org/latest/security-analytics/). Scope này không triển khai multi-user RBAC, PCAP pipeline, auto-remediation hay enterprise correlation graph.
 
 AI output chỉ là tư vấn. App không tự chặn IP, chạy lệnh hay sửa Wazuh. Chi tiết vận hành/test: [`docs/manual-test.md`](docs/manual-test.md).
 Kế hoạch hardening/evaluation còn lại: [`docs/improvement-plan.md`](docs/improvement-plan.md).
+
+Telegram delivery ở trạng thái opt-in; mỗi report là một PDF chi tiết kèm caption đã redact trong cùng một request `sendDocument`. Dashboard có nút **Cài đặt Telegram** để ghi secret local (không hiển thị lại) và nút test text-only; thiết lập/kiểm thử: [`docs/telegram.md`](docs/telegram.md).
+
+Trang `/security-tests` cho phép chọn model AI local trước từng lượt chạy. Selector chỉ hiện giao giữa model đang cài trong Ollama và `security_tests.allowed_analysis_models` (hoặc `dashboard.allowed_models` với config cũ); `security_tests.analysis_model` là mặc định. Model được kiểm tra lại trước SSH rồi snapshot vào run/job, còn target, script, payload, timeout và LLM parameters vẫn cố định phía server.
+
+Gmail delivery cũng là opt-in, dùng Gmail SMTP qua Google App Password trong file local gitignored. Dashboard gửi `multipart/alternative` gồm plain-text fallback và HTML Alert map từ allow-list đã redact; không gửi raw log, prompt, reasoning hoặc credential. Thiết lập/kiểm thử: [`docs/gmail.md`](docs/gmail.md).
 
 ---
 

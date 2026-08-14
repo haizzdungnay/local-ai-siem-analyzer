@@ -3,10 +3,16 @@ import hashlib
 import json
 import re
 from collections import Counter
+from threading import Lock
 
 from extractor import _get_nested, extract_fields, format_for_llm
 from reader import resolve_config_paths
-from llm import analyze_alert, analyze_window
+from llm import (
+    analyze_alert,
+    analyze_window,
+    normalize_trusted_wazuh_evidence,
+    trusted_wazuh_summary_prefix,
+)
 from rag import RuleRAG
 
 
@@ -171,6 +177,48 @@ def aggregate_rule_buckets(fetched: dict) -> dict:
     }
 
 
+def security_test_evidence_contract(aggregate: dict) -> dict | None:
+    """Build trusted metadata only from the server's bounded Wazuh aggregate."""
+    correlation = aggregate.get("security_test_correlation")
+    if not isinstance(correlation, dict):
+        return None
+    total = aggregate.get("total_alerts")
+    rule_counts = aggregate.get("rule_counts")
+    if not isinstance(rule_counts, dict):
+        raise ValueError("security-test Wazuh evidence is invalid")
+    rule_ids = sorted(
+        (
+            str(rule_id) for rule_id, count in rule_counts.items()
+            if isinstance(count, int) and not isinstance(count, bool) and count > 0
+        ),
+        key=lambda item: (int(item) if item.isdigit() else -1, item),
+    )
+    expected_rules = correlation.get("expected_rule_ids")
+    if not rule_ids or (
+        expected_rules is not None
+        and (not isinstance(expected_rules, list) or not set(rule_ids) <= set(expected_rules))
+    ):
+        raise ValueError("security-test Wazuh evidence is outside the correlation contract")
+    observed_mitre = sorted({
+        str(mitre_id)
+        for group in aggregate.get("groups", []) if isinstance(group, dict)
+        for mitre_id in group.get("mitre", [])
+        if isinstance(mitre_id, str) and mitre_id
+    })
+    return normalize_trusted_wazuh_evidence({
+        "total_alerts": total,
+        "rule_ids": rule_ids,
+        "window_start": correlation.get("window_start"),
+        "window_end": correlation.get("window_end"),
+        "observed_mitre_ids": observed_mitre,
+    })
+
+
+def security_test_summary_prefix(aggregate: dict) -> str:
+    evidence = security_test_evidence_contract(aggregate)
+    return trusted_wazuh_summary_prefix(evidence) if evidence else ""
+
+
 def format_window_for_llm(
     aggregate: dict,
     *,
@@ -270,14 +318,20 @@ class AnalysisService:
         self.rag = None
         self._rag_attempted = False
         self._rag_error = ""
+        # Indexing can be slow; one analysis owns initialization while status reads
+        # remain non-blocking and report the transition accurately.
+        self._rag_lock = Lock()
+        self._rag_initializing = False
 
     def _ensure_rag(self):
         rag_cfg = self.cfg.get("rag", {})
         if self.rag is not None or not rag_cfg.get("enabled"):
             return self.rag
-        if self._rag_attempted:
-            return None
-        self._rag_attempted = True
+        with self._rag_lock:
+            if self.rag is not None or self._rag_attempted:
+                return self.rag
+            self._rag_attempted = True
+            self._rag_initializing = True
         try:
             kwargs = {
                 "data_dir": rag_cfg["data_dir"],
@@ -294,6 +348,8 @@ class AnalysisService:
             # it rather than turning a stale local corpus into a failed analysis.
             self.rag = None
             self._rag_error = type(exc).__name__
+        finally:
+            self._rag_initializing = False
         return self.rag
 
     @property
@@ -303,10 +359,25 @@ class AnalysisService:
             return "disabled"
         if self.rag is not None:
             return "ready"
+        if self._rag_initializing:
+            return "initializing"
         return "unavailable" if self._rag_attempted else "not_initialized"
+
+    @property
+    def rag_status_reason(self) -> str | None:
+        """Return only a stable exception class, never an exception message."""
+        return self._rag_error or None
 
     def _window_rag_context(self, aggregate: dict) -> tuple[str, dict]:
         """Retrieve bounded rule references without storing untrusted alert text."""
+        if aggregate.get("security_test_correlation"):
+            return "", {
+                "status": "disabled_security_test",
+                "query_count": 0,
+                "match_count": 0,
+                "references": [],
+                "context_chars": 0,
+            }
         rag_cfg = self.cfg.get("rag", {})
         provenance = {
             "status": "disabled",
@@ -435,7 +506,7 @@ class AnalysisService:
             "No retrieved reference context was used; do not imply otherwise."
         )
 
-    def analyze_one(self, alert: dict, model: str, language: str = "vi") -> dict:
+    def analyze_one(self, alert: dict, model: str, language: str = "vi", llm_parameters=None) -> dict:
         extracted = extract_fields(alert, self.cfg["extractor"]["fields"])
         rag_context = ""
         rag_results = []
@@ -455,6 +526,7 @@ class AnalysisService:
             language=language,
             include_provenance=True,
             allow_remote=self.cfg["ollama"].get("allow_remote", False),
+            llm_parameters=llm_parameters,
         )
         return {
             "analysis": result,
@@ -464,7 +536,18 @@ class AnalysisService:
             "provenance": provenance,
         }
 
-    def analyze_aggregate(self, aggregate: dict, model: str, language: str = "vi") -> dict:
+    def analyze_aggregate(self, aggregate: dict, model: str, language: str = "vi",
+                          llm_parameters=None, timeout_seconds=None) -> dict:
+        if isinstance(self.timeout, bool) or not isinstance(self.timeout, (int, float)) or self.timeout < 1:
+            raise ValueError("analysis timeout is invalid")
+        requested_timeout = self.timeout if timeout_seconds is None else timeout_seconds
+        if (
+            isinstance(requested_timeout, bool)
+            or not isinstance(requested_timeout, (int, float))
+            or requested_timeout < 1
+        ):
+            raise ValueError("analysis timeout is invalid")
+        timeout = min(self.timeout, requested_timeout)
         dashboard_cfg = self.cfg.get("dashboard", {})
         prompt, coverage = format_window_for_llm(
             aggregate,
@@ -473,14 +556,17 @@ class AnalysisService:
         )
         rag_context, rag_provenance = self._window_rag_context(aggregate)
         prompt = self._append_window_rag_context(prompt, rag_context, rag_provenance)
+        trusted_evidence = security_test_evidence_contract(aggregate)
         result, provenance = analyze_window(
             prompt,
             model=model,
             base_url=self.cfg["ollama"]["base_url"],
-            timeout=self.timeout,
+            timeout=timeout,
             language=language,
             include_provenance=True,
             allow_remote=self.cfg["ollama"].get("allow_remote", False),
+            llm_parameters=llm_parameters,
+            trusted_evidence=trusted_evidence,
         )
         result, echo_redaction_count = _redact_exact_sample_log_echoes(
             result, _sample_log_redactors(aggregate),

@@ -25,6 +25,12 @@ wazuh_indexer:
 
 # Ollama LLM
 ollama:
+  # Safe defaults used by dashboard jobs. Per-job values are snapshotted when queued.
+  analysis:
+    temperature: 0
+    top_p: 1
+    max_tokens: 2048                # sent to Ollama as num_predict
+    # system_prompt: "Optional bounded analyst focus; do not put credentials here."
   base_url: "http://localhost:11434"
   allow_remote: false              # remote only when true with an HTTPS endpoint
   model: "qwen2.5:3b"              # đổi qua 7b khi so sánh
@@ -72,7 +78,75 @@ dashboard:
   worker_poll_seconds: 1
   request_timeout_seconds: 30
   max_json_request_bytes: 65536     # reject larger JSON API bodies with HTTP 413 before parsing
+  # Keep true only while Waitress remains loopback-only behind one known local
+  # TLS/reverse proxy. Otherwise forwarded scheme headers are ignored.
+  trust_proxy_headers: false
+  # Optional exact browser origins for a separately hosted frontend. Never use '*'.
+  # cors_allowed_origins: ["https://your-fixed-tunnel.ngrok-free.dev"]
+  # Permissions-Policy uses the secure dashboard baseline by default: it denies
+  # browser sensors, capture, hardware and payment capabilities not used here.
+  # Set `permissions_policy: null` to disable it, or set a one-line literal to
+  # override the baseline after reviewing the deployment's browser needs.
+  # `hsts` is emitted only when the app sees HTTPS. Enable proxy trust only for
+  # a known local reverse proxy; a direct X-Forwarded-Proto is ignored otherwise.
+  # security_headers:
+  #   permissions_policy: "camera=(), microphone=(), geolocation=()"
+  #   hsts: "max-age=31536000; includeSubDomains"
   max_job_history: 200
   retention_days: 0                # 0 keeps history indefinitely
   retention_keep_latest: 20        # preserve this many newest jobs during pruning
+  # Opt-in migration: clients must GET /api/maintenance/preview then submit its
+  # current confirmation_token with confirm:true to /api/maintenance/prune.
+  require_preview_token: false
+  # Export privacy defaults: preserve source IPs for SOC correlation. A data
+  # owner may select `mask`; this applies to JSON job exports consistently.
+  export_ip_policy: preserve
+  # Analyst review notes are bounded local text. Set false to omit them from
+  # job exports; the owner must approve any broader sharing/retention policy.
+  export_review_notes: true
+  # Downloads are not retained by the app. If an owner defines a file-retention
+  # period, record it here so exports carry advisory `expires_at` metadata.
+  export_retention_days: null
   # `CyberCrew/notmythos-8b` chỉ thêm khi đã cài và benchmark riêng.
+
+# Local-only generator for bounded DVWA test traffic. It stays disabled until
+# the operator explicitly provides the private SSH key path on the Windows host.
+# The dashboard sends only a fixed scenario ID to this runner; browser input
+# can never choose a target, command, payload, URL, or script path.
+security_tests:
+  enabled: false
+  attacker_host: "192.168.100.30"     # fixed Kali lab VM
+  attacker_user: "kali"
+  victim_host: "192.168.100.20"       # fixed DVWA/Wazuh-agent VM
+  ssh_identity_path: "C:/replace/with/local/private-key"
+  ssh_port: 22
+  connect_timeout_seconds: 5
+  # Bounded, fixed security-test correlation and one-pass local AI policy.
+  # The default and every selectable model must remain in dashboard.allowed_models.
+  analysis_model: "qwen2.5:7b"
+  allowed_analysis_models: ["qwen2.5:3b", "qwen2.5:7b"]
+  ingest_wait_seconds: 15
+  ingest_poll_seconds: 2
+  indexer_timeout_seconds: 5
+  analysis_timeout_seconds: 45
+  analysis_max_tokens: 512
+
+# Outbound delivery is opt-in; credentials stay in local env files or the
+# process environment and are never persisted in SQLite/report exports.
+notifications:
+  telegram:
+    enabled: false
+    env_file: "telegram.local.env"
+    token_env: "SIEM_TELEGRAM_BOT_TOKEN"
+    chat_id_env: "SIEM_TELEGRAM_CHAT_ID"
+    max_message_chars: 3500
+    timeout_seconds: 15
+  gmail:
+    enabled: false
+    env_file: "gmail.local.env"
+    sender_email_env: "SIEM_GMAIL_SENDER_EMAIL"
+    app_password_env: "SIEM_GMAIL_APP_PASSWORD"
+    recipient_email_env: "SIEM_GMAIL_RECIPIENT_EMAIL"
+    max_body_chars: 20000
+    timeout_seconds: 15
+    subject_prefix: "[SIEM AI]"

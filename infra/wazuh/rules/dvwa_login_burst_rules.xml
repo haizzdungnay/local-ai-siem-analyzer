@@ -1,0 +1,26 @@
+<!--
+  Deployment template for the isolated DVWA lab.
+
+  Deploy this as a separate file at
+  /var/ossec/etc/rules/dvwa_login_burst_rules.xml; do not replace or edit
+  local_rules.xml. Validate with wazuh-logtest and obtain an approved manager
+  reload separately.
+-->
+<group name="local,web,dvwa,">
+  <!-- A normal 2xx/3xx Apache request finishes on stock rule 31108. -->
+  <rule id="100120" level="3">
+    <if_sid>31108</if_sid>
+    <match>] "POST /DVWA/login.php HTTP/1.</match>
+    <options>no_log</options>
+    <description>DVWA login POST request.</description>
+    <group>web,dvwa,</group>
+  </rule>
+
+  <!-- Apache access logs establish request cadence, not credential failure. -->
+  <rule id="100121" level="10" frequency="25" timeframe="18" ignore="120">
+    <if_matched_sid>100120</if_matched_sid>
+    <same_source_ip />
+    <description>DVWA login POST burst from one source (at least 25 requests in 18 seconds).</description>
+    <group>web,dvwa,</group>
+  </rule>
+</group>

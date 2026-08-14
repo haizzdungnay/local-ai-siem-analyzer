@@ -706,6 +706,12 @@ ollama pull qwen2.5:3b
 ollama pull qwen2.5:7b
 ```
 
+Trên `/security-tests`, bộ chọn riêng lấy `security_tests.allowed_analysis_models`
+(mặc định tương thích là `dashboard.allowed_models`) và giữ
+`security_tests.analysis_model` làm lựa chọn mặc định. Xác nhận modal phải hiển thị
+đúng model đã chọn; run và AI job phải giữ nguyên model đó. Model ngoài allowlist
+hoặc chưa cài trong Ollama phải bị từ chối trước khi runner tạo SSH thread.
+
 ### 13.2 Manual window
 
 1. Chọn preset `5 phút`, model, ngôn ngữ AI (`Tiếng Việt` hoặc `English`) và bấm **Đưa vào hàng đợi**.
@@ -762,6 +768,8 @@ File này chứa metadata alert/job và AI result local, không chứa credentia
 2. Với một job, lưu case-lite review gồm status, severity override hoặc `inherit`, tags phân cách bằng dấu phẩy và note. Mở lại job để xác nhận latest review và review history được hiển thị. Review chỉ là metadata local, không làm thay đổi alert Wazuh hay chạy remediation.
 3. Kiểm panel dependency/queue/database. Mất dependency phải hiển thị lỗi đã sanitize, không credential.
 4. Khi retention disabled, nút prune phải bị khóa. Khi enabled, xác nhận dialog rồi mới gọi prune; chỉ dữ liệu quá retention bị xóa. Không dùng prune để xóa evidence đang cần điều tra.
+5. Trước khi prune, gọi `GET /api/maintenance/preview` để ghi nhận policy, số candidate, khoảng thời gian và token xác nhận. Preview không thay đổi database và chỉ trả tối đa 50 ID. Khi `require_preview_token: true`, gửi đúng `confirmation_token` vừa preview cùng `confirm: true`; thay đổi dữ liệu/policy làm token cũ bị từ chối.
+6. Prune là xóa vĩnh viễn, không phải backup. Tạo và xác minh bản sao SQLite nhất quán theo RPO/RTO được owner phê duyệt trước khi bật retention, lưu audit response (policy, candidate count, deleted count), và diễn tập restore trên bản sao disposable. Sau restore, xác minh số job terminal, review history, result và delivery records trước khi dùng database lại. Không chạy prune live cho tới khi owner phê duyệt runbook/authorization này.
 
 Không đưa vào scope localhost: multi-user assignment/RBAC, notification ra ngoài, PCAP pipeline, threat-intelligence enrichment, graph correlation hoặc auto-remediation. Các pattern tham khảo: Wazuh Dashboard, Security Onion Alerts/Cases và OpenSearch Security Analytics (URL tại README).
 

@@ -17,7 +17,7 @@ Wazuh, không tự remediation và không được mở ra LAN/Internet khi chư
 | [Security Onion Cases](https://docs.securityonion.net/en/2.4/cases.html) | Status, severity, tags, comments, history | Review event bất biến cho analyst local |
 | [OpenSearch Security Analytics](https://docs.opensearch.org/latest/security-analytics/) | Detector, finding, correlation và threat intelligence | Dùng job/group làm finding; correlation để phase sau |
 | [OpenSearch Findings](https://docs.opensearch.org/latest/security-analytics/usage/findings/) | Count/time/severity, refresh và danh sách finding | Freshness, filter và timeline hiện có |
-| [OpenSearch Alerting](https://docs.opensearch.org/latest/observing-your-data/alerting/index/) | Monitor, trigger, action/notification | Giữ tách khỏi LLM; notification để phase sau |
+| [OpenSearch Alerting](https://docs.opensearch.org/latest/observing-your-data/alerting/index/) | Monitor, trigger, action/notification | Giữ tách khỏi LLM; delivery local opt-in đã có, không inbound webhook/email |
 
 Các dự án tham khảo có phạm vi enterprise lớn hơn. Pattern được chọn chỉ gồm phần
 tăng khả năng kiểm toán và xử lý alert local, không sao chép multi-tenant/RBAC/PCAP.
@@ -44,8 +44,10 @@ rộng feature trước khi hoàn tất các gate về tính đúng và bằng c
 4. Lock dependency, SBOM/SCA, secret governance và regression safety suite.
 
 Sau các gate trên mới xem xét correlation nhiều finding/window, asset criticality,
-threat-intel cache, notification/ticket outbound có idempotency/audit,
-auth/RBAC/OIDC, TLS, PCAP/network pivot và remote multi-user.
+threat-intel cache, notification/ticket outbound mở rộng có idempotency/audit,
+auth/RBAC/OIDC, TLS, PCAP/network pivot và remote multi-user. Telegram/Gmail
+hiện chỉ là delivery local opt-in cho single-operator; không có inbound
+webhook/email, OAuth hoặc remote multi-user.
 
 ## Không triển khai trong scope local hiện tại
 

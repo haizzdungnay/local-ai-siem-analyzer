@@ -248,6 +248,9 @@ def fetch_alerts_range(
     max_alerts: int = 2000,
     max_span: timedelta = timedelta(hours=24),
     now: datetime | None = None,
+    source_ip: str | None = None,
+    agent_ip: str | None = None,
+    expected_rule_ids: list[str] | tuple[str, ...] | None = None,
 ) -> dict:
     """Đọc full alert documents trong cửa sổ UTC nửa mở ``[start, end)``.
 
@@ -257,16 +260,14 @@ def fetch_alerts_range(
     if isinstance(max_alerts, bool) or not isinstance(max_alerts, int) or not 1 <= max_alerts <= 9999:
         raise ValueError("max_alerts phải nằm trong khoảng 1..9999")
     start_utc, end_utc = validate_time_range(start, end, max_span=max_span, now=now)
+    filters = _correlation_filters(
+        source_ip=source_ip,
+        agent_ip=agent_ip,
+        expected_rule_ids=expected_rule_ids,
+    )
     query = {
         "size": max_alerts + 1,
-        "query": {
-            "range": {
-                "timestamp": {
-                    "gte": format_utc(start_utc),
-                    "lt": format_utc(end_utc),
-                }
-            }
-        },
+        "query": _window_query(format_utc(start_utc), format_utc(end_utc), filters),
         "sort": [{"timestamp": {"order": "asc"}}],
         "track_total_hits": False,
     }
@@ -282,6 +283,48 @@ def fetch_alerts_range(
         "total": len(alerts),
         "alerts": alerts,
     }
+
+
+def _correlation_filters(
+    *,
+    source_ip: str | None,
+    agent_ip: str | None,
+    expected_rule_ids: list[str] | tuple[str, ...] | None = None,
+) -> list[dict]:
+    """Build the only optional server-side correlation filters for a window."""
+    values = (("data.srcip", source_ip), ("agent.ip", agent_ip))
+    filters = []
+    for field, value in values:
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"{field} filter phai la IPv4 address")
+        try:
+            parsed = ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValueError(f"{field} filter phai la IPv4 address") from exc
+        if parsed.version != 4:
+            raise ValueError(f"{field} filter phai la IPv4 address")
+        filters.append({"term": {field: str(parsed)}})
+    if expected_rule_ids is not None:
+        if (
+            not isinstance(expected_rule_ids, (list, tuple))
+            or not 1 <= len(expected_rule_ids) <= 16
+        ):
+            raise ValueError("expected_rule_ids filter is invalid")
+        rules = []
+        for value in expected_rule_ids:
+            if not isinstance(value, str) or not re.fullmatch(r"\d{1,12}", value):
+                raise ValueError("expected_rule_ids filter is invalid")
+            if value not in rules:
+                rules.append(value)
+        filters.append({"terms": {"rule.id": rules}})
+    return filters
+
+
+def _window_query(start: str, end: str, filters: list[dict]) -> dict:
+    clauses = [{"range": {"timestamp": {"gte": start, "lt": end}}}, *filters]
+    return clauses[0] if len(clauses) == 1 else {"bool": {"filter": clauses}}
 
 
 def _timeline_interval_seconds(start: datetime, end: datetime, max_buckets: int) -> int:
@@ -418,6 +461,10 @@ def fetch_alerts_window(
     max_timeline_buckets: int = 96,
     max_span: timedelta = timedelta(hours=24),
     now: datetime | None = None,
+    source_ip: str | None = None,
+    agent_ip: str | None = None,
+    expected_rule_ids: list[str] | tuple[str, ...] | None = None,
+    summary_only: bool = False,
 ) -> dict:
     """Read a window in full-detail or aggregate-only mode based on exact total."""
     if isinstance(max_alerts, bool) or not isinstance(max_alerts, int) or not 1 <= max_alerts <= 9999:
@@ -426,13 +473,20 @@ def fetch_alerts_window(
         raise ValueError("max_rule_buckets phải nằm trong khoảng 1..5000")
     if not isinstance(max_timeline_buckets, int) or isinstance(max_timeline_buckets, bool) or not 12 <= max_timeline_buckets <= 288:
         raise ValueError("max_timeline_buckets phải nằm trong khoảng 12..288")
+    if not isinstance(summary_only, bool):
+        raise ValueError("summary_only phải là boolean")
     start_utc, end_utc = validate_time_range(start, end, max_span=max_span, now=now)
     start_text, end_text = format_utc(start_utc), format_utc(end_utc)
+    filters = _correlation_filters(
+        source_ip=source_ip,
+        agent_ip=agent_ip,
+        expected_rule_ids=expected_rule_ids,
+    )
     interval_seconds = _timeline_interval_seconds(start_utc, end_utc, max_timeline_buckets)
     query = {
         "size": 0,
         "track_total_hits": True,
-        "query": {"range": {"timestamp": {"gte": start_text, "lt": end_text}}},
+        "query": _window_query(start_text, end_text, filters),
         "aggs": {
             "timeline": {
                 "date_histogram": {
@@ -480,7 +534,7 @@ def fetch_alerts_window(
         "detail_limit": max_alerts,
         **summary,
     }
-    if total > max_alerts:
+    if summary_only or total > max_alerts:
         return {**common, "analysis_mode": "aggregate", "alerts": []}
     detailed = fetch_alerts_range(
         cfg,
@@ -489,6 +543,9 @@ def fetch_alerts_window(
         max_alerts=max_alerts,
         max_span=max_span,
         now=now,
+        source_ip=source_ip,
+        agent_ip=agent_ip,
+        expected_rule_ids=expected_rule_ids,
     )
     if detailed["total"] != total:
         raise ValueError("Indexer total thay đổi giữa aggregate và detail query")

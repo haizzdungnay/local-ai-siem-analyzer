@@ -35,3 +35,26 @@ two-reviewer scoring, adjudication and analyst-only versus AI-assist timing
 remain required before claiming that the model or RAG improves triage. See
 `docs/improvement-plan.md` for the remaining evaluation protocol and release
 gates.
+
+## Optional transport headers
+
+The dashboard emits a least-privilege `Permissions-Policy` by default. It
+denies sensor, capture, hardware and payment capabilities that this local
+dashboard does not use: accelerometer, Bluetooth, camera, display capture,
+geolocation, gyroscope, HID, magnetometer, microphone, payment, screen wake
+lock, serial and USB. An owner can set
+`dashboard.security_headers.permissions_policy` to an approved one-line
+literal override, or to `null` to disable the header explicitly.
+
+`dashboard.security_headers.hsts` is opt-in and is emitted only for a request
+Flask identifies as HTTPS. The app remains a loopback-only Waitress process;
+terminate TLS in a local reverse proxy and set
+`dashboard.trust_proxy_headers: true` only when that proxy is the sole path to
+the listener. Otherwise forwarded scheme headers are ignored. HSTS is never
+sent on HTTP and cannot substitute for TLS termination or HTTP redirect policy.
+Use a certificate trusted by the browser (or a locally trusted development CA),
+redirect public HTTP traffic at the proxy, then set HSTS only after HTTPS is
+working. This application currently sets no cookies, so Secure-cookie is N/A;
+any future session cookie must use `Secure`, `HttpOnly`, and an appropriate
+`SameSite` value. Header values must be a non-empty single line; CR/LF and
+overlong values are rejected at startup.

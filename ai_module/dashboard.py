@@ -7,21 +7,39 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import os
 from urllib.parse import urlparse
 
 import requests
 from flask import Flask, current_app, jsonify, request, send_from_directory
 from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from analysis_service import ANALYSIS_VERSION, AnalysisService
 from dashboard_store import DashboardStore
 from dashboard_time import format_utc, utc_now
 from dashboard_worker import DashboardRuntime, PRESET_SECONDS
+from gmail_notifier import GMAIL_CHANNEL, GmailConfigurationError, GmailDeliveryError
+from llm import normalize_llm_parameters
 from reader import MODULE_DIR, fetch_alert_document, load_config, validate_time_range
+from security_test_runner import (
+    SecurityTestBusyError,
+    SecurityTestConfigurationError,
+    SecurityTestRunner,
+)
+from telegram_notifier import TELEGRAM_CHANNEL, TelegramConfigurationError, TelegramDeliveryError
 
 
 WEB_DIR = MODULE_DIR / "web"
 DEFAULT_CONFIG = MODULE_DIR / "config.yaml"
+SECURITY_TEST_MODEL = "qwen2.5:7b"
+# The local dashboard has no sensor or hardware workflows. Keep browser access
+# to those capabilities denied unless an operator explicitly changes the policy.
+DEFAULT_PERMISSIONS_POLICY = (
+    "accelerometer=(), bluetooth=(), camera=(), display-capture=(), "
+    "geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), "
+    "payment=(), screen-wake-lock=(), serial=(), usb=()"
+)
 DEFAULT_DASHBOARD = {
     "host": "127.0.0.1",
     "port": 8765,
@@ -38,8 +56,26 @@ DEFAULT_DASHBOARD = {
     "worker_poll_seconds": 1,
     "request_timeout_seconds": 30,
     "max_json_request_bytes": 65536,
+    # Forwarded headers are attacker-controlled unless a known local proxy is
+    # the only process able to reach this loopback listener.
+    "trust_proxy_headers": False,
+    "cors_allowed_origins": [],
+    "security_headers": {
+        "permissions_policy": DEFAULT_PERMISSIONS_POLICY,
+        "hsts": None,
+    },
     "retention_days": 0,
     "retention_keep_latest": 20,
+    # Opt in only after operators update clients to perform a preview first.
+    "require_preview_token": False,
+    # SOC correlation normally needs the source address. Privacy owners can
+    # select "mask" without changing the report schema.
+    "export_ip_policy": "preserve",
+    # Analyst notes are bounded and remain owner-controlled text. Set false
+    # when notes must stay local to the dashboard.
+    "export_review_notes": True,
+    # Downloads are not stored by this service; this is advisory metadata only.
+    "export_retention_days": None,
 }
 
 
@@ -66,6 +102,27 @@ def _json_body():
     return body
 
 
+def _resolve_llm_parameters(body, cfg, *, current=None):
+    """Build an immutable job/schedule snapshot without exposing saved prompt text."""
+    configured = cfg.get("ollama", {}).get("analysis", {})
+    defaults = normalize_llm_parameters(configured)
+    supplied = body.get("llm_parameters")
+    if supplied is None:
+        return dict(current) if current is not None else defaults
+    if not isinstance(supplied, dict):
+        raise ValueError("llm_parameters pháº£i lÃ  object")
+    # A schedule form cannot read its saved custom prompt back. Missing text
+    # therefore preserves it while an explicit empty string intentionally clears it.
+    merged = dict(current) if current is not None else defaults
+    merged.update(supplied)
+    return normalize_llm_parameters(merged)
+
+
+def _llm_parameter_error(exc):
+    """Return a client-safe, consistent response for bounded LLM controls."""
+    return _error(f"Invalid LLM parameters: {exc}", 400)
+
+
 def _analysis_sha256(analysis):
     if not isinstance(analysis, dict):
         return ""
@@ -89,17 +146,38 @@ _UNSAFE_EXPORT_KEYS = {
     "raw_preview",
 }
 
+# Export is an explicit data-minimisation boundary. These names cover config
+# objects even when they are nested under an otherwise approved result field.
+_SENSITIVE_EXPORT_KEY_PARTS = (
+    "password", "passwd", "secret", "token", "api_key", "apikey",
+    "authorization", "cookie", "credential", "private_key", "client_secret",
+    "access_key", "refresh_token", "bot_token", "smtp", "telegram", "chat_id",
+    "email_config", "mail_config", "chat",
+)
+
+
+def _is_sensitive_export_key(key):
+    normalized = re.sub(r"[^a-z0-9_]", "", str(key).lower())
+    return any(part.replace("_", "") in normalized for part in _SENSITIVE_EXPORT_KEY_PARTS)
+
 
 def _safe_export_value(value):
-    """Remove raw logs, prompts, and model reasoning from reusable report data."""
+    """Remove hidden fields and credential-like values from export data."""
     if isinstance(value, dict):
         return {
             str(key): _safe_export_value(item)
             for key, item in value.items()
             if str(key).lower() not in _UNSAFE_EXPORT_KEYS
+            and not _is_sensitive_export_key(key)
         }
     if isinstance(value, list):
         return [_safe_export_value(item) for item in value]
+    if isinstance(value, str):
+        # Keep operational identifiers and Unicode intact; redact only values
+        # introduced through an explicitly credential-shaped expression.
+        return _INLINE_SECRET_RE.sub(
+            lambda match: f"{match.group(1)}{match.group(2)}[redacted]", value,
+        )
     return value
 
 
@@ -107,6 +185,77 @@ _INLINE_SECRET_RE = re.compile(
     r"(?i)\b(api[_ -]?key|authorization|bearer|password|passwd|secret|token|cookie|session(?:[_ -]?id)?)\b"
     r"\s*([=:])\s*[^,\s;]+"
 )
+
+
+def _export_metadata(report, dashboard_cfg):
+    """Attach the versioned privacy contract shared by every job schema."""
+    metadata = report.setdefault("export_metadata", {})
+    metadata.update({
+        "contract_version": "local-ai-export-contract/v1",
+        "redaction_marker": "[redacted]",
+        "redaction_semantics": {
+            "credential_values": "replace-with-marker",
+            "sensitive_fields": "omit",
+            "raw_logs_prompts_reasoning": "omit",
+        },
+        "ip_policy": dashboard_cfg.get("export_ip_policy", "preserve"),
+        "review_notes": "included-bounded" if dashboard_cfg.get("export_review_notes", True) else "omitted-by-default",
+        "field_classifications": {
+            "operational": [
+                "job", "model_call", "analysis", "assessment_basis", "audit",
+                "coverage", "warnings", "metrics", "timeline", "groups",
+                "alert_references.alert_id", "alert_references.rule_id",
+                "alert_references.timestamp", "alert_references.source_ip",
+            ],
+            "sensitive": [
+                "raw logs", "prompts", "reasoning", "credentials",
+                "chat/email configuration", "private config fields",
+            ],
+            "owner_controlled": ["review.note", "review_history.note", "source_ip masking"],
+        },
+    })
+    retention_days = dashboard_cfg.get("export_retention_days")
+    metadata["retention"] = {
+        "status": "owner-configured" if retention_days is not None else "not-configured",
+        "days": retention_days,
+        "expires_at": None,
+        "enforcement": "advisory-download-metadata-only",
+    }
+    if retention_days is not None:
+        exported_at = report.get("exported_at")
+        try:
+            expiry = datetime.fromisoformat(exported_at.replace("Z", "+00:00")) + timedelta(days=retention_days)
+            metadata["retention"]["expires_at"] = expiry.isoformat().replace("+00:00", "Z")
+        except (AttributeError, TypeError, ValueError):
+            pass
+
+
+def _apply_export_policy(report, dashboard_cfg):
+    """Apply owner-selected IP/note policy after the common scrub boundary."""
+    if dashboard_cfg.get("export_ip_policy", "preserve") == "mask":
+        def mask_fields(value):
+            if isinstance(value, dict):
+                return {
+                    key: (_masked_ip(item) if key == "source_ip" else mask_fields(item))
+                    for key, item in value.items()
+                }
+            if isinstance(value, list):
+                return [mask_fields(item) for item in value]
+            return value
+        for key in ("groups", "alert_references"):
+            if key in report:
+                report[key] = mask_fields(report[key])
+    if not dashboard_cfg.get("export_review_notes", True):
+        for key in ("review", "review_history"):
+            values = report.get(key)
+            if isinstance(values, list):
+                for value in values:
+                    if isinstance(value, dict):
+                        value.pop("note", None)
+            elif isinstance(values, dict):
+                values.pop("note", None)
+    _export_metadata(report, dashboard_cfg)
+    return report
 
 
 def _source_value(source, *path):
@@ -241,6 +390,16 @@ def _job_report_v1(job):
     return _safe_export_value({
         "schema_version": "local-ai-siem-report/v1",
         "exported_at": utc_now(),
+        "export_metadata": {
+            "scope": "selected-job-window",
+            "page": "single-job",
+            "redacted": True,
+            "redaction_version": "export-redaction-v1",
+            "field_inventory": {
+                "included": ["job", "model_call", "analysis", "coverage", "warnings", "metrics", "timeline", "groups", "alert_references"],
+                "excluded": ["raw logs", "prompts", "reasoning", "credentials", "chat/email configuration", "private config fields"],
+            },
+        },
         "job": {field: job.get(field) for field in job_fields},
         "model_call": model_call,
         "analysis": analysis,
@@ -285,6 +444,16 @@ def _job_report_v2(job):
     report = {
         "schema_version": "local-ai-siem-report/v2",
         "exported_at": utc_now(),
+        "export_metadata": {
+            "scope": "selected-job-window",
+            "page": "single-job",
+            "redacted": True,
+            "redaction_version": "export-redaction-v1",
+            "field_inventory": {
+                "included": ["job", "analysis", "assessment_basis", "audit", "coverage", "warnings", "metrics", "timeline", "groups", "alert_references", "review"],
+                "excluded": ["raw logs", "prompts", "reasoning", "credentials", "chat/email configuration", "private config fields"],
+            },
+        },
         "job": v1["job"],
         "analysis": analysis or None,
         "analysis_sha256": v1["analysis_sha256"],
@@ -332,20 +501,107 @@ def _job_report_v2(job):
     return _safe_export_value(report)
 
 
-def _job_report(job, schema="v2"):
+def _job_report(job, schema="v2", export_cfg=None):
+    export_cfg = export_cfg or DEFAULT_DASHBOARD
     if schema == "v1":
-        return _job_report_v1(job)
-    if schema == "v2":
-        return _job_report_v2(job)
+        report = _job_report_v1(job)
+    elif schema == "v2":
+        report = _job_report_v2(job)
+    else:
+        raise ValueError("schema phai la v1 hoac v2")
+    return _apply_export_policy(report, export_cfg)
     raise ValueError("schema phải là v1 hoặc v2")
+
+
+def _normalize_origin(value):
+    """Return a canonical browser origin and reject paths or credentials."""
+    if not isinstance(value, str):
+        raise ValueError("Origin khong hop le")
+    try:
+        parsed = urlparse(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Origin khong hop le") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("Origin khong hop le")
+    host = parsed.hostname.lower()
+    if ":" in host:
+        host = f"[{host}]"
+    default_port = 443 if parsed.scheme == "https" else 80
+    suffix = "" if port in {None, default_port} else f":{port}"
+    return f"{parsed.scheme}://{host}{suffix}"
+
+
+def _cors_allowed_origins(dashboard_cfg):
+    values = dashboard_cfg.get("cors_allowed_origins", [])
+    if not isinstance(values, list) or len(values) > 20:
+        raise ValueError("dashboard.cors_allowed_origins phai la list toi da 20 origin")
+    normalized = [_normalize_origin(value) for value in values]
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("dashboard.cors_allowed_origins khong duoc trung lap")
+    # Keep this JSON/YAML-shaped so create_app can safely reuse the same cfg.
+    return normalized
+
+
+def _optional_header_value(value, name):
+    """Accept operator-owned literal header values, never multiline input."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"dashboard.security_headers.{name} must be a non-empty string or null")
+    if len(value) > 2048 or "\r" in value or "\n" in value:
+        raise ValueError(f"dashboard.security_headers.{name} must be a single safe header value")
+    return value.strip()
+
+
+def _security_headers_cfg(dashboard_cfg):
+    configured = dashboard_cfg.get("security_headers", {})
+    if configured is None:
+        configured = {}
+    if not isinstance(configured, dict):
+        raise ValueError("dashboard.security_headers must be an object")
+    unknown = set(configured) - {"permissions_policy", "hsts"}
+    if unknown:
+        raise ValueError("dashboard.security_headers contains unsupported keys")
+    return {
+        "permissions_policy": _optional_header_value(
+            # Omission keeps the secure baseline; null is the explicit disable.
+            configured.get("permissions_policy", DEFAULT_PERMISSIONS_POLICY), "permissions_policy",
+        ),
+        "hsts": _optional_header_value(configured.get("hsts"), "hsts"),
+    }
+
+
+def _request_origin():
+    return _normalize_origin(request.host_url.rstrip("/"))
 
 
 def _validate_origin():
     origin = request.headers.get("Origin")
     if not origin:
         return
-    parsed = urlparse(origin)
-    if parsed.scheme != request.scheme or parsed.netloc != request.host:
+    try:
+        normalized = _normalize_origin(origin)
+    except ValueError as exc:
+        raise ValueError("Cross-origin request bi tu choi") from exc
+    allowed = current_app.config["CORS_ALLOWED_ORIGINS"]
+    request_origin = _request_origin()
+    # ProxyFix cannot identify whether a forwarded header came from the local
+    # tunnel or a direct caller. Require an explicit allowlist entry whenever
+    # forwarded routing is used, otherwise X-Forwarded-Host can spoof same-origin.
+    forwarded = request.headers.get("X-Forwarded-Host") or request.headers.get("X-Forwarded-Proto")
+    if forwarded and normalized == request_origin and normalized not in allowed:
+        raise ValueError("Cross-origin request bị từ chối")
+    if normalized != request_origin and normalized not in allowed:
         raise ValueError("Cross-origin request bị từ chối")
 
 
@@ -373,13 +629,83 @@ def _dashboard_cfg(cfg):
         raise ValueError("dashboard.max_json_request_bytes must be in the range 1..1048576")
     if dashboard["default_language"] not in {"vi", "en"}:
         raise ValueError("dashboard.default_language phải là vi hoặc en")
+    if not isinstance(dashboard["trust_proxy_headers"], bool):
+        raise ValueError("dashboard.trust_proxy_headers phai la boolean")
+    dashboard["cors_allowed_origins"] = _cors_allowed_origins(dashboard)
+    dashboard["security_headers"] = _security_headers_cfg(dashboard)
     retention_days = dashboard["retention_days"]
     if isinstance(retention_days, bool) or not isinstance(retention_days, int) or retention_days < 0:
         raise ValueError("dashboard.retention_days phai la so nguyen khong am")
     keep_latest = dashboard["retention_keep_latest"]
     if isinstance(keep_latest, bool) or not isinstance(keep_latest, int) or not 0 <= keep_latest <= 10000:
         raise ValueError("dashboard.retention_keep_latest phai nam trong khoang 0..10000")
+    if dashboard["export_ip_policy"] not in {"preserve", "mask"}:
+        raise ValueError("dashboard.export_ip_policy phai la preserve hoac mask")
+    if not isinstance(dashboard["export_review_notes"], bool):
+        raise ValueError("dashboard.export_review_notes phai la boolean")
+    export_retention = dashboard["export_retention_days"]
+    if export_retention is not None and (
+        isinstance(export_retention, bool) or not isinstance(export_retention, int)
+        or export_retention < 0
+    ):
+        raise ValueError("dashboard.export_retention_days phai la so nguyen khong am hoac null")
     return dashboard
+
+
+def _security_tests_cfg(cfg):
+    """Validate the local-only runner config without exposing its SSH identity."""
+    configured = cfg.get("security_tests")
+    if configured is None:
+        return {}
+    if not isinstance(configured, dict):
+        raise ValueError("security_tests config phải là object")
+    allowed = {
+        "enabled", "attacker_host", "attacker_user", "victim_host", "ssh_identity_path",
+        "ssh_port", "connect_timeout_seconds", "analysis_model", "ingest_wait_seconds",
+        "ingest_poll_seconds", "indexer_timeout_seconds", "analysis_timeout_seconds",
+        "analysis_max_tokens", "allowed_analysis_models",
+    }
+    unknown = set(configured) - allowed
+    if unknown:
+        raise ValueError("security_tests contains unsupported keys")
+    if "enabled" in configured and not isinstance(configured["enabled"], bool):
+        raise ValueError("security_tests.enabled phải là boolean")
+    values = {
+        "analysis_model": SECURITY_TEST_MODEL,
+        "ingest_wait_seconds": 15,
+        "ingest_poll_seconds": 2,
+        "indexer_timeout_seconds": 5,
+        "analysis_timeout_seconds": 45,
+        "analysis_max_tokens": 512,
+    }
+    values.update(configured)
+    analysis_model = values["analysis_model"]
+    if not isinstance(analysis_model, str) or not analysis_model.strip():
+        raise ValueError("security_tests.analysis_model must be a non-empty model name")
+    allowed_models = values.get("allowed_analysis_models")
+    if allowed_models is not None:
+        if (
+            not isinstance(allowed_models, list) or not allowed_models
+            or not all(isinstance(item, str) and item.strip() for item in allowed_models)
+            or len(set(allowed_models)) != len(allowed_models)
+        ):
+            raise ValueError("security_tests.allowed_analysis_models must be a non-empty unique list")
+        if analysis_model not in allowed_models:
+            raise ValueError("security_tests.analysis_model must be in security_tests.allowed_analysis_models")
+    ranges = {
+        "ingest_wait_seconds": (12, 15),
+        "ingest_poll_seconds": (1, 5),
+        "indexer_timeout_seconds": (1, 5),
+        "analysis_timeout_seconds": (1, 45),
+        "analysis_max_tokens": (64, 512),
+    }
+    for key, (minimum, maximum) in ranges.items():
+        value = values[key]
+        if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+            raise ValueError(f"security_tests.{key} is invalid")
+    if values["analysis_max_tokens"] != 512:
+        raise ValueError("security_tests.analysis_max_tokens must be 512")
+    return values
 
 
 def _allowed_models(cfg):
@@ -409,11 +735,27 @@ def _resolve_language(body, dashboard_cfg):
     return language
 
 
-def _model_list(cfg):
+def _resolve_delivery_channel(body, runtime):
+    channel = body.get("delivery_channel", "none")
+    if channel not in {"none", TELEGRAM_CHANNEL, GMAIL_CHANNEL}:
+        raise ValueError("delivery_channel không hợp lệ")
+    if channel != "none":
+        notifier = (
+            runtime.telegram_notifier if channel == TELEGRAM_CHANNEL
+            else runtime.gmail_notifier
+        )
+        status = notifier.status()
+        if not status["enabled"] or not status["configured"]:
+            label = "Telegram" if channel == TELEGRAM_CHANNEL else "Gmail"
+            raise ValueError(f"{label} chưa được cấu hình hoặc chưa bật")
+    return channel
+
+
+def _model_list(cfg, *, timeout=None):
     allowed = _allowed_models(cfg)
     response = requests.get(
         f"{cfg['ollama']['base_url'].rstrip('/')}/api/tags",
-        timeout=_dashboard_cfg(cfg).get("request_timeout_seconds", 30),
+        timeout=timeout or _dashboard_cfg(cfg).get("request_timeout_seconds", 30),
     )
     response.raise_for_status()
     body = response.json()
@@ -492,6 +834,22 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
     cfg = cfg or load_config(config_path)
     dashboard_cfg = _dashboard_cfg(cfg)
     cfg["dashboard"] = dashboard_cfg
+    cfg["security_tests"] = _security_tests_cfg(cfg)
+    if cfg["security_tests"]:
+        dashboard_models = _allowed_models(cfg)
+        security_models = cfg["security_tests"].get("allowed_analysis_models")
+        if security_models is None:
+            # Existing configs immediately gain the same operator-approved choices
+            # as the main dashboard while retaining qwen2.5:7b as the default.
+            security_models = [
+                model for model in dashboard_cfg.get("allowed_models", [])
+                if model in dashboard_models
+            ]
+            cfg["security_tests"]["allowed_analysis_models"] = security_models
+        if not set(security_models).issubset(dashboard_models):
+            raise ValueError("security_tests.allowed_analysis_models must be a subset of dashboard.allowed_models")
+        if cfg["security_tests"]["analysis_model"] not in security_models:
+            raise ValueError("security_tests.analysis_model must be in security_tests.allowed_analysis_models")
     database_path = Path(dashboard_cfg.get("database_path", "dashboard_data/dashboard.db"))
     if not database_path.is_absolute():
         database_path = MODULE_DIR / database_path
@@ -501,14 +859,28 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
         store, cfg, analysis_service,
         poll_seconds=dashboard_cfg.get("worker_poll_seconds", 1),
     )
+    security_test_runner = SecurityTestRunner(
+        cfg, store=store, runtime=runtime, analysis_version=ANALYSIS_VERSION,
+        model_provider=lambda: [
+            item["name"] for item in _model_list(
+                cfg, timeout=min(dashboard_cfg.get("request_timeout_seconds", 30), 5),
+            )
+        ],
+    )
 
     app = Flask(__name__, static_folder=None)
+    if dashboard_cfg["trust_proxy_headers"]:
+        # Waitress only listens on loopback; trust the single local tunnel proxy.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_host=1, x_proto=1)
     app.config.update(
         DASHBOARD_CFG=cfg,
         DASHBOARD_STORE=store,
         DASHBOARD_RUNTIME=runtime,
+        SECURITY_TEST_RUNNER=security_test_runner,
         MAX_JSON_BODY_BYTES=dashboard_cfg["max_json_request_bytes"],
         MAX_CONTENT_LENGTH=dashboard_cfg["max_json_request_bytes"],
+        CORS_ALLOWED_ORIGINS=dashboard_cfg["cors_allowed_origins"],
+        OPTIONAL_SECURITY_HEADERS=dashboard_cfg["security_headers"],
     )
 
     @app.after_request
@@ -519,7 +891,29 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        optional_headers = current_app.config["OPTIONAL_SECURITY_HEADERS"]
+        if optional_headers["permissions_policy"]:
+            response.headers["Permissions-Policy"] = optional_headers["permissions_policy"]
+        # HSTS is meaningful only on an HTTPS response. ProxyFix supplies the
+        # scheme only when the deployment explicitly trusts its local proxy.
+        if optional_headers["hsts"] and request.is_secure:
+            response.headers["Strict-Transport-Security"] = optional_headers["hsts"]
         if request.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+            origin = request.headers.get("Origin")
+            try:
+                normalized_origin = _normalize_origin(origin) if origin else None
+            except ValueError:
+                normalized_origin = None
+            if normalized_origin in current_app.config["CORS_ALLOWED_ORIGINS"]:
+                response.headers["Access-Control-Allow-Origin"] = normalized_origin
+                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS"
+                response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+                response.headers["Access-Control-Max-Age"] = "600"
+                response.vary.add("Origin")
+        elif request.path in {"/security-tests", "/assets/test.js"}:
+            # A stale security-test tab must revalidate the current telemetry
+            # allowlist instead of retaining buttons from an earlier contract.
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -539,6 +933,10 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
     def index():
         return send_from_directory(WEB_DIR, "index.html")
 
+    @app.route("/security-tests")
+    def security_tests_page():
+        return send_from_directory(WEB_DIR, "test.html")
+
     @app.route("/assets/<path:name>")
     def assets(name):
         return send_from_directory(WEB_DIR, name)
@@ -546,16 +944,126 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
     @app.get("/api/status")
     def status():
         stats = store.maintenance_stats()
+        rag_status = analysis_service.rag_status
         return jsonify({
             "app": "ok",
             "worker": "running" if runtime.worker_thread and runtime.worker_thread.is_alive() else "stopped",
             "scheduler": "running" if runtime.scheduler_thread and runtime.scheduler_thread.is_alive() else "stopped",
-            "rag": analysis_service.rag_status,
+            "delivery_worker": "running" if runtime.delivery_thread and runtime.delivery_thread.is_alive() else "stopped",
+            # `rag` remains the legacy scalar; the additive reason is safe for
+            # operators and lets them diagnose a failed lazy initialization.
+            "rag": rag_status,
+            "rag_reason": analysis_service.rag_status_reason if rag_status == "unavailable" else None,
             "queue": stats["queue"]["pending"] + stats["queue"]["running"],
             "database": "ok",
             "database_bytes": stats["database"]["bytes"],
             "review_events": stats["reviews"]["event_count"],
         })
+
+    @app.get("/api/security-tests/catalog")
+    def security_test_catalog():
+        return jsonify(security_test_runner.catalog())
+
+    @app.post("/api/security-tests/runs")
+    def create_security_test_run():
+        _validate_origin()
+        body = _json_body()
+        allowed_fields = {"scenario_id", "confirm", "model"}
+        unknown_fields = set(body) - allowed_fields
+        if unknown_fields:
+            raise ValueError("Security test request contains unsupported fields")
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phải là true để chạy security test")
+        scenario_id = body.get("scenario_id")
+        if not isinstance(scenario_id, str) or not scenario_id:
+            raise ValueError("scenario_id không hợp lệ")
+        model = body["model"] if "model" in body else cfg["security_tests"].get("analysis_model")
+        allowed_security_models = cfg["security_tests"].get("allowed_analysis_models", [])
+        if not isinstance(model, str) or model not in allowed_security_models:
+            raise ValueError("Model không thuộc security_tests.allowed_analysis_models")
+        try:
+            run = security_test_runner.start(scenario_id, model=model)
+        except SecurityTestBusyError as exc:
+            return _error(str(exc), 409)
+        except SecurityTestConfigurationError as exc:
+            return _error(str(exc), 422)
+        return jsonify({"run": run}), 202
+
+    @app.get("/api/security-tests/runs/<run_id>")
+    def get_security_test_run(run_id):
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            return _error("Invalid security test run ID", 404)
+        run = security_test_runner.get_run(run_id)
+        if not run:
+            return _error("Không tìm thấy security test run", 404)
+        return jsonify({"run": run})
+
+    @app.get("/api/notifications/status")
+    def notification_status():
+        return jsonify({
+            "telegram": runtime.telegram_notifier.status(),
+            "gmail": runtime.gmail_notifier.status(),
+        })
+
+    @app.post("/api/notifications/telegram/settings")
+    def telegram_settings():
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phải là true để lưu cài đặt Telegram")
+        try:
+            telegram = runtime.telegram_notifier.configure_local(
+                token=body.get("bot_token"), chat_id=body.get("chat_id"),
+            )
+        except TelegramConfigurationError as exc:
+            raise ValueError(str(exc)) from exc
+        # Do not reflect a credential or destination identifier back to the browser.
+        return jsonify({"status": "saved", "telegram": telegram}), 201
+
+    @app.post("/api/notifications/telegram/test")
+    def telegram_test():
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phải là true để gửi test Telegram")
+        try:
+            result = runtime.telegram_notifier.send_test()
+        except TelegramConfigurationError as exc:
+            raise ValueError(str(exc)) from exc
+        except TelegramDeliveryError as exc:
+            return _error(f"Telegram test failed: {exc.code}", 503 if exc.uncertain else 422)
+        return jsonify({"status": "sent", **result}), 202
+
+    @app.post("/api/notifications/gmail/settings")
+    def gmail_settings():
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phải là true để lưu cài đặt Gmail")
+        try:
+            gmail = runtime.gmail_notifier.configure_local(
+                sender_email=body.get("sender_email"),
+                app_password=body.get("app_password"),
+                recipient_email=body.get("recipient_email"),
+            )
+        except GmailConfigurationError as exc:
+            raise ValueError(str(exc)) from exc
+        # Never reflect an address or App Password to the browser.
+        return jsonify({"status": "saved", "gmail": gmail}), 201
+
+    @app.post("/api/notifications/gmail/test")
+    def gmail_test():
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phải là true để gửi test Gmail")
+        try:
+            result = runtime.gmail_notifier.send_test()
+        except GmailConfigurationError as exc:
+            raise ValueError(str(exc)) from exc
+        except GmailDeliveryError as exc:
+            return _error(f"Gmail test failed: {exc.code}", 503 if exc.uncertain else 422)
+        return jsonify({"status": "sent", **result}), 202
 
     @app.get("/api/dependencies")
     def dependencies():
@@ -582,16 +1090,69 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
         if pending >= dashboard_cfg.get("max_pending_jobs", 100):
             return _error("Hàng đợi dashboard đã đầy", 503)
         start, end = _resolve_window(body)
+        delivery_channel = _resolve_delivery_channel(body, runtime)
+        try:
+            llm_parameters = _resolve_llm_parameters(body, cfg)
+        except ValueError as exc:
+            return _llm_parameter_error(exc)
         job_id = store.create_job(
             "manual_window", format_utc(start), format_utc(end), model, ANALYSIS_VERSION,
-            language=language,
+            language=language, delivery_channel=delivery_channel, llm_parameters=llm_parameters,
         )
         runtime.notify()
         return jsonify({"job_id": job_id}), 202
 
     @app.get("/api/jobs")
     def list_jobs():
-        return jsonify({"jobs": store.list_jobs(dashboard_cfg["max_job_history"])})
+        # Keep the no-query response compatible with older dashboard clients;
+        # paged/filtering requests are evaluated by SQLite and include totals.
+        query = request.args
+        paged = any(name in query for name in
+                    ("page", "page_size", "search", "status", "language", "mode", "review", "severity"))
+        if not paged:
+            return jsonify({"jobs": store.list_jobs(dashboard_cfg["max_job_history"])})
+        def integer_arg(name, default):
+            raw = query.get(name)
+            if raw is None or raw == "":
+                return default
+            try:
+                value = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{name} must be an integer") from exc
+            return value
+        try:
+            page = integer_arg("page", 1)
+            page_size = integer_arg("page_size", 50)
+            filters = {name: query.get(name, "") for name in
+                       ("search", "status", "language", "mode", "review", "severity")}
+            allowed = {
+                "status": {"", "pending", "running", "succeeded", "partial", "failed", "cancelled"},
+                "language": {"", "vi", "en"},
+                "mode": {"", "full", "aggregate"},
+                "review": {"", "none", "new", "acknowledged", "investigating", "resolved", "false_positive"},
+            }
+            for name, values in allowed.items():
+                if filters[name] not in values:
+                    raise ValueError(f"Invalid {name} filter")
+            result = store.list_jobs_page(page=page, page_size=page_size, filters=filters)
+        except ValueError as exc:
+            return _error(exc, 400)
+        return jsonify(result)
+
+    @app.post("/api/jobs/review/bulk")
+    def bulk_review_jobs():
+        _validate_origin()
+        body = _json_body()
+        if "tags" in body and not isinstance(body["tags"], list):
+            raise ValueError("review.tags phai la list")
+        events = store.add_review_events(
+            body.get("job_ids"),
+            status=body.get("status"),
+            severity=body.get("severity", "inherit"),
+            tags=body.get("tags", []),
+            note=body.get("note", ""),
+        )
+        return jsonify({"events": events}), 201
 
     @app.get("/api/jobs/<int:job_id>")
     def get_job(job_id):
@@ -621,7 +1182,7 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
         if not detail:
             return _error("Không tìm thấy job", 404)
         schema = request.args.get("schema", "v2")
-        payload = json.dumps(_job_report(detail, schema=schema), ensure_ascii=False, indent=2)
+        payload = json.dumps(_job_report(detail, schema=schema, export_cfg=dashboard_cfg), ensure_ascii=False, indent=2)
         response = app.response_class(payload, mimetype="application/json")
         response.headers["Content-Disposition"] = (
             f'attachment; filename="wazuh-ai-job-{job_id}.json"'
@@ -638,7 +1199,15 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
                 "retention_keep_latest": dashboard_cfg["retention_keep_latest"],
             },
             "stats": store.maintenance_stats(),
+            "backups": store.list_retention_backups(),
         })
+
+    @app.get("/api/maintenance/preview")
+    def maintenance_preview():
+        return jsonify(store.retention_preview(
+            retention_days=dashboard_cfg["retention_days"],
+            keep_latest=dashboard_cfg["retention_keep_latest"],
+        ))
 
     @app.post("/api/maintenance/prune")
     def prune_maintenance():
@@ -646,11 +1215,54 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
         body = _json_body()
         if body.get("confirm") is not True:
             raise ValueError("confirm phai la true de prune")
+        preview = store.retention_preview(
+            retention_days=dashboard_cfg["retention_days"],
+            keep_latest=dashboard_cfg["retention_keep_latest"],
+        )
+        if dashboard_cfg.get("require_preview_token") and body.get("confirmation_token") != preview["confirmation_token"]:
+            raise ValueError("confirmation_token khong hop le hoac da het han; hay preview lai")
         result = store.prune_terminal_jobs(
             retention_days=dashboard_cfg["retention_days"],
             keep_latest=dashboard_cfg["retention_keep_latest"],
         )
+        result.update({
+            "confirmed": True,
+            "preview_candidate_count": preview["candidate_count"],
+            "policy": preview["policy"],
+            "confirmation_token_required": bool(dashboard_cfg.get("require_preview_token")),
+        })
         return jsonify({"result": result, "stats": store.maintenance_stats()})
+
+    @app.post("/api/maintenance/backup")
+    def backup_maintenance():
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phai la true de tao backup")
+        preview = store.retention_preview(
+            retention_days=dashboard_cfg["retention_days"],
+            keep_latest=dashboard_cfg["retention_keep_latest"],
+        )
+        if dashboard_cfg.get("require_preview_token") and body.get("confirmation_token") != preview["confirmation_token"]:
+            raise ValueError("confirmation_token khong hop le hoac da het han; hay preview lai")
+        return jsonify({"backup": store.create_retention_backup()})
+
+    @app.post("/api/maintenance/restore")
+    def restore_maintenance():
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phai la true de restore")
+        filename = body.get("backup")
+        if not isinstance(filename, str):
+            raise ValueError("backup phai la ten file snapshot")
+        preview = store.retention_preview(
+            retention_days=dashboard_cfg["retention_days"],
+            keep_latest=dashboard_cfg["retention_keep_latest"],
+        )
+        if dashboard_cfg.get("require_preview_token") and body.get("confirmation_token") != preview["confirmation_token"]:
+            raise ValueError("confirmation_token khong hop le hoac da het han; hay preview lai")
+        return jsonify({"restored": store.restore_retention_backup(filename)})
 
     @app.post("/api/jobs/<int:job_id>/cancel")
     def cancel_job(job_id):
@@ -666,6 +1278,37 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
         store.retry_job(job_id)
         runtime.notify()
         return jsonify({"status": "pending"}), 202
+
+    @app.post("/api/jobs/<int:job_id>/delivery")
+    def enqueue_job_delivery(job_id):
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phải là true để gửi report")
+        channel = _resolve_delivery_channel({"delivery_channel": body.get("channel")}, runtime)
+        if channel == "none":
+            raise ValueError("Chọn một delivery channel để gửi report")
+        detail = store.get_job_detail(job_id)
+        if not detail:
+            return _error("Không tìm thấy job", 404)
+        if detail["status"] not in {"succeeded", "partial"}:
+            raise ValueError("Chỉ gửi report của job succeeded hoặc partial")
+        delivery = store.enqueue_delivery(job_id, channel)
+        runtime.notify_delivery()
+        return jsonify({"delivery": delivery}), 202
+
+    @app.post("/api/deliveries/<int:delivery_id>/retry")
+    def retry_delivery(delivery_id):
+        _validate_origin()
+        body = _json_body()
+        if body.get("confirm") is not True:
+            raise ValueError("confirm phải là true để retry delivery")
+        force = body.get("force", False)
+        if not isinstance(force, bool):
+            raise ValueError("force phải là boolean")
+        delivery = store.retry_delivery(delivery_id, allow_sent=force)
+        runtime.notify_delivery()
+        return jsonify({"delivery": delivery}), 202
 
     @app.get("/api/job-alerts/<int:row_id>")
     def get_alert(row_id):
@@ -698,12 +1341,22 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
             raise ValueError("interval_seconds không hợp lệ")
         if model not in _allowed_models(cfg):
             raise ValueError("Model không thuộc dashboard.allowed_models")
+        delivery_channel = _resolve_delivery_channel(body, runtime)
+        current_schedule = store.get_schedule(include_llm_parameters=True)
+        try:
+            llm_parameters = _resolve_llm_parameters(
+                body, cfg, current=current_schedule.get("llm_parameters")
+            )
+        except ValueError as exc:
+            return _llm_parameter_error(exc)
         now = datetime.now(timezone.utc)
         schedule = store.configure_schedule(
             enabled=enabled,
             interval_seconds=interval,
             model=model,
             language=language,
+            delivery_channel=delivery_channel,
+            llm_parameters=llm_parameters,
             next_window_start=format_utc(now),
             ingest_delay_seconds=dashboard_cfg.get("ingest_delay_seconds", 120),
             max_catchup_windows=dashboard_cfg.get("max_catchup_windows", 24),

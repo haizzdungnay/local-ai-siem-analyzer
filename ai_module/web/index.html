@@ -11,7 +11,8 @@
   <header>
     <div><strong>Wazuh AI Analyst</strong><span>Local · AI advisory</span></div>
     <div class="header-tools">
-      <div id="health" class="health">Đang kiểm tra...</div>
+      <a class="button-link secondary" href="/security-tests">Kiểm thử DVWA</a>
+      <div id="health" class="health" title="RAG ready: trạng thái index tham chiếu cục bộ; không phải trạng thái của Ollama.">Đang kiểm tra...</div>
       <label class="header-select">Giao diện
         <select id="theme"><option value="dark">Tối</option><option value="light">Sáng</option></select>
       </label>
@@ -37,7 +38,19 @@
         <label class="custom-field">Bắt đầu<input id="start" type="datetime-local"></label>
         <label class="custom-field">Kết thúc<input id="end" type="datetime-local"></label>
         <label>Model<select id="model"></select></label>
+        <details class="llm-parameters"><summary>LLM advanced</summary>
+          <p class="muted">Settings are snapshotted with each job; operator guidance cannot replace SOC rules.</p>
+          <div class="llm-parameter-grid">
+            <label>Temperature<input id="llm-temperature" type="number" min="0" max="2" step="0.05" value="0"></label>
+            <label>Top P<input id="llm-top-p" type="number" min="0.05" max="1" step="0.05" value="1"></label>
+            <label>Max tokens<input id="llm-max-tokens" type="number" min="64" max="8192" step="1" value="2048"></label>
+          </div>
+          <label>Custom system prompt (optional)<textarea id="llm-system-prompt" rows="3" maxlength="4000" placeholder="Focus on this environment; do not enter tokens or passwords."></textarea></label>
+        </details>
         <label>AI trả lời<select id="language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
+        <label>Nhận báo cáo<select id="delivery-channel">
+          <option value="none">Không gửi</option><option value="telegram">Telegram bot</option><option value="gmail">Gmail</option>
+        </select></label>
         <button id="job-submit" type="submit">Đưa vào hàng đợi</button>
       </form>
       <p id="form-message" class="message"></p>
@@ -55,9 +68,23 @@
             <option value="43200">12 giờ</option><option value="86400">24 giờ</option>
           </select></label>
           <label>Model<select id="schedule-model"></select></label>
+          <details class="llm-parameters"><summary>LLM advanced</summary>
+            <p class="muted">Each scheduled job receives a snapshot. Saved custom guidance is not shown again.</p>
+            <div class="llm-parameter-grid">
+              <label>Temperature<input id="schedule-llm-temperature" type="number" min="0" max="2" step="0.05" value="0"></label>
+              <label>Top P<input id="schedule-llm-top-p" type="number" min="0.05" max="1" step="0.05" value="1"></label>
+              <label>Max tokens<input id="schedule-llm-max-tokens" type="number" min="64" max="8192" step="1" value="2048"></label>
+            </div>
+            <label>New custom system prompt (optional)<textarea id="schedule-llm-system-prompt" rows="3" maxlength="4000" placeholder="Leave blank to retain saved guidance."></textarea></label>
+            <label class="toggle"><input id="schedule-clear-system-prompt" type="checkbox"> Clear saved custom prompt</label>
+          </details>
           <label>AI trả lời<select id="schedule-language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
+          <label>Gửi mỗi cửa sổ<select id="schedule-delivery-channel">
+            <option value="none">Không gửi</option><option value="telegram">Telegram bot</option><option value="gmail">Gmail</option>
+          </select></label>
           <button type="submit">Lưu lịch</button>
         </form>
+        <p id="schedule-message" class="message" aria-live="polite"></p>
         <dl id="schedule-detail"></dl>
         <div id="schedule-actions" class="actions hidden">
           <button id="schedule-retry" type="button" class="secondary">Thử lại lịch</button>
@@ -75,11 +102,21 @@
           <button id="history-filter-clear" type="button" class="secondary">Bỏ lọc</button>
         </div>
         <p class="muted table-hint">Mỗi dòng là một cửa sổ log. Click hoặc dùng Enter/Space để xem nhận xét AI tương ứng.</p>
+        <label>Max level<select id="history-severity"><option value="">All</option><option value="12">&gt;= 12 (Critical)</option><option value="10">&gt;= 10 (High)</option><option value="7">&gt;= 7 (Elevated)</option></select></label>
+        <div class="history-toolbar" aria-label="Batch actions">
+          <button id="history-bulk-review" type="button" class="secondary" disabled>Mark selected reviewed</button>
+          <button id="history-export-csv" type="button" class="secondary" title="Xuất trang batch hiện tại">Export current page CSV</button>
+          <button id="history-export-json" type="button" class="secondary" title="Xuất trang batch hiện tại">Export current page JSON</button>
+          <button id="history-export-pdf" type="button" class="secondary">Print / PDF</button>
+          <span id="history-page-info" class="muted" aria-live="polite"></span>
+          <button id="history-page-prev" type="button" class="secondary" aria-label="Previous page">&lt;</button>
+          <button id="history-page-next" type="button" class="secondary" aria-label="Next page">&gt;</button>
+        </div>
         <div class="table-scroll batch-table-scroll">
           <table class="batch-table"><thead><tr>
             <th scope="col">Batch</th><th scope="col">Cửa sổ</th><th scope="col">Status</th>
             <th scope="col">Alerts</th><th scope="col">Groups</th><th scope="col">Rules</th>
-            <th scope="col">Max level</th><th scope="col">AI</th><th scope="col">Review</th><th scope="col">Freshness</th>
+            <th scope="col">Max level</th><th scope="col">AI</th><th scope="col">Review</th><th scope="col">Delivery</th><th scope="col">Freshness</th>
           </tr></thead><tbody id="jobs"></tbody></table>
         </div>
       </div>
@@ -87,6 +124,8 @@
 
     <section class="grid ops-grid">
       <div class="card"><div class="section-title"><div><p class="eyebrow">Local runtime</p><h2>Dependency & queue health</h2></div><button id="deps-refresh" type="button" class="secondary">Kiểm tra</button></div><dl id="dependency-health" class="ops-detail"></dl></div>
+      <div class="card"><div class="section-title"><div><p class="eyebrow">Outbound opt-in</p><h2>Telegram delivery</h2></div><div class="actions"><button id="telegram-refresh" type="button" class="secondary">Làm mới</button><button id="telegram-settings" type="button" class="secondary">Cài đặt Telegram</button></div></div><dl id="telegram-status" class="ops-detail"></dl><p class="muted">Mỗi report là một PDF chi tiết kèm caption đã redact; token và chat ID không hiện trên dashboard.</p><button id="telegram-test" type="button" class="secondary" disabled>Gửi test Telegram</button><p id="telegram-test-message" class="message" aria-live="polite"></p></div>
+      <div class="card"><div class="section-title"><div><p class="eyebrow">Outbound opt-in</p><h2>Gmail delivery</h2></div><div class="actions"><button id="gmail-refresh" type="button" class="secondary">Làm mới</button><button id="gmail-settings" type="button" class="secondary">Cài đặt Gmail</button></div></div><dl id="gmail-status" class="ops-detail"></dl><p class="muted">Chỉ gửi summary đã redact; App Password và địa chỉ email không hiện trên dashboard.</p><button id="gmail-test" type="button" class="secondary" disabled>Gửi test Gmail</button><p id="gmail-test-message" class="message" aria-live="polite"></p></div>
       <div class="card"><div class="section-title"><div><p class="eyebrow">Retention</p><h2>Bảo trì dữ liệu local</h2></div><button id="maintenance-refresh" type="button" class="secondary">Làm mới</button></div><dl id="maintenance-stats" class="ops-detail"></dl><p id="maintenance-note" class="muted"></p><button id="maintenance-prune" type="button" class="danger" disabled>Xóa history theo retention</button></div>
     </section>
 
@@ -111,10 +150,15 @@
         <div id="ai-loading" class="ai-loading hidden" role="status" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
           <div><strong id="ai-loading-title">Đang xử lý</strong><p id="ai-loading-detail" class="muted"></p></div>
-        </div>
-        <p id="ai-review-empty" class="muted hidden"></p>
-        <dl id="ai-provenance" class="ai-provenance hidden"></dl>
-        <section id="soc-trace" class="soc-trace hidden" aria-labelledby="soc-trace-title">
+         </div>
+         <p id="ai-review-empty" class="muted hidden"></p>
+         <dl id="ai-provenance" class="ai-provenance hidden"></dl>
+         <section id="ai-quality-warning" class="ai-quality-warning hidden" aria-labelledby="ai-quality-warning-title" role="status">
+           <h4 id="ai-quality-warning-title">Báo cáo chưa đạt quality gate</h4>
+           <p id="ai-quality-warning-copy">Không trình bày báo cáo này như kết luận hoàn chỉnh.</p>
+           <ul id="ai-quality-warning-list"></ul>
+         </section>
+         <section id="soc-trace" class="soc-trace hidden" aria-labelledby="soc-trace-title">
           <div class="soc-trace-heading">
             <div><p class="eyebrow">Audit summary</p><h4 id="soc-trace-title">Dấu vết phân tích SOC</h4></div>
             <span id="soc-trace-confidence" class="badge"></span>
@@ -159,5 +203,40 @@
     </section>
   </main>
   <dialog id="alert-dialog"><button id="dialog-close" class="secondary">Đóng</button><pre id="alert-json"></pre></dialog>
+  <dialog id="batch-details-dialog" class="batch-details-dialog" aria-labelledby="batch-details-title">
+    <div class="section-title"><div><p class="eyebrow">Batch detail</p><h2 id="batch-details-title">Batch</h2></div><button id="batch-details-close" type="button" class="secondary">Close</button></div>
+    <p id="batch-details-meta" class="muted batch-details-meta"></p>
+    <section><h3>AI summary</h3><p id="batch-details-summary" class="history-detail-summary"></p></section>
+    <section><h3>Triggered rules</h3><ul id="batch-details-rules"></ul></section>
+    <section><h3>Raw log references</h3><p class="muted">Only bounded alert references are shown; full logs remain in Wazuh Indexer.</p><ul id="batch-details-logs"></ul></section>
+    <section><h3>RAG recommendation</h3><p id="batch-details-recommendation"></p></section>
+  </dialog>
+  <dialog id="telegram-settings-dialog" aria-labelledby="telegram-settings-title">
+    <div class="section-title">
+      <div><p class="eyebrow">Local secret</p><h2 id="telegram-settings-title">Cài đặt Telegram</h2></div>
+      <button id="telegram-settings-close" type="button" class="secondary">Đóng</button>
+    </div>
+    <p class="muted">Token chỉ được ghi vào file local đã gitignore trên máy này; dashboard không hiển thị lại token hoặc chat ID.</p>
+    <form id="telegram-settings-form" class="notification-settings-form" novalidate>
+      <label>Bot token<input id="telegram-bot-token" type="password" autocomplete="off" spellcheck="false" maxlength="256" required></label>
+      <label>Numeric chat ID<input id="telegram-chat-id" type="text" inputmode="numeric" autocomplete="off" maxlength="21" pattern="-?[0-9]{1,20}" required></label>
+      <div class="actions"><button id="telegram-settings-submit" type="submit">Lưu cài đặt</button></div>
+    </form>
+    <p id="telegram-settings-message" class="message" aria-live="polite"></p>
+  </dialog>
+  <dialog id="gmail-settings-dialog" aria-labelledby="gmail-settings-title">
+    <div class="section-title">
+      <div><p class="eyebrow">Local secret</p><h2 id="gmail-settings-title">Cài đặt Gmail</h2></div>
+      <button id="gmail-settings-close" type="button" class="secondary">Đóng</button>
+    </div>
+    <p class="muted">Dùng Gmail App Password, không dùng mật khẩu đăng nhập Google. Giá trị chỉ được ghi vào file local đã gitignore và không hiển thị lại trên dashboard.</p>
+    <form id="gmail-settings-form" class="notification-settings-form">
+      <label>Email gửi<input id="gmail-sender-email" type="email" autocomplete="off" spellcheck="false" maxlength="254" required></label>
+      <label>Gmail App Password<input id="gmail-app-password" type="password" autocomplete="new-password" spellcheck="false" maxlength="256" required></label>
+      <label>Email nhận<input id="gmail-recipient-email" type="email" autocomplete="off" spellcheck="false" maxlength="254" required></label>
+      <div class="actions"><button id="gmail-settings-submit" type="submit">Lưu cài đặt</button></div>
+    </form>
+    <p id="gmail-settings-message" class="message" aria-live="polite"></p>
+  </dialog>
 </body>
 </html>

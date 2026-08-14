@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kiểm thử DVWA - Wazuh AI Analyst</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/test.js?v=security-contract-v3" defer></script>
+</head>
+<body class="security-test-page">
+  <header>
+    <div><strong>Wazuh AI Analyst</strong><span>Lab DVWA · Wazuh telemetry</span></div>
+    <div class="header-tools"><a class="button-link secondary" href="/">Quay lại dashboard</a></div>
+  </header>
+  <main>
+    <section class="card security-test-hero">
+      <div>
+        <p class="eyebrow">Lab-only traffic generator</p>
+        <h1>Kiểm thử tấn công DVWA</h1>
+        <p class="muted">Mỗi nút chỉ gọi một script allowlist từ Kali cố định tới DVWA cố định. Trang này chờ Wazuh ingest, đối chiếu rule đã xác minh rồi mới tạo một báo cáo AI local.</p>
+      </div>
+      <dl id="security-test-lab" class="ops-detail"><dt>Trạng thái</dt><dd>Đang kiểm tra...</dd></dl>
+    </section>
+
+    <section class="security-test-toolbar" aria-label="Điều khiển kiểm thử">
+      <div class="security-test-model-control">
+        <label for="security-test-model">Model AI phân tích</label>
+        <select id="security-test-model" aria-describedby="security-test-model-help" disabled></select>
+        <p id="security-test-model-help" class="muted">Model được chụp lại cho lượt chạy và chỉ dùng sau khi Wazuh có evidence.</p>
+      </div>
+      <div class="security-test-toolbar-actions">
+        <p id="security-test-message" class="message" aria-live="polite"></p>
+        <button id="security-test-refresh" type="button" class="secondary">Làm mới trạng thái</button>
+      </div>
+    </section>
+
+    <section id="security-test-active" class="card hidden" aria-live="polite">
+      <div class="section-title"><div><p class="eyebrow">Lượt chạy hiện tại</p><h2 id="security-test-active-title">Đang chuẩn bị</h2></div><span id="security-test-active-status" class="badge">queued</span></div>
+      <dl id="security-test-active-detail" class="ops-detail"></dl>
+      <section class="security-test-terminal" aria-label="Terminal runner chỉ đọc">
+        <div class="security-test-terminal-bar"><span>terminal / kali runner</span><span id="security-test-terminal-state">idle</span></div>
+        <pre id="security-test-terminal-command" tabindex="0">$ Chưa có lệnh chạy.</pre>
+        <pre id="security-test-terminal-output" role="log" aria-live="polite" tabindex="0"># Output sẽ xuất hiện sau khi lệnh kết thúc.</pre>
+        <details class="security-test-script-details">
+          <summary>Xem script allowlist gửi tới Kali (chỉ đọc)</summary>
+          <pre id="security-test-script-preview" tabindex="0"># Chưa có script được chọn.</pre>
+        </details>
+      </section>
+      <details><summary>Output script đã giới hạn</summary><pre id="security-test-output"></pre></details>
+      <section class="security-test-evidence" aria-label="Wazuh evidence va AI report">
+        <h3>Wazuh evidence va AI report</h3>
+        <dl id="security-test-evidence-detail" class="ops-detail"></dl>
+        <p id="security-test-verdict" class="message" aria-live="polite"></p>
+        <a id="security-test-job-link" class="button-link secondary hidden" href="#" target="_blank" rel="noopener noreferrer">Mo AI job read-only</a>
+      </section>
+      <p class="muted">Script bị giới hạn 20 giây. Script exit 0 không xác nhận exploit hoặc alert; verdict chỉ dựa trên alert Wazuh đúng source, agent, rule và cửa sổ UTC.</p>
+    </section>
+
+    <section>
+      <div class="section-title"><div><p id="security-test-catalog-count" class="eyebrow">Đang tải catalog</p><h2>Chọn kịch bản mẫu</h2></div><span class="badge">Serial only</span></div>
+      <div id="security-test-cards" class="security-test-grid"></div>
+    </section>
+  </main>
+
+  <dialog id="security-test-confirm" aria-labelledby="security-test-confirm-title" aria-describedby="security-test-confirm-copy security-test-confirm-model security-test-confirm-risk">
+    <div class="section-title"><div><p class="eyebrow">Xác nhận lab action</p><h2 id="security-test-confirm-title">Chạy kiểm thử</h2></div><button id="security-test-confirm-close" class="secondary" type="button">Đóng</button></div>
+    <p id="security-test-confirm-copy"></p>
+    <p id="security-test-confirm-model" class="security-test-meta"></p>
+    <p id="security-test-confirm-risk" class="muted">Chỉ chạy trên Kali `.30` tới DVWA `.20`. Không đóng hộp này nếu bạn không có quyền dùng lab.</p>
+    <p id="security-test-confirm-error" class="security-test-confirm-error hidden" role="alert" aria-live="assertive" tabindex="-1"></p>
+    <div class="actions"><button id="security-test-confirm-run" type="button">Chạy script</button></div>
+  </dialog>
+</body>
+</html>

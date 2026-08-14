@@ -1,0 +1,6 @@
+# Public TLS endpoint for the loopback-only Waitress dashboard.
+# Replace dashboard.example.test with a DNS name managed by this host. For a
+# local-only certificate use `tls internal` and trust Caddy's local CA.
+dashboard.example.test {
+    reverse_proxy 127.0.0.1:8765
+}

@@ -13,6 +13,8 @@ venv/
 
 # AI module config (chứa API key)
 ai_module/config.yaml
+ai_module/telegram.local.env
+ai_module/gmail.local.env
 
 # RAG vector store (sinh lại được)
 ai_module/rag_data/*.db
