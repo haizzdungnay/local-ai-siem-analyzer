@@ -138,7 +138,7 @@ Repo tracked chứa topology lab, user/path vận hành và shared lab credentia
 Điểm đáng chú ý:
 
 - `HANDOFF.md:236-244`
-- `docs/manual-test.md:6-25`
+- `manual-test.md:6-25`
 - `README.md:11-28`
 - `ai_module/config.example.yaml:4-21`
 

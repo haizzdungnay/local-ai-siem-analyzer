@@ -71,7 +71,7 @@ blocker code.
 
 ## Kế hoạch cải thiện có kiểm chứng — 2026-08-05
 
-Phân tích read-only tại `check.md` xác định giai đoạn tiếp theo là nâng tính
+Phân tích read-only tại `docs/check.md` xác định giai đoạn tiếp theo là nâng tính
 đúng, evidence và reproducibility thay vì thêm feature rộng. Kế hoạch đầy đủ,
 acceptance criteria và release gates nằm tại `docs/improvement-plan.md`.
 

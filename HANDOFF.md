@@ -2,6 +2,14 @@
 
 Ngày cập nhật: 2026-08-14
 
+## Documentation relocation (2026-08-14)
+
+- Moved standalone notes `SoLieuC4.md`, `check.md`, `promt.md`, and `test.md` to `docs/`; root `HANDOFF.md` remains because `CLAUDE.md` and `.githooks/pre-commit` require it as release ledger.
+- Preserved operator guides at `docs/gmail.md` and `docs/telegram.md`; retained their technical plans as `docs/gmail-plan.md` and `docs/telegram-plan.md` instead of overwriting shipped guides.
+- Excluded untracked dashboard runtime logs from release staging; logs contain local lab/runtime details.
+- Verification: `python -m pytest` — `222 passed`; AST scan — 36 Python files, 0 errors; `git diff --check`, cached whitespace check, and tracked secret scan PASS.
+- Next: review staged rename/doc diff, run hook, commit, push `main`, then verify GitHub Actions.
+
 ## CI fix (2026-08-14)
 
 - GitHub run `31763143771` failed only at `ubuntu-latest / Python 3.11` → `Audit Python dependencies`; three other matrix jobs passed.

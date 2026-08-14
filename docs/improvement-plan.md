@@ -1,6 +1,6 @@
 # Kế hoạch cải thiện có kiểm chứng — Local AI SIEM Analyzer
 
-Ngày đánh giá lại: 2026-08-05. Nguồn chính: `check.md`, mã nguồn hiện tại và
+Ngày đánh giá lại: 2026-08-05. Nguồn chính: `docs/check.md`, mã nguồn hiện tại và
 roadmap sản phẩm. Kế hoạch này thay thế mọi diễn giải rằng bản hiện tại đã
 production-ready.
 

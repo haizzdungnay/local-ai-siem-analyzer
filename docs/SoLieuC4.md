@@ -160,7 +160,7 @@
 | Hình 3.3 | Danh sách Agent ở trạng thái **Active** | **chưa chụp** (Cần chụp màn hình Agents tab) |
 | Hình 3.4 | Cảnh báo hiển thị trên Dashboard sau khi chạy kịch bản | **chưa chụp** (Cần chụp màn hình Events tab) |
 | Hình 3.5 | Giao diện hiển thị kết quả diễn giải của mô-đun AI | **chưa chụp** (Cần chụp Web UI `127.0.0.1:8765`) |
-| Mục 3.4.4 | 1 cảnh báo đầu vào (rút gọn) + bản JSON đầu ra tương ứng | **Đã có** (Đã xuất trong `SoLieuC4.md`) |
+| Mục 3.4.4 | 1 cảnh báo đầu vào (rút gọn) + bản JSON đầu ra tương ứng | **Đã có** (Đã xuất trong `docs/SoLieuC4.md`) |
 ## 4.6. Kiểm thử tấn công thực tế từ Kali Linux qua Web UI & SQLite persistence
 
 Dưới đây là kết quả kiểm thử tấn công thực tế (SSH Brute-force & DVWA Web Attack) từ Kali (`192.168.100.30`) sang Victim (`192.168.100.20`), được ghi nhận vào Wazuh Indexer, phân tích qua Web UI (`127.0.0.1:8765`) và lưu trữ thực tế trong SQLite Database (`dashboard_data/dashboard.db`).
