@@ -2,6 +2,14 @@
 
 Ngày cập nhật: 2026-08-14
 
+## CI fix (2026-08-14)
+
+- GitHub run `31763143771` failed only at `ubuntu-latest / Python 3.11` → `Audit Python dependencies`; three other matrix jobs passed.
+- Root cause: `Pillow==12.0.0` had newly reported vulnerabilities. Minimum targeted fix: `ai_module/requirements.txt` pin changed to `Pillow==12.3.0`; no application source changed.
+- Local dependency audit after reinstall: `dependency audit passed; 1 documented exception(s) remain active`.
+- Full local verification after fix: `222 passed in 18.06s`; compileall, JavaScript syntax, shell syntax, `git diff --check` và tracked secret scan PASS. Dependency audit PASS.
+- Next: commit only dependency pin + ledgers, push, then wait for all GitHub matrix jobs green.
+
 ## GitHub release preparation (2026-08-14)
 
 - Đã làm sạch artifact sinh bởi pytest/runtime (`.tmp-*`, `qa_run_20260811/`, `$null`, dashboard stdout/stderr logs); không stage.

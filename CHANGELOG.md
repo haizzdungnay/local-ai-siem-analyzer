@@ -6,6 +6,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ## [Unreleased]
 
 ### Added
+- CI fix 2026-08-14: pin `Pillow==12.3.0` after GitHub Ubuntu/Python 3.11 dependency audit rejected `Pillow==12.0.0`; no application source changed.
 - Release preparation 2026-08-14: cleaned generated local artifacts from worktree, synchronized Gmail/roadmap wording with shipped local opt-in delivery, and reverified the publish candidate with `222 passed`, compileall, JavaScript/shell syntax, secret scan, and `git diff --check`.
 - Trang `/security-tests` nay có model selector cho từng lượt chạy. Catalog chỉ công khai model vừa thuộc `security_tests.allowed_analysis_models` vừa đang cài trong Ollama; API/runner kiểm tra lại trước SSH, khóa lựa chọn trong modal rồi snapshot vào run và SQLite AI job. Model mặc định vẫn là `qwen2.5:7b`, còn target/script/LLM parameters không cho browser thay đổi. Đã bỏ executable fake-curl unit test trên Windows vì PATH của Git Bash có thể rơi xuống `curl` thật; regression security-runner hiện chỉ mock subprocess hoặc đọc source tĩnh.
 - Kịch bản `Brute Force (DVWA login)` nay có telemetry contract riêng: script gửi đúng sáu POST với credential lab không hợp lệ; Wazuh custom rule `100120` nhận từng `POST /DVWA/login.php` và correlation `100121` nhận sáu request trong 10 giây từ cùng source. Rule được quản lý tại `infra/wazuh/rules/dvwa_login_burst_rules.xml`, deploy thành file riêng và không sửa `local_rules.xml`; wording chỉ kết luận login POST burst, không suy diễn credential failure hay compromise từ Apache access log.
