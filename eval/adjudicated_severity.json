@@ -1,0 +1,336 @@
+{
+  "ambiguous-506-01": {
+    "severity": "medium",
+    "agreement": "disagreement_resolved",
+    "reviewer_1": "medium",
+    "reviewer_2": "low",
+    "adjudication_rationale": "Agent stoppage causes loss of security telemetry. In triage priority, unexpected visibility loss is medium priority investigation.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ambiguous-510-01": {
+    "severity": "high",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Rootcheck detected trojaned version of diff binary.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-23502-01": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Solved CVE notification due to package update.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-23502-02": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Solved CVE notification due to package update.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-23502-03": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Solved CVE notification due to package update.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-23502-04": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Solved CVE notification due to package update.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-23502-05": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Solved CVE notification due to package update.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-23502-06": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Solved CVE notification due to package update.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-503-01": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Agent started normally.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-5402-01": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Legitimate sudo command by analyst.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-5501-01": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Normal PAM session opened.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-5501-02": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Normal PAM session opened.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-5502-01": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Normal PAM session closed.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-5502-02": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Normal PAM session closed.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "benign-5715-01": {
+    "severity": "low",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Normal ssh public key auth success.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "fim-553-01": {
+    "severity": "high",
+    "agreement": "unanimous",
+    "adjudication_rationale": "System configuration file deleted in monitored path.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "fim-554-01": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "New file added to system directory; needs change record verification.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "fim-554-02": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "New file added to system directory; needs change record verification.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-2502-01": {
+    "severity": "high",
+    "agreement": "unanimous",
+    "adjudication_rationale": "PAM aggregated multiple authentication failures for root.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-40112-01": {
+    "severity": "high",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Multiple failures followed by success; high risk credential guessing.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-40112-02": {
+    "severity": "high",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Multiple failures followed by success; high risk credential guessing.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5503-01": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Single PAM auth failure from lab source.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5503-02": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Single PAM auth failure from gateway IP.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5503-03": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Single PAM auth failure.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5710-01": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "SSH failed password for invalid username.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5710-02": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "SSH attempt using non-existent username.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5712-01": {
+    "severity": "high",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Brute-force attack trying to get access with non-existent user.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5760-01": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Single SSH auth failure for root.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5760-02": {
+    "severity": "medium",
+    "agreement": "disagreement_resolved",
+    "reviewer_1": "medium",
+    "reviewer_2": "high",
+    "adjudication_rationale": "Syslog message aggregation (4 times) represents suspicious burst but not high-impact sustained brute-force correlation (rule 5712/2502). Consensus is medium.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "ssh-5760-03": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Single SSH auth failure for root.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "web-31101-01": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Web path traversal attempt (/etc/passwd) returned 404 (blocked/failed).",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "web-31105-01": {
+    "severity": "medium",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Web XSS probe returned 404 (blocked/failed).",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  },
+  "web-31151-01": {
+    "severity": "high",
+    "agreement": "unanimous",
+    "adjudication_rationale": "Multiple 400 error codes from same source indicating automated scanning.",
+    "reviewers": [
+      "reviewer_1",
+      "reviewer_2"
+    ],
+    "status": "adjudicated-two-reviewer"
+  }
+}

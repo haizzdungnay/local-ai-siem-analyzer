@@ -131,7 +131,7 @@ def test_time_range_rejects_timezone_free_future_and_long_ranges():
     invalid = [
         ("2026-07-30T11:00:00", "2026-07-30T12:00:00Z"),
         ("2026-07-30T11:00:00Z", "2026-07-30T12:01:00Z"),
-        ("2026-07-29T11:00:00Z", "2026-07-30T12:00:00Z"),
+        ("2026-06-29T11:00:00Z", "2026-07-30T12:00:00Z"),
     ]
     for start, end in invalid:
         try:

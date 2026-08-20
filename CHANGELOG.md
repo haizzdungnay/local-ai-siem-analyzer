@@ -6,6 +6,11 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ## [Unreleased]
 
 ### Added
+- Thêm eval benchmarks (prompt injection, reproducibility, capacity, user study protocol, RAG benchmark, baseline comparison).
+- Mở rộng hỗ trợ khoảng thời gian phân tích lên tới 30 ngày (259200, 604800, 2592000s) trong reader và dashboard worker.
+- Bổ sung bộ dữ liệu RAG đầy đủ và test suite toàn diện.
+
+### Added
 - CI fix 2026-08-14: pin `Pillow==12.3.0` after GitHub Ubuntu/Python 3.11 dependency audit rejected `Pillow==12.0.0`; no application source changed.
 - Documentation relocation 2026-08-14: moved standalone notes `SoLieuC4.md`, `check.md`, `promt.md`, and `test.md` under `docs/`; retained root `HANDOFF.md` and operational `docs/gmail.md`/`docs/telegram.md`, with Gmail/Telegram plans stored as separate `docs/*-plan.md` files.
 - Release preparation 2026-08-14: cleaned generated local artifacts from worktree, synchronized Gmail/roadmap wording with shipped local opt-in delivery, and reverified the publish candidate with `222 passed`, compileall, JavaScript/shell syntax, secret scan, and `git diff --check`.

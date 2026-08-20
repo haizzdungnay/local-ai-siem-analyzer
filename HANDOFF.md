@@ -2,6 +2,14 @@
 
 Ngày cập nhật: 2026-08-14
 
+## Eval benchmarks and extended timerange update (2026-08-20)
+
+- Bổ sung các benchmark và dataset đánh giá: prompt injection, capacity, reproducibility, user study protocol, severity groundtruth, RAG benchmark.
+- Nâng cấp time-range parser và worker hỗ trợ các preset/custom range lên tới 30 ngày (259200s, 604800s, 2592000s).
+- Bổ sung các test suites kiểm thử unit/integration cho mở rộng timerange, model provenance, RAG benchmark, adversarial prompt injection.
+- Verification: Secret scan passed, staged files ready for release.
+
+
 ## Documentation relocation (2026-08-14)
 
 - Moved standalone notes `SoLieuC4.md`, `check.md`, `promt.md`, and `test.md` to `docs/`; root `HANDOFF.md` remains because `CLAUDE.md` and `.githooks/pre-commit` require it as release ledger.

@@ -1,0 +1,167 @@
+{
+  "ambiguous-506-01": {
+    "severity": "low",
+    "confidence": "medium",
+    "rationale": "Agent stopped often happens during routine maintenance or reboot."
+  },
+  "ambiguous-510-01": {
+    "severity": "high",
+    "confidence": "high",
+    "rationale": "Rootcheck detected trojaned version of diff binary."
+  },
+  "benign-23502-01": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Solved CVE notification due to package update."
+  },
+  "benign-23502-02": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Solved CVE notification due to package update."
+  },
+  "benign-23502-03": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Solved CVE notification due to package update."
+  },
+  "benign-23502-04": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Solved CVE notification due to package update."
+  },
+  "benign-23502-05": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Solved CVE notification due to package update."
+  },
+  "benign-23502-06": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Solved CVE notification due to package update."
+  },
+  "benign-503-01": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Agent started normally."
+  },
+  "benign-5402-01": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Legitimate sudo command by analyst."
+  },
+  "benign-5501-01": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Normal PAM session opened."
+  },
+  "benign-5501-02": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Normal PAM session opened."
+  },
+  "benign-5502-01": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Normal PAM session closed."
+  },
+  "benign-5502-02": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Normal PAM session closed."
+  },
+  "benign-5715-01": {
+    "severity": "low",
+    "confidence": "high",
+    "rationale": "Normal ssh public key auth success."
+  },
+  "fim-553-01": {
+    "severity": "high",
+    "confidence": "high",
+    "rationale": "System configuration file deleted in monitored path."
+  },
+  "fim-554-01": {
+    "severity": "medium",
+    "confidence": "medium",
+    "rationale": "New file added to system directory; needs change record verification."
+  },
+  "fim-554-02": {
+    "severity": "medium",
+    "confidence": "medium",
+    "rationale": "New file added to system directory; needs change record verification."
+  },
+  "ssh-2502-01": {
+    "severity": "high",
+    "confidence": "high",
+    "rationale": "PAM aggregated multiple authentication failures for root."
+  },
+  "ssh-40112-01": {
+    "severity": "high",
+    "confidence": "high",
+    "rationale": "Multiple failures followed by success; high risk credential guessing."
+  },
+  "ssh-40112-02": {
+    "severity": "high",
+    "confidence": "high",
+    "rationale": "Multiple failures followed by success; high risk credential guessing."
+  },
+  "ssh-5503-01": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "Single PAM auth failure from lab source."
+  },
+  "ssh-5503-02": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "Single PAM auth failure from gateway IP."
+  },
+  "ssh-5503-03": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "Single PAM auth failure."
+  },
+  "ssh-5710-01": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "SSH failed password for invalid username."
+  },
+  "ssh-5710-02": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "SSH attempt using non-existent username."
+  },
+  "ssh-5712-01": {
+    "severity": "high",
+    "confidence": "high",
+    "rationale": "Brute-force attack trying to get access with non-existent user."
+  },
+  "ssh-5760-01": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "Single SSH auth failure for root."
+  },
+  "ssh-5760-02": {
+    "severity": "high",
+    "confidence": "medium",
+    "rationale": "Log states repeated 4 times in burst, could be high priority brute force."
+  },
+  "ssh-5760-03": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "Single SSH auth failure for root."
+  },
+  "web-31101-01": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "Web path traversal attempt (/etc/passwd) returned 404 (blocked/failed)."
+  },
+  "web-31105-01": {
+    "severity": "medium",
+    "confidence": "high",
+    "rationale": "Web XSS probe returned 404 (blocked/failed)."
+  },
+  "web-31151-01": {
+    "severity": "high",
+    "confidence": "high",
+    "rationale": "Multiple 400 error codes from same source indicating automated scanning."
+  }
+}

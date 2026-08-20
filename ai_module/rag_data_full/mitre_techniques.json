@@ -1,0 +1,182 @@
+[
+  {
+    "id": "T1110",
+    "name": "Brute Force",
+    "tactic": "Credential Access",
+    "description": "K? t?n c?ng th? ??ng nh?p nhi?u l?n v?i c?c m?t kh?u kh?c nhau ?? chi?m quy?n truy c?p h?p l?."
+  },
+  {
+    "id": "T1110.001",
+    "name": "Password Guessing",
+    "tactic": "Credential Access",
+    "description": "Th? l?n l??t nhi?u m?t kh?u cho 1 t?i kho?n c? th? cho t?i khi ??ng nh?p th?nh c?ng. Th??ng g?y ra alert login failed li?n ti?p."
+  },
+  {
+    "id": "T1110.003",
+    "name": "Password Spraying",
+    "tactic": "Credential Access",
+    "description": "S? d?ng m?t m?t kh?u ph? bi?n th? tr?n nhi?u t?i kho?n kh?c nhau ?? tr?nh b? kh?a t?i kho?n."
+  },
+  {
+    "id": "T1110.004",
+    "name": "Credential Stuffing",
+    "tactic": "Credential Access",
+    "description": "S? d?ng danh s?ch t?i kho?n/m?t kh?u r? r? t? c?c v? l? l?t tr??c ?? ?? ??ng nh?p t? ??ng."
+  },
+  {
+    "id": "T1078",
+    "name": "Valid Accounts",
+    "tactic": "Defense Evasion, Persistence, Privilege Escalation, Initial Access",
+    "description": "K? t?n c?ng s? d?ng th?ng tin ??ng nh?p h?p l? ?? truy c?p h? th?ng, duy tr? truy c?p ho?c n? tr?nh c? ch? ph?t hi?n."
+  },
+  {
+    "id": "T1078.001",
+    "name": "Default Accounts",
+    "tactic": "Defense Evasion, Persistence, Privilege Escalation, Initial Access",
+    "description": "L?m d?ng t?i kho?n m?c ??nh c?a thi?t b? ho?c d?ch v? h? th?ng."
+  },
+  {
+    "id": "T1078.003",
+    "name": "Local Accounts",
+    "tactic": "Defense Evasion, Persistence, Privilege Escalation, Initial Access",
+    "description": "L?m d?ng t?i kho?n ng??i d?ng c?c b? tr?n h? ?i?u h?nh."
+  },
+  {
+    "id": "T1595",
+    "name": "Active Scanning",
+    "tactic": "Reconnaissance",
+    "description": "Ch? ??ng qu?t m?ng, c?ng d?ch v? ho?c l? h?ng ?? thu th?p th?ng tin m?c ti?u."
+  },
+  {
+    "id": "T1595.001",
+    "name": "Scanning IP Blocks",
+    "tactic": "Reconnaissance",
+    "description": "Qu?t to?n b? d?i ??a ch? IP ?? t?m m?y ch? ?ang ho?t ??ng."
+  },
+  {
+    "id": "T1595.002",
+    "name": "Vulnerability Scanning",
+    "tactic": "Reconnaissance",
+    "description": "Qu?t t? ??ng t?m ki?m c?c l? h?ng b?o m?t v? ?i?m y?u c?u h?nh trong ?ng d?ng web ho?c d?ch v? m?ng."
+  },
+  {
+    "id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactic": "Initial Access",
+    "description": "Khai th?c l? h?ng trong ?ng d?ng ti?p x?c Internet (web server, API) nh? SQLi, XSS, Path Traversal ?? gi?nh quy?n truy c?p."
+  },
+  {
+    "id": "T1059",
+    "name": "Command and Scripting Interpreter",
+    "tactic": "Execution",
+    "description": "L?m d?ng c?c tr?nh th?ng d?ch l?nh (bash, sh, powershell) ?? th?c thi l?nh ??c h?i."
+  },
+  {
+    "id": "T1059.004",
+    "name": "Unix Shell",
+    "tactic": "Execution",
+    "description": "Th?c thi l?nh v? script qua shell Unix/Linux."
+  },
+  {
+    "id": "T1562",
+    "name": "Impair Defenses",
+    "tactic": "Defense Evasion",
+    "description": "L?m suy y?u, v? hi?u h?a ho?c ch?nh s?a c?c c?ng c? gi?m s?t v? ph?ng th? an ninh."
+  },
+  {
+    "id": "T1562.001",
+    "name": "Disable or Modify Tools",
+    "tactic": "Defense Evasion",
+    "description": "V? hi?u h?a ho?c d?ng agent gi?m s?t an ninh (nh? d?ng Wazuh agent ossec, t?t syslog) ?? che gi?u h?nh vi."
+  },
+  {
+    "id": "T1562.004",
+    "name": "Disable or Modify System Firewall",
+    "tactic": "Defense Evasion",
+    "description": "T?t ho?c thay ??i lu?t t??ng l?a m?y ch? ?? cho ph?p l?u l??ng ??c h?i."
+  },
+  {
+    "id": "T1070",
+    "name": "Indicator Removal",
+    "tactic": "Defense Evasion",
+    "description": "X?a ho?c thay ??i d?u v?t th?c nghi?m tr?n h? th?ng sau khi t?n c?ng."
+  },
+  {
+    "id": "T1070.004",
+    "name": "File Deletion",
+    "tactic": "Defense Evasion",
+    "description": "X?a file, script m? ??c ho?c file c?u h?nh ?? x?a d?u v?t ?i?u tra s?."
+  },
+  {
+    "id": "T1485",
+    "name": "Data Destruction",
+    "tactic": "Impact",
+    "description": "Ph? h?y, x?a d? li?u v? file c?u h?nh tr?n h? th?ng m?c ti?u g?y gi?n ?o?n ho?t ??ng."
+  },
+  {
+    "id": "T1565.001",
+    "name": "Stored Data Manipulation",
+    "tactic": "Impact",
+    "description": "Ch?nh s?a ho?c ch?n d? li?u ?? l?u tr? tr?n h? th?ng file ho?c database l?m sai l?ch t?nh to?n v?n."
+  },
+  {
+    "id": "T1021",
+    "name": "Remote Services",
+    "tactic": "Lateral Movement",
+    "description": "S? d?ng c?c d?ch v? ?i?u khi?n t? xa h?p l? ?? di chuy?n ngang trong m?ng."
+  },
+  {
+    "id": "T1021.004",
+    "name": "SSH",
+    "tactic": "Lateral Movement",
+    "description": "??ng nh?p t? xa qua d?ch v? SSH s? d?ng t?i kho?n ho?c kh?a ri?ng t? ?? chi?m ???c."
+  },
+  {
+    "id": "T1548",
+    "name": "Abuse Elevation Control Mechanism",
+    "tactic": "Privilege Escalation, Defense Evasion",
+    "description": "L?m d?ng c? ch? n?ng cao ??c quy?n h? ?i?u h?nh ?? gi?nh quy?n root/administrator."
+  },
+  {
+    "id": "T1548.003",
+    "name": "Sudo and Sudo Caching",
+    "tactic": "Privilege Escalation, Defense Evasion",
+    "description": "L?m d?ng c?u h?nh sudoers ho?c session sudo ?? th?c thi l?nh ??c quy?n root."
+  },
+  {
+    "id": "T1053",
+    "name": "Scheduled Task/Job",
+    "tactic": "Persistence, Privilege Escalation",
+    "description": "T?o cron job ho?c t?c v? ??nh k? ?? duy tr? quy?n truy c?p ho?c th?c thi m? ??nh k?."
+  },
+  {
+    "id": "T1543.003",
+    "name": "Windows Service",
+    "tactic": "Persistence, Privilege Escalation",
+    "description": "T?o ho?c ch?nh s?a Windows Service ?? duy tr? persistence ho?c leo thang ??c quy?n."
+  },
+  {
+    "id": "T1082",
+    "name": "System Information Discovery",
+    "tactic": "Discovery",
+    "description": "Thu th?p th?ng tin chi ti?t v? h? ?i?u h?nh, ph?n c?ng v? phi?n b?n ph?n m?m."
+  },
+  {
+    "id": "T1083",
+    "name": "File and Directory Discovery",
+    "tactic": "Discovery",
+    "description": "Duy?t t?m c?u tr?c th? m?c v? file nh?y c?m (/etc/passwd, /etc/shadow) tr?n h? th?ng."
+  },
+  {
+    "id": "T1087",
+    "name": "Account Discovery",
+    "tactic": "Discovery",
+    "description": "D? qu?t danh s?ch t?i kho?n ng??i d?ng v? nh?m ??c quy?n tr?n m?y ch?."
+  },
+  {
+    "id": "T1046",
+    "name": "Network Service Discovery",
+    "tactic": "Discovery",
+    "description": "Qu?t c?ng v? d? t?m d?ch v? m?ng ?ang l?ng nghe tr?n c?c m?y ch? t? xa."
+  }
+]

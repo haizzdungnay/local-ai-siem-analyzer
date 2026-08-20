@@ -22,7 +22,7 @@ from telegram_notifier import TELEGRAM_CHANNEL, TelegramConfigurationError, Tele
 fetch_alerts_range = fetch_alerts_window
 
 
-PRESET_SECONDS = {300, 900, 1800, 3600, 7200, 21600, 43200, 86400}
+PRESET_SECONDS = {300, 900, 1800, 3600, 7200, 21600, 43200, 86400, 259200, 604800, 2592000}
 LOGGER = logging.getLogger(__name__)
 
 _GENERIC_BASIS_PHRASES = {

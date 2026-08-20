@@ -1,0 +1,106 @@
+[
+  {
+    "id": "502",
+    "description": "Wazuh server started. D?ch v? Wazuh server trung t?m ?? kh?i ??ng th?nh c?ng v? b?t ??u nh?n s? ki?n t? c?c agent."
+  },
+  {
+    "id": "503",
+    "description": "Wazuh agent started. Agent Wazuh tr?n m?y ??ch kh?i ??ng v? k?t n?i th?nh c?ng t?i Wazuh Manager."
+  },
+  {
+    "id": "506",
+    "description": "Wazuh agent stopped. D?ch v? agent d?ng ho?t ??ng tr?n m?y ??ch; c? th? do b?o tr?, t?t m?y ho?c h?nh vi v? hi?u h?a c?ng c? gi?m s?t (Defense Evasion T1562.001)."
+  },
+  {
+    "id": "510",
+    "description": "Host-based anomaly detection event (rootcheck). Rootcheck ph?t hi?n nghi v?n file h? th?ng b? trojan h?a ho?c ch? k? b?t th??ng so v?i b?n g?c."
+  },
+  {
+    "id": "550",
+    "description": "Integrity checksum changed (FIM). M?t file ???c gi?m s?t ?? b? thay ??i n?i dung (checksum md5/sha1/sha256 kh?c so v?i baseline)."
+  },
+  {
+    "id": "553",
+    "description": "File deleted (FIM). File quan tr?ng trong ???ng d?n ???c gi?m s?t FIM ?? b? x?a (Indicator Removal T1070.004 / Data Destruction T1485)."
+  },
+  {
+    "id": "554",
+    "description": "File added to the system (FIM). File m?i xu?t hi?n trong th? m?c ???c gi?m s?t t?nh to?n v?n."
+  },
+  {
+    "id": "2502",
+    "description": "syslog: User missed the password more than one time. PAM t?ng h?p nhi?u l?n x?c th?c th?t b?i li?n ti?p trong c?ng chu?i k?t n?i (Brute Force T1110)."
+  },
+  {
+    "id": "5402",
+    "description": "Successful sudo to ROOT executed. Ng??i d?ng th?c thi l?nh sudo ??c quy?n root h?p l? ???c ghi nh?n trong audit log."
+  },
+  {
+    "id": "5501",
+    "description": "PAM: Login session opened. M?t phi?n l?m vi?c PAM ???c m? th?nh c?ng b?i t?i kho?n ng??i d?ng."
+  },
+  {
+    "id": "5502",
+    "description": "PAM: Login session closed. Phi?n PAM k?t th?c v? ??ng l?i an to?n."
+  },
+  {
+    "id": "5503",
+    "description": "PAM: User login failed. X?c th?c PAM th?t b?i (th??ng do sai m?t kh?u); x?y ra khi th? ??ng nh?p Linux/SSH (Password Guessing T1110.001)."
+  },
+  {
+    "id": "5710",
+    "description": "sshd: Attempt to login using a non-existent user. Th? ??ng nh?p SSH v?i t?n t?i kho?n kh?ng t?n t?i tr?n h? th?ng (User Enumeration & Password Guessing T1110.001 / Remote SSH T1021.004)."
+  },
+  {
+    "id": "5712",
+    "description": "sshd: brute force trying to get access to the system. Non existent user. Chu?i brute-force li?n t?c th? c?c t?i kho?n kh?ng t?n t?i k?ch ho?t lu?t t??ng quan (Brute Force T1110)."
+  },
+  {
+    "id": "5715",
+    "description": "sshd: authentication success. ??ng nh?p SSH b?ng public key ho?c password th?nh c?ng c?a t?i kho?n ng??i d?ng."
+  },
+  {
+    "id": "5760",
+    "description": "sshd: authentication failed. X?c th?c t?i kho?n ??ch th?t b?i qua SSH (Password Guessing T1110.001 / Remote SSH T1021.004)."
+  },
+  {
+    "id": "23502",
+    "description": "Vulnerability Detector: CVE resolved. Wazuh ghi nh?n CVE ?? ???c gi?i quy?t an to?n sau khi c?p nh?t g?i ph?n m?m ho?c feed b?o m?t."
+  },
+  {
+    "id": "31101",
+    "description": "Web server 400 error code / Web attack probe. Web server tr? m? l?i 400/404 khi nh?n request c? d?u hi?u b?t th??ng nh? duy?t file h? th?ng nh?y c?m (/etc/passwd)."
+  },
+  {
+    "id": "31104",
+    "description": "Common web attack. Ph?t hi?n m?u t?n c?ng ph? bi?n nh?m v?o m?y ch? web."
+  },
+  {
+    "id": "31105",
+    "description": "XSS (Cross Site Scripting) attempt. Ph?t hi?n payload ch?a th? HTML/JavaScript <script> g?i t?i web server."
+  },
+  {
+    "id": "31151",
+    "description": "Multiple web server 400 error codes from same source ip. Nhi?u request l?i li?n ti?p t? c?ng m?t ngu?n t??ng quan th?nh ho?t ??ng qu?t t? ??ng (Vulnerability Scanning T1595.002)."
+  },
+  {
+    "id": "40112",
+    "description": "Multiple authentication failures followed by a success. Wazuh t??ng quan ph?t hi?n chu?i th?t b?i li?n ti?p theo sau b?i m?t l?n ??ng nh?p th?nh c?ng (Valid Accounts T1078 / Brute Force T1110)."
+  },
+  {
+    "id": "100121",
+    "description": "DVWA login POST burst from one source. Nhi?u request POST ??ng nh?p li?n ti?p trong th?i gian ng?n nh?m v?o form x?c th?c web (Brute Force T1110)."
+  },
+  {
+    "id": "18152",
+    "description": "Windows Firewall configuration changed. C?u h?nh t??ng l?a m?y ch? b? thay ??i (Disable or Modify System Firewall T1562.004)."
+  },
+  {
+    "id": "60106",
+    "description": "Windows Logon Success. ??ng nh?p Windows th?nh c?ng Event ID 4624."
+  },
+  {
+    "id": "60642",
+    "description": "Software protection service scheduled successfully. D?ch v? b?n quy?n ph?n m?m Windows ch?y ??nh k? b?nh th??ng."
+  }
+]

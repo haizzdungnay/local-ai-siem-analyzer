@@ -18,7 +18,7 @@ MODULE_DIR = Path(__file__).resolve().parent
 SAMPLES_DIR = MODULE_DIR.parent / "eval" / "samples"
 ALERT_INDEX_PATTERN = "wazuh-alerts-*"
 _ALERT_INDEX_RE = re.compile(r"^wazuh-alerts-[A-Za-z0-9._-]+$")
-_TIMELINE_INTERVALS = (1, 5, 10, 30, 60, 300, 900, 1800, 3600, 21600, 43200, 86400)
+_TIMELINE_INTERVALS = (1, 5, 10, 30, 60, 300, 900, 1800, 3600, 21600, 43200, 86400, 259200, 604800, 2592000)
 CARDINALITY_PRECISION_THRESHOLD = 40000
 _AGGREGATE_SOURCE_FIELDS = [
     "timestamp",
@@ -207,7 +207,7 @@ def validate_time_range(
     start: str | datetime,
     end: str | datetime,
     *,
-    max_span: timedelta = timedelta(hours=24),
+    max_span: timedelta = timedelta(days=30),
     now: datetime | None = None,
 ) -> tuple[datetime, datetime]:
     """Chuẩn hóa cửa sổ UTC nửa mở ``[start, end)`` và chặn range quá lớn."""
@@ -246,7 +246,7 @@ def fetch_alerts_range(
     end: str | datetime,
     *,
     max_alerts: int = 2000,
-    max_span: timedelta = timedelta(hours=24),
+    max_span: timedelta = timedelta(days=30),
     now: datetime | None = None,
     source_ip: str | None = None,
     agent_ip: str | None = None,
@@ -459,7 +459,7 @@ def fetch_alerts_window(
     max_alerts: int = 2000,
     max_rule_buckets: int = 1000,
     max_timeline_buckets: int = 96,
-    max_span: timedelta = timedelta(hours=24),
+    max_span: timedelta = timedelta(days=30),
     now: datetime | None = None,
     source_ip: str | None = None,
     agent_ip: str | None = None,

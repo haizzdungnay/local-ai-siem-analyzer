@@ -48,3 +48,6 @@ ai_module/dashboard-run*.log
 
 # Docker volumes (trên SIEM, không trong repo)
 wazuh-data/
+
+ai_module/dashboard-live*.log
+tmp_tests/
