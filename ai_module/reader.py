@@ -569,6 +569,38 @@ def fetch_alert_document(cfg: dict, index_name: str, document_id: str) -> dict:
     return {"_index": index_name, "_id": document_id, "_source": body["_source"]}
 
 
+def fetch_active_source_ips(
+    cfg: dict,
+    start: str | datetime,
+    end: str | datetime,
+    *,
+    limit: int = 50,
+    max_span: timedelta = timedelta(days=30),
+    now: datetime | None = None,
+) -> list[dict]:
+    """Lay danh sach cac IPv4 nguon hoat dong nhieu nhat trong khoang thoi gian."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        raise ValueError("limit phai nam trong khoang 1..500")
+    start_utc, end_utc = validate_time_range(start, end, max_span=max_span, now=now)
+    query = {
+        "size": 0,
+        "query": _window_query(format_utc(start_utc), format_utc(end_utc), []),
+        "aggs": {
+            "top_source_ips": {
+                "terms": {"field": "data.srcip", "size": limit, "order": {"_count": "desc"}}
+            }
+        },
+    }
+    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
+    response = requests.post(url, json=query, **_request_kwargs(cfg))
+    response.raise_for_status()
+    buckets = response.json().get("aggregations", {}).get("top_source_ips", {}).get("buckets", [])
+    return [
+        {"ip": str(b["key"]), "count": int(b["doc_count"])}
+        for b in buckets if b.get("key") and isinstance(b.get("doc_count"), int)
+    ]
+
+
 def load_sample_alerts(path: str | Path = SAMPLES_DIR) -> list[dict]:
     """Load alert mẫu từ thư mục eval/samples/ (dùng khi --demo)."""
     alerts = []

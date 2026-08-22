@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wazuh AI Analyst</title>
-  <link rel="stylesheet" href="/assets/styles.css">
-  <script src="/assets/app.js" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=dashboard-20260821-4">
+  <script src="/assets/app.js?v=dashboard-20260821-4" defer></script>
 </head>
 <body>
   <header>
@@ -19,41 +19,122 @@
     </div>
   </header>
   <main>
-    <section class="card control-card">
-      <div>
-        <p class="eyebrow">Phân tích mới</p>
-        <h1>Chọn cửa sổ alert</h1>
-        <p class="muted">Nguồn: Wazuh Indexer <code>wazuh-alerts-*</code>. Mỗi job tạo một báo cáo cửa sổ.</p>
-      </div>
-      <form id="job-form">
-        <label>Khoảng nhanh
-          <select id="preset">
-            <option value="300">5 phút</option><option value="900">15 phút</option>
-            <option value="1800">30 phút</option><option value="3600">1 giờ</option>
-            <option value="7200">2 giờ</option><option value="21600">6 giờ</option>
-            <option value="43200">12 giờ</option><option value="86400">24 giờ</option>
-            <option value="custom">Tùy chỉnh</option>
-          </select>
-        </label>
-        <label class="custom-field">Bắt đầu<input id="start" type="datetime-local"></label>
-        <label class="custom-field">Kết thúc<input id="end" type="datetime-local"></label>
-        <label>Model<select id="model"></select></label>
-        <details class="llm-parameters"><summary>LLM advanced</summary>
-          <p class="muted">Settings are snapshotted with each job; operator guidance cannot replace SOC rules.</p>
-          <div class="llm-parameter-grid">
-            <label>Temperature<input id="llm-temperature" type="number" min="0" max="2" step="0.05" value="0"></label>
-            <label>Top P<input id="llm-top-p" type="number" min="0.05" max="1" step="0.05" value="1"></label>
-            <label>Max tokens<input id="llm-max-tokens" type="number" min="64" max="8192" step="1" value="2048"></label>
+            <section class="card control-card-unified" id="control-hub">
+      <div class="control-unified-grid">
+        <div class="control-col">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Phân tích mới</p>
+              <h2>Chọn cửa sổ alert</h2>
+              <p class="muted">Nguồn: Wazuh Indexer <code>wazuh-alerts-*</code>. Mỗi job tạo một báo cáo cửa sổ.</p>
+            </div>
           </div>
-          <label>Custom system prompt (optional)<textarea id="llm-system-prompt" rows="3" maxlength="4000" placeholder="Focus on this environment; do not enter tokens or passwords."></textarea></label>
+          <form id="job-form">
+            <label>Khoảng nhanh
+              <select id="preset">
+                <option value="300">5 phút</option><option value="900">15 phút</option>
+                <option value="1800">30 phút</option><option value="3600">1 giờ</option>
+                <option value="7200">2 giờ</option><option value="21600">6 giờ</option>
+                <option value="43200">12 giờ</option><option value="86400">24 giờ</option>
+                <option value="259200">3 ngày</option><option value="604800">7 ngày</option>
+                <option value="2592000">30 ngày</option>
+                <option value="custom">Tùy chỉnh</option>
+              </select>
+            </label>
+            <label class="custom-field">Bắt đầu<input id="start" type="datetime-local"></label>
+            <label class="custom-field">Kết thúc<input id="end" type="datetime-local"></label>
+            <label>Model<select id="model"></select></label>
+            <details class="llm-parameters"><summary>LLM advanced</summary>
+              <p class="muted">Settings are snapshotted with each job; operator guidance cannot replace SOC rules.</p>
+              <div class="llm-parameter-grid">
+                <label>Temperature<input id="llm-temperature" type="number" min="0" max="2" step="0.05" value="0"></label>
+                <label>Top P<input id="llm-top-p" type="number" min="0.05" max="1" step="0.05" value="1"></label>
+                <label>Max tokens<input id="llm-max-tokens" type="number" min="64" max="8192" step="1" value="2048"></label>
+              </div>
+              <label>Custom system prompt (optional)<textarea id="llm-system-prompt" rows="3" maxlength="4000" placeholder="Focus on this environment; do not enter tokens or passwords."></textarea></label>
+            </details>
+            <label>AI trả lời<select id="language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
+            <label>Nhận báo cáo<select id="delivery-channel">
+              <option value="none">Không gửi</option><option value="telegram">Telegram bot</option><option value="gmail">Gmail</option>
+            </select></label>
+            <label class="toggle"><input id="job-attack-chain" type="checkbox"> Phân tích chuỗi tấn công (IP tự động)</label>
+            <label id="job-attack-chain-window" class="chain-window hidden">Thời gian chuỗi tấn công
+              <select id="job-attack-chain-seconds"><option value="300">5 phút</option><option value="900">15 phút</option><option value="1800">30 phút</option><option value="3600" selected>1 giờ</option><option value="7200">2 giờ</option><option value="21600">6 giờ</option><option value="43200">12 giờ</option><option value="86400">24 giờ</option><option value="259200">3 ngày</option><option value="604800">7 ngày</option><option value="2592000">30 ngày</option></select>
+            </label>
+            <button id="job-submit" type="submit">Đưa vào hàng đợi</button>
+          </form>
+          <p id="form-message" class="message"></p>
+        </div>
+
+        <div class="control-col-divider" aria-hidden="true"></div>
+
+        <div class="control-col ip-investigation-section" id="ip-investigation" aria-labelledby="ip-investigation-title">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Threat hunting cục bộ</p>
+              <h2 id="ip-investigation-title">Phân tích hành vi IP và chuỗi tấn công</h2>
+              <p class="muted">Đọc trực tiếp alert liên quan trong Wazuh Indexer, gom nhóm log cũ và dùng AI local để suy luận theo thời gian.</p>
+            </div>
+            <span class="badge">Tối đa 30 ngày</span>
+          </div>
+          <form id="ip-analysis-form" class="ip-analysis-form">
+            <label class="toggle"><input id="ip-auto" type="checkbox"> Tự động phân tích (IP nhiều hoạt động nhất)</label>
+            <label id="ip-select-label">Địa chỉ IPv4
+              <div class="ip-input-group">
+                <select id="ip-select"><option value="">-- Đang quét IP --</option></select>
+                <input id="ip-address" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Tùy chọn nhập tay (vd: 192.168.100.30)">
+              </div>
+            </label>
+            <label>Thời gian phân tích
+              <select id="ip-lookback">
+                <option value="300">5 phút</option><option value="900">15 phút</option>
+                <option value="1800">30 phút</option><option value="3600">1 giờ</option>
+                <option value="7200">2 giờ</option><option value="21600">6 giờ</option>
+                <option value="43200">12 giờ</option><option value="86400">24 giờ</option>
+                <option value="259200">3 ngày</option><option value="604800" selected>7 ngày</option>
+                <option value="2592000">30 ngày (tối đa)</option>
+              </select>
+            </label>
+            <label>Model phân tích<select id="ip-model"></select></label>
+            <label>Ngôn ngữ
+              <select id="ip-language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select>
+            </label>
+            <button id="ip-analysis-submit" type="submit">Phân tích IP</button>
+          </form>
+          <p id="ip-analysis-message" class="message" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <div id="ip-analysis-result" class="ip-analysis-result hidden" aria-live="polite">
+        <div class="ip-analysis-overview">
+          <div><span>IP</span><strong id="ip-result-address">-</strong></div>
+          <div><span>Alert</span><strong id="ip-result-alerts">0</strong></div>
+          <div><span>Mức độ</span><strong id="ip-result-severity">unknown</strong></div>
+          <div><span>Độ tin cậy</span><strong id="ip-result-confidence">0%</strong></div>
+          <div><span>Khoảng đọc log</span><strong id="ip-result-window">-</strong></div>
+        </div>
+        <div class="ip-analysis-grid">
+          <section class="ip-analysis-primary">
+            <h3>Nhận định hành vi</h3><p id="ip-result-summary"></p>
+            <h3>Ý định có khả năng</h3><p id="ip-result-intent"></p>
+            <h3>Chuỗi tấn công theo thời gian</h3><ol id="ip-result-chain" class="attack-chain"></ol>
+          </section>
+          <section>
+            <h3>MITRE ATT&amp;CK</h3><ul id="ip-result-mitre"></ul>
+            <h3>Tài sản bị nhắm tới</h3><ul id="ip-result-assets"></ul>
+            <h3>Hành động đề xuất</h3><ol id="ip-result-steps"></ol>
+          </section>
+        </div>
+        <details class="ip-evidence">
+          <summary>Cơ sở đánh giá và giới hạn</summary>
+          <div class="ip-evidence-grid">
+            <div><h3>Sự kiện quan sát</h3><ul id="ip-result-facts"></ul></div>
+            <div><h3>Suy luận</h3><ul id="ip-result-inferences"></ul></div>
+            <div><h3>Bất định</h3><ul id="ip-result-uncertainties"></ul></div>
+            <div><h3>Giới hạn</h3><ul id="ip-result-limitations"></ul></div>
+          </div>
         </details>
-        <label>AI trả lời<select id="language"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
-        <label>Nhận báo cáo<select id="delivery-channel">
-          <option value="none">Không gửi</option><option value="telegram">Telegram bot</option><option value="gmail">Gmail</option>
-        </select></label>
-        <button id="job-submit" type="submit">Đưa vào hàng đợi</button>
-      </form>
-      <p id="form-message" class="message"></p>
+      </div>
     </section>
 
     <section class="grid">
@@ -82,6 +163,10 @@
           <label>Gửi mỗi cửa sổ<select id="schedule-delivery-channel">
             <option value="none">Không gửi</option><option value="telegram">Telegram bot</option><option value="gmail">Gmail</option>
           </select></label>
+          <label class="toggle"><input id="schedule-attack-chain" type="checkbox"> Phân tích chuỗi tấn công (IP tự động)</label>
+          <label id="schedule-attack-chain-window" class="chain-window hidden">Thời gian chuỗi tấn công
+            <select id="schedule-attack-chain-seconds"><option value="300">5 phút</option><option value="900">15 phút</option><option value="1800">30 phút</option><option value="3600" selected>1 giờ</option><option value="7200">2 giờ</option><option value="21600">6 giờ</option><option value="43200">12 giờ</option><option value="86400">24 giờ</option><option value="259200">3 ngày</option><option value="604800">7 ngày</option><option value="2592000">30 ngày</option></select>
+          </label>
           <button type="submit">Lưu lịch</button>
         </form>
         <p id="schedule-message" class="message" aria-live="polite"></p>
@@ -129,6 +214,8 @@
       <div class="card"><div class="section-title"><div><p class="eyebrow">Retention</p><h2>Bảo trì dữ liệu local</h2></div><button id="maintenance-refresh" type="button" class="secondary">Làm mới</button></div><dl id="maintenance-stats" class="ops-detail"></dl><p id="maintenance-note" class="muted"></p><button id="maintenance-prune" type="button" class="danger" disabled>Xóa history theo retention</button></div>
     </section>
 
+
+
     <section id="result" class="card hidden">
       <div class="section-title">
         <div><p class="eyebrow">Kết quả</p><h2 id="result-title">Job</h2><p id="result-meta" class="muted result-meta"></p></div>
@@ -175,6 +262,7 @@
         <div id="ai-review-content" class="ai-review-content">
           <div class="review-field review-summary"><span>Tóm tắt</span><p id="ai-summary"></p></div>
           <div class="review-field"><span>Phát hiện chính / Root cause</span><p id="ai-root-cause"></p></div>
+          <div id="ai-chain-field" class="review-field hidden"><span>Chuỗi tấn công theo thời gian</span><ol id="ai-chain" class="attack-chain"></ol></div>
           <div class="review-field"><span>MITRE</span><p id="ai-mitre"></p></div>
           <div class="review-field"><span>Next steps</span><ol id="ai-next-steps"></ol></div>
         </div>
@@ -202,7 +290,7 @@
       <div class="columns"><div><h3>Nhóm alert</h3><div id="groups"></div></div><div><h3 id="alerts-title">Alert</h3><p id="alerts-empty" class="muted hidden"></p><div id="alerts"></div></div></div>
     </section>
   </main>
-  <dialog id="alert-dialog"><button id="dialog-close" class="secondary">Đóng</button><pre id="alert-json"></pre></dialog>
+  <dialog id="alert-dialog"><button id="dialog-close" type="button" class="secondary">Đóng</button><pre id="alert-json"></pre></dialog>
   <dialog id="batch-details-dialog" class="batch-details-dialog" aria-labelledby="batch-details-title">
     <div class="section-title"><div><p class="eyebrow">Batch detail</p><h2 id="batch-details-title">Batch</h2></div><button id="batch-details-close" type="button" class="secondary">Close</button></div>
     <p id="batch-details-meta" class="muted batch-details-meta"></p>

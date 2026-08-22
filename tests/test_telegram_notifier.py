@@ -195,6 +195,24 @@ def test_summary_is_concise_while_pdf_contains_full_report():
     assert b"SECRET_VALUE" not in pdf_content
 
 
+def test_document_read_timeout_scales_with_payload_size():
+    """A fixed 45s ceiling aborted mid-upload once reports passed ~350 KiB."""
+    from telegram_notifier import (
+        MAX_UPLOAD_READ_TIMEOUT_SECONDS,
+        MIN_UPLOAD_READ_TIMEOUT_SECONDS,
+        _upload_read_timeout,
+    )
+
+    # Small payloads keep the existing floor.
+    assert _upload_read_timeout(1_000, 15) == MIN_UPLOAD_READ_TIMEOUT_SECONDS
+    # A 2 MiB report gets well past the old ceiling.
+    assert _upload_read_timeout(2 * 1024 * 1024, 15) > MIN_UPLOAD_READ_TIMEOUT_SECONDS
+    # The configured timeout acts as a floor, never as a cap.
+    assert _upload_read_timeout(1_000, 60) == 60
+    # An oversized payload cannot hang the delivery worker indefinitely.
+    assert _upload_read_timeout(500 * 1024 * 1024, 15) == MAX_UPLOAD_READ_TIMEOUT_SECONDS
+
+
 def test_pdf_is_a_graphical_full_report_attachment():
     pdf_content = render_pdf_report(rich_job())
 

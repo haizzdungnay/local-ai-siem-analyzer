@@ -21,7 +21,7 @@ from email.utils import formatdate, make_msgid
 from pathlib import Path
 from typing import Any
 
-from telegram_notifier import _analysis_from_job, _safe_text, analysis_sha256, load_env_file
+from telegram_notifier import _analysis_from_job, _safe_text, analysis_sha256, attack_chain_from_job, load_env_file
 
 
 GMAIL_CHANNEL = "gmail"
@@ -279,6 +279,13 @@ def render_gmail_report(job: dict[str, Any], *, max_chars: int = DEFAULT_MAX_BOD
     uncertainties = _safe_items(basis.get("uncertainties"), max_items=12, item_limit=400)
     limitations = _safe_items(basis.get("limitations"), max_items=12, item_limit=400)
     safe_warnings = _safe_items(warnings, max_items=12, item_limit=400)
+    chain = attack_chain_from_job(job)
+    chain_items = []
+    chain_summary = _safe_text(chain.get("summary", ""), 1200)
+    chain_intent = _safe_text(chain.get("intent", ""), 400)
+    if chain_summary:
+        chain_items.append(f"{chain_summary} ({chain_intent})" if chain_intent else chain_summary)
+    chain_items.extend(_safe_items(chain.get("kill_chain_stages"), max_items=12, item_limit=400))
     rule_totals: dict[str, tuple[int, int]] = {}
     groups = job.get("groups") if isinstance(job.get("groups"), list) else []
     for group in groups:
@@ -324,7 +331,7 @@ def render_gmail_report(job: dict[str, Any], *, max_chars: int = DEFAULT_MAX_BOD
         if value:
             plain_lines.append(f"{title}: {value}")
     for title, values in (
-        ("Key findings", key_findings), ("MITRE", mitre), ("Next steps", next_steps),
+        ("Key findings", key_findings), ("Attack chain", chain_items), ("MITRE", mitre), ("Next steps", next_steps),
         ("Observed facts", observed), ("Inferences", inferences),
         ("Uncertainties", uncertainties), ("Limitations", limitations), ("Warnings", safe_warnings),
     ):
@@ -379,6 +386,7 @@ def render_gmail_report(job: dict[str, Any], *, max_chars: int = DEFAULT_MAX_BOD
         + (f"<h2 style=\"font-size:16px;margin:24px 0 8px\">Root cause</h2><p style=\"margin:0\">{_html_text(root_cause)}</p>" if root_cause else "")
         + rule_html
         + _html_list("Key findings", key_findings)
+        + _html_list("Attack chain", chain_items)
         + _html_list("MITRE", mitre)
         + _html_list("Next steps", next_steps)
         + _html_alert_map(timeline)

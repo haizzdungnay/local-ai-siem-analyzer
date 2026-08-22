@@ -1,4 +1,4 @@
-﻿const $ = id => document.getElementById(id);
+const $ = id => document.getElementById(id);
 const state = {
   activeJob: null,
   activeJobStatus: null,
@@ -31,6 +31,7 @@ const processingPhases = {
   fetching_alerts: ['Đang đọc Wazuh Indexer', 'Đang lấy alert thật theo cửa sổ đã chọn.'],
   preparing_analysis: ['Đang chuẩn bị dữ liệu', 'Đang gom nhóm, tính coverage và dựng prompt giới hạn.'],
   calling_ollama: ['Đang gọi Ollama local', 'Đang chờ model tạo JSON; bước này có thể mất vài giây hoặc lâu hơn.'],
+  analyzing_attack_chain: ['Đang dựng chuỗi tấn công', 'Đang chọn IP nguồn nhiều alert nhất và phân tích chuỗi theo thời gian.'],
   saving_result: ['Đang lưu kết quả', 'Đã nhận phản hồi và đang lưu JSON cùng metadata kiểm chứng.'],
 };
 
@@ -146,7 +147,7 @@ function modelLabel(model) {
 }
 
 function fillModels(models) {
-  for (const id of ['model', 'schedule-model']) {
+  for (const id of ['model', 'schedule-model', 'ip-model']) {
     const select = $(id);
     select.replaceChildren();
     models.forEach(model => {
@@ -306,7 +307,7 @@ async function openBatchDetails(job, opener = null) {
   });
   if (!alerts.length) { const item = document.createElement('li'); text(item, 'Backend chưa cung cấp raw log cho batch này.'); logs.append(item); }
   const recommendation = $('batch-details-recommendation');
-  const result = (job.results || []).find(row => row.scope === 'window')?.result || {};
+  const result = (job.results || []).find(row => row.scope === 'window' && row.scope_key !== 'attack_chain')?.result || {};
   text(recommendation, result.recommendation || (Array.isArray(result.next_steps) ? result.next_steps.join(' · ') : '') || 'Chưa có khuyến nghị RAG.');
   dialog.dataset.jobId = job.id;
   if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
@@ -356,6 +357,9 @@ function applyScheduleForm(schedule) {
   $('schedule-llm-max-tokens').value = parameters.max_tokens ?? 2048;
   $('schedule-llm-system-prompt').value = '';
   $('schedule-clear-system-prompt').checked = false;
+  $('schedule-attack-chain').checked = !!schedule.attack_chain;
+  if (schedule.attack_chain_seconds) setSelectValue('schedule-attack-chain-seconds', schedule.attack_chain_seconds);
+  toggleChainWindow('schedule-attack-chain', 'schedule-attack-chain-window');
 }
 
 function readLlmParameters(prefix, {allowPrompt = true} = {}) {
@@ -509,7 +513,8 @@ function renderJobs() {
     });
     text(batchId, `#${job.id}`);
     const type = job.job_type === 'scheduled_window' ? 'scheduled' : 'manual';
-    text(batchType, `${type} · ${job.analysis_mode || 'full'} · ${String(job.language || 'vi').toUpperCase()}`);
+    const chainTag = job.attack_chain ? ' · chuỗi tấn công' : '';
+    text(batchType, `${type} · ${job.analysis_mode || 'full'} · ${String(job.language || 'vi').toUpperCase()}${chainTag}`);
     const detail = document.createElement('button');
     detail.type = 'button'; detail.className = 'link-button'; text(detail, `#${job.id}`);
     detail.dataset.batchDetailsJob = String(job.id);
@@ -1087,7 +1092,23 @@ function renderAiReview(job, windowResult) {
     ? 'Security correlation chưa có summary AI cụ thể; không có kết luận hoàn chỉnh.'
     : summary || 'AI không cung cấp summary.');
   const findings = Array.isArray(result.key_findings) ? result.key_findings : [];
-  text($('ai-root-cause'), result.root_cause || findings.join(' · ') || 'AI không cung cấp root cause/phát hiện chính.');
+  text($('ai-root-cause'), result.root_cause || result.intent || findings.join(' · ') || 'AI không cung cấp root cause/phát hiện chính.');
+  const chain = (job.results || []).find(row => row.scope_key === 'attack_chain')?.result || {};
+  const chainList = $('ai-chain');
+  chainList.replaceChildren();
+  if (chain.summary) {
+    const head = document.createElement('li');
+    text(head, chain.intent ? `${chain.summary} (ý định: ${chain.intent})` : chain.summary);
+    chainList.append(head);
+  }
+  (Array.isArray(chain.kill_chain_stages) ? chain.kill_chain_stages : [])
+    .filter(value => String(value ?? '').trim())
+    .forEach(value => {
+      const item = document.createElement('li');
+      text(item, value);
+      chainList.append(item);
+    });
+  $('ai-chain-field').classList.toggle('hidden', !chainList.children.length);
   const mitre = Array.isArray(result.mitre) ? result.mitre : [];
   text($('ai-mitre'), mitre.length ? mitre.join(' · ') : 'Không có MITRE mapping.');
   const nextSteps = Array.isArray(result.next_steps) ? result.next_steps : [];
@@ -1247,6 +1268,137 @@ function closeGmailSettings() {
   clearGmailSettingsForm();
 }
 
+const ipLookbackLabels = {
+  300: '5 phút',
+  900: '15 phút',
+  1800: '30 phút',
+  3600: '1 giờ',
+  7200: '2 giờ',
+  21600: '6 giờ',
+  43200: '12 giờ',
+  86400: '24 giờ',
+  259200: '3 ngày',
+  604800: '7 ngày',
+  2592000: '30 ngày',
+};
+
+function renderIpList(id, values, emptyText) {
+  const list = $(id);
+  list.replaceChildren();
+  const items = Array.isArray(values) ? values.filter(value => String(value ?? '').trim()) : [];
+  (items.length ? items : [emptyText]).forEach(value => {
+    const item = document.createElement('li');
+    text(item, value);
+    list.append(item);
+  });
+}
+
+function renderIpAnalysis(data) {
+  const analysis = data?.analysis || {};
+  const basis = analysis.assessment_basis || {};
+  const confidence = Number(analysis.confidence);
+  const severity = String(analysis.severity || 'unknown').toLowerCase();
+  text($('ip-result-address'), data?.source_ip || $('ip-address').value.trim() || $('ip-select').value);
+  text($('ip-result-alerts'), Number(data?.total_alerts || 0).toLocaleString());
+  text($('ip-result-severity'), severity);
+  $('ip-result-severity').className = `severity-text severity-${severity.replace(/[^a-z]+/g, '-')}`;
+  text($('ip-result-confidence'), Number.isFinite(confidence) ? `${Math.max(0, Math.min(100, confidence))}%` : 'không xác định');
+  text($('ip-result-window'), ipLookbackLabels[Number(data?.lookback_seconds)] || `${data?.lookback_seconds || 0} giây`);
+  text($('ip-result-summary'), analysis.summary || 'AI không cung cấp nhận định.');
+  text($('ip-result-intent'), analysis.intent || 'Chưa xác định được ý định.');
+  renderIpList('ip-result-chain', analysis.kill_chain_stages, 'Chưa tái dựng được giai đoạn tấn công.');
+  renderIpList('ip-result-mitre', analysis.mitre, 'Không có ánh xạ MITRE.');
+  renderIpList('ip-result-assets', analysis.targeted_assets, 'Chưa xác định tài sản đích.');
+  renderIpList('ip-result-steps', analysis.next_steps, 'Kiểm tra thủ công alert của IP trong Wazuh Indexer.');
+  renderIpList('ip-result-facts', basis.observed_facts, 'Không có sự kiện quan sát có cấu trúc.');
+  renderIpList('ip-result-inferences', basis.inferences, 'Không có suy luận có cấu trúc.');
+  renderIpList('ip-result-uncertainties', basis.uncertainties, 'Không ghi nhận bất định.');
+  renderIpList('ip-result-limitations', basis.limitations, 'Không ghi nhận giới hạn bổ sung.');
+  $('ip-analysis-result').classList.remove('hidden');
+}
+
+async function loadActiveIps() {
+  const select = $('ip-select');
+  if (!select) return;
+  const currentVal = select.value;
+  try {
+    const lookback = $('ip-lookback').value;
+    const res = await api(`/api/active-ips?lookback_seconds=${lookback}`);
+    select.replaceChildren();
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    text(defaultOpt, res.ips && res.ips.length ? '-- Chọn IP nguồn phát hiện --' : '-- Không có IP hoạt động --');
+    select.append(defaultOpt);
+    (res.ips || []).forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.ip;
+      text(opt, `${item.ip} (${item.count} alerts)`);
+      select.append(opt);
+    });
+    if (currentVal && Array.from(select.options).some(o => o.value === currentVal)) {
+      select.value = currentVal;
+    }
+  } catch (err) {
+    select.replaceChildren();
+    const opt = document.createElement('option');
+    opt.value = '';
+    text(opt, '-- Lỗi tải danh sách IP --');
+    select.append(opt);
+  }
+}
+
+async function runIpAnalysis(sourceIp = '') {
+  const submit = $('ip-analysis-submit');
+  const isAuto = $('ip-auto').checked;
+  let address = String(sourceIp || '').trim();
+  if (!address && !isAuto) {
+    address = $('ip-address').value.trim() || $('ip-select').value;
+  }
+  if (!address && !isAuto) {
+    text($('ip-analysis-message'), 'Vui lòng chọn IP từ danh sách, nhập IP hoặc bật chế độ tự động.');
+    $('ip-address').focus();
+    return;
+  }
+  if (address) {
+    $('ip-address').value = address;
+  }
+  setButtonBusy(submit, true, 'Đang đọc Wazuh và suy luận…', 'Phân tích IP');
+  text($('ip-analysis-message'), isAuto ? 'Đang tự động tìm IP nhiều hoạt động nhất và truy vấn log...' : `Đang truy vấn log của ${address || 'IP'}...`);
+  try {
+    const data = await api('/api/ip-analysis', {
+      method: 'POST',
+      body: JSON.stringify({
+        source_ip: address,
+        auto: isAuto,
+        lookback_seconds: Number($('ip-lookback').value),
+        model: $('ip-model').value,
+        language: $('ip-language').value,
+      }),
+    });
+    renderIpAnalysis(data);
+    if (data.source_ip && data.source_ip !== 'None') {
+      $('ip-address').value = data.source_ip;
+      if ($('ip-select')) {
+        const matchingOpt = Array.from($('ip-select').options).find(o => o.value === data.source_ip);
+        if (matchingOpt) $('ip-select').value = data.source_ip;
+      }
+    }
+    text($('ip-analysis-message'), `Đã phân tích ${Number(data.total_alerts || 0).toLocaleString()} alert liên quan đến ${data.source_ip || address}.`);
+  } catch (error) {
+    text($('ip-analysis-message'), error.message);
+  } finally {
+    setButtonBusy(submit, false, '', 'Phân tích IP');
+  }
+}
+
+function investigateSourceIp(sourceIp) {
+  const ip = String(sourceIp || '').trim();
+  $('ip-address').value = ip;
+  $('ip-auto').checked = false;
+  $('ip-investigation').scrollIntoView({behavior: 'smooth', block: 'start'});
+  runIpAnalysis(ip).catch(error => text($('ip-analysis-message'), error.message));
+}
+
 function renderEventLists(job, bucket = null) {
   const groups = $('groups');
   groups.replaceChildren();
@@ -1269,6 +1421,12 @@ function renderEventLists(job, bucket = null) {
       const pivot = document.createElement('button'); pivot.type = 'button'; pivot.className = 'secondary'; text(pivot, labelText);
       pivot.addEventListener('click', () => applyHistoryPivot(String(value))); actions.append(pivot);
     });
+    if (group.source_ip) {
+      const investigate = document.createElement('button');
+      investigate.type = 'button'; investigate.className = 'secondary ip-investigate-button'; text(investigate, 'Phân tích IP');
+      investigate.addEventListener('click', () => investigateSourceIp(group.source_ip));
+      actions.append(investigate);
+    }
     row.append(label, actions);
     groups.append(row);
   });
@@ -1306,6 +1464,12 @@ function renderEventLists(job, bucket = null) {
       const pivot = document.createElement('button'); pivot.type = 'button'; pivot.className = 'secondary'; text(pivot, labelText);
       pivot.addEventListener('click', () => applyHistoryPivot(String(value))); pivots.append(pivot);
     });
+    if (alert.source_ip) {
+      const investigate = document.createElement('button');
+      investigate.type = 'button'; investigate.className = 'secondary ip-investigate-button'; text(investigate, 'Phân tích IP');
+      investigate.addEventListener('click', () => investigateSourceIp(alert.source_ip));
+      pivots.append(investigate);
+    }
     button.addEventListener('click', async () => {
       try {
         const raw = await api(`/api/job-alerts/${alert.id}`);
@@ -1350,7 +1514,7 @@ async function loadJob(id, reveal = false) {
     metric('Unique agents', metrics.unique_agents ?? agents.size),
   );
   renderTimeline(job);
-  const windowResult = job.results.find(result => result.scope === 'window');
+  const windowResult = job.results.find(result => result.scope === 'window' && result.scope_key !== 'attack_chain');
   renderAiReview(job, windowResult);
   renderReview(job);
 
@@ -1379,6 +1543,8 @@ $('job-form').addEventListener('submit', async event => {
       llm_parameters: readLlmParameters(''),
     };
     body.delivery_channel = $('delivery-channel').value;
+    body.attack_chain = $('job-attack-chain').checked;
+    if (body.attack_chain) body.attack_chain_seconds = Number($('job-attack-chain-seconds').value);
     if ($('preset').value === 'custom') {
       body.start = new Date($('start').value).toISOString();
       body.end = new Date($('end').value).toISOString();
@@ -1396,6 +1562,32 @@ $('job-form').addEventListener('submit', async event => {
   }
 });
 
+$('ip-analysis-form').addEventListener('submit', event => {
+  event.preventDefault();
+  runIpAnalysis().catch(error => text($('ip-analysis-message'), error.message));
+});
+
+$('ip-auto').addEventListener('change', () => {
+  const isAuto = $('ip-auto').checked;
+  $('ip-address').disabled = isAuto;
+  $('ip-select').disabled = isAuto;
+  if (isAuto) {
+    text($('ip-analysis-message'), 'Chế độ tự động: Sẽ phân tích IP có nhiều hoạt động nhất.');
+  } else {
+    text($('ip-analysis-message'), '');
+  }
+});
+
+$('ip-select').addEventListener('change', () => {
+  if ($('ip-select').value) {
+    $('ip-address').value = $('ip-select').value;
+  }
+});
+
+$('ip-lookback').addEventListener('change', () => {
+  loadActiveIps();
+});
+
 $('schedule-form').addEventListener('submit', async event => {
   event.preventDefault();
   const submit = event.currentTarget.querySelector('button[type="submit"]');
@@ -1409,6 +1601,8 @@ $('schedule-form').addEventListener('submit', async event => {
         model: $('schedule-model').value,
         language: $('schedule-language').value,
         delivery_channel: $('schedule-delivery-channel').value,
+        attack_chain: $('schedule-attack-chain').checked,
+        attack_chain_seconds: Number($('schedule-attack-chain-seconds').value),
         llm_parameters: readLlmParameters('schedule-'),
       }),
     });
@@ -1553,7 +1747,7 @@ $('review-form').addEventListener('submit', async event => {
     text($('review-message'), 'Đã lưu review local.');
     await loadJob(state.activeJob);
   } catch (error) { text($('review-message'), error.message); }
-  finally { setButtonBusy(submit, false, '', 'LÆ°u review'); }
+  finally { setButtonBusy(submit, false, '', 'Lưu review'); }
 });
 filterIds.forEach(id => $(id).addEventListener('input', () => { resetHistoryPage(); saveHistoryFilters(); loadJobs().catch(error => setMessage(error.message)); }));
 $('history-filter-clear').addEventListener('click', () => { filterIds.forEach(id => { $(id).value = ''; }); resetHistoryPage(); saveHistoryFilters(); loadJobs().catch(error => setMessage(error.message)); });
@@ -1615,9 +1809,18 @@ async function tick() {
   }
 }
 
+function toggleChainWindow(checkboxId, wrapperId) {
+  $(wrapperId).classList.toggle('hidden', !$(checkboxId).checked);
+}
+[['job-attack-chain', 'job-attack-chain-window'],
+ ['schedule-attack-chain', 'schedule-attack-chain-window']].forEach(([checkboxId, wrapperId]) => {
+  $(checkboxId).addEventListener('change', () => toggleChainWindow(checkboxId, wrapperId));
+  toggleChainWindow(checkboxId, wrapperId);
+});
+
 loadTheme();
 loadHistoryFilters();
-Promise.allSettled([loadStatus(), loadModels(), loadSchedule(), loadJobs(), loadDependencies(), loadMaintenance(), loadNotificationStatus()]);
+Promise.allSettled([loadStatus(), loadModels(), loadSchedule(), loadJobs(), loadDependencies(), loadMaintenance(), loadNotificationStatus(), loadActiveIps()]);
 const requestedJobId = Number(new URLSearchParams(window.location.search).get('job'));
 if (Number.isSafeInteger(requestedJobId) && requestedJobId > 0) {
   loadJob(requestedJobId, true).catch(error => setMessage(error.message));

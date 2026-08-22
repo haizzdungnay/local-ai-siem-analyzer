@@ -10,6 +10,7 @@ from reader import resolve_config_paths
 from llm import (
     analyze_alert,
     analyze_window,
+    analyze_ip_profile,
     normalize_trusted_wazuh_evidence,
     trusted_wazuh_summary_prefix,
 )
@@ -580,5 +581,33 @@ class AnalysisService:
             "coverage": coverage,
             "partial": warning or coverage["truncated"],
             "analysis_version": ANALYSIS_VERSION,
+            "provenance": provenance,
+        }
+
+    def analyze_ip_profile_aggregate(self, aggregate: dict, source_ip: str, model: str,
+                                     language: str = "vi", llm_parameters=None, timeout_seconds=None) -> dict:
+        requested_timeout = self.timeout if timeout_seconds is None else timeout_seconds
+        timeout = min(self.timeout, float(requested_timeout))
+        dashboard_cfg = self.cfg.get("dashboard", {})
+        prompt, coverage = format_window_for_llm(
+            aggregate,
+            max_groups=dashboard_cfg.get("max_groups_in_prompt", 20),
+            max_chars=dashboard_cfg.get("max_window_prompt_chars", 24000),
+        )
+        result, provenance = analyze_ip_profile(
+            prompt,
+            source_ip=source_ip,
+            model=model,
+            base_url=self.cfg["ollama"]["base_url"],
+            timeout=timeout,
+            language=language,
+            include_provenance=True,
+            allow_remote=self.cfg["ollama"].get("allow_remote", False),
+            llm_parameters=llm_parameters,
+        )
+        return {
+            "analysis": result,
+            "coverage": coverage,
+            "warnings": ["AI profile fallback used"] if result.get("severity") == "unknown" else [],
             "provenance": provenance,
         }

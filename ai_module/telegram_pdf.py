@@ -142,7 +142,7 @@ def build_pdf_view(job: dict[str, Any]) -> dict[str, Any]:
         raise TelegramPDFError("Telegram PDF report phải là object")
     try:
         from gmail_notifier import _count as gmail_count, _safe_items, _safe_timeline
-        from telegram_notifier import _analysis_from_job, _safe_text, analysis_sha256
+        from telegram_notifier import _analysis_from_job, _safe_text, analysis_sha256, attack_chain_from_job
     except (ImportError, OSError) as exc:
         raise TelegramPDFError("telegram_pdf_dependency") from exc
 
@@ -166,10 +166,18 @@ def build_pdf_view(job: dict[str, Any]) -> dict[str, Any]:
         summary = _safe_text(analysis.get("summary", ""), 1800)
         root_cause = _safe_text(analysis.get("root_cause", ""), 1200)
         basis = analysis.get("assessment_basis") if isinstance(analysis.get("assessment_basis"), dict) else {}
+        chain = attack_chain_from_job(job)
+        chain_items = []
+        chain_summary = _safe_text(chain.get("summary", ""), 1200)
+        chain_intent = _safe_text(chain.get("intent", ""), 400)
+        if chain_summary:
+            chain_items.append(f"{chain_summary} ({chain_intent})" if chain_intent else chain_summary)
+        chain_items.extend(_safe_items(chain.get("kill_chain_stages"), max_items=12, item_limit=400))
         sections = [
             ("Summary", [summary] if summary else []),
             ("Root cause", [root_cause] if root_cause else []),
             ("Key findings", _safe_items(analysis.get("key_findings"), max_items=12, item_limit=500)),
+            ("Attack chain", chain_items),
             ("MITRE", _safe_items(analysis.get("mitre"), max_items=12, item_limit=300)),
             ("Next steps", _safe_items(analysis.get("next_steps"), max_items=12, item_limit=400)),
             ("Observed facts", _safe_items(basis.get("observed_facts"), max_items=12, item_limit=400)),

@@ -8,6 +8,7 @@ Corpus hiện có 33 case `sanitized-live` lấy từ Wazuh lab ngày 2026-07-28
 - `expected/*.json`: disposition, severity, MITRE, facts bắt buộc, claims cấm và bước xử lý tham chiếu.
 - `rubric.md`: cách hai reviewer chấm độc lập.
 - `results.csv`: output baseline, latency, schema validity và cột điểm reviewer.
+- `export_confusion_matrix.py`: dựng ma trận nhầm lẫn severity trực tiếp từ manifest, nhãn tham chiếu nháp trong `expected/` và hai CSV baseline; không gọi Ollama.
 - `run_eval.py`: runner dùng đúng extractor, RAG và `analyze_alert()` của pipeline.
 - `build_dataset.py`: script maintainer tái tạo snapshot từ Indexer; cần `ai_module/config.yaml`, có xóa rồi ghi lại `cases/` và `expected/`.
 - `summarize_results.py`: tổng hợp latency, schema/error rate, severity exact-match, human scores đã điền và AI judgments riêng.
@@ -54,6 +55,18 @@ Tổng hợp kết quả hiện có:
 ```powershell
 python eval/summarize_results.py eval/results.csv eval/results-no-rag.csv
 ```
+
+Xuất ma trận nhầm lẫn cho baseline `qwen2.5:7b` (cả RAG và no-RAG):
+
+```powershell
+python eval/export_confusion_matrix.py
+```
+
+Lệnh trên kiểm tra coverage 33 case, xác nhận mọi nhãn trong `expected/*.json`
+đều có `review_status: draft-single-reviewer`, rồi ghi report Markdown/CSV/PNG
+vào `docs/` và `eval/`.
+Prediction thiếu, JSON lỗi hoặc severity ngoài hợp đồng được giữ ở cột
+`invalid`, không bị loại khỏi mẫu.
 
 Human reviewer điền năm cột `*_score`, `reviewer`, `notes` trong bản copy của CSV. Không tự sinh điểm semantic từ model output hoặc expected data.
 

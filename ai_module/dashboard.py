@@ -15,13 +15,13 @@ from flask import Flask, current_app, jsonify, request, send_from_directory
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from analysis_service import ANALYSIS_VERSION, AnalysisService
+from analysis_service import ANALYSIS_VERSION, AnalysisService, aggregate_rule_buckets, aggregate_alerts
 from dashboard_store import DashboardStore
 from dashboard_time import format_utc, utc_now
 from dashboard_worker import DashboardRuntime, PRESET_SECONDS
 from gmail_notifier import GMAIL_CHANNEL, GmailConfigurationError, GmailDeliveryError
 from llm import normalize_llm_parameters
-from reader import MODULE_DIR, fetch_alert_document, load_config, validate_time_range
+from reader import MODULE_DIR, fetch_alert_document, load_config, validate_time_range, fetch_alerts_window, fetch_active_source_ips
 from security_test_runner import (
     SecurityTestBusyError,
     SecurityTestConfigurationError,
@@ -77,6 +77,21 @@ DEFAULT_DASHBOARD = {
     # Downloads are not stored by this service; this is advisory metadata only.
     "export_retention_days": None,
 }
+
+
+def _resolve_attack_chain(body):
+    """Validate the optional attack-chain follow-up flag and its own window."""
+    enabled = body.get("attack_chain", False)
+    if not isinstance(enabled, bool):
+        raise ValueError("attack_chain phai la boolean")
+    seconds = body.get("attack_chain_seconds", 0)
+    if isinstance(seconds, bool) or not isinstance(seconds, int):
+        raise ValueError("attack_chain_seconds phai la so nguyen")
+    if not enabled:
+        return False, 0
+    if seconds and seconds not in PRESET_SECONDS:
+        raise ValueError("attack_chain_seconds khong hop le")
+    return True, seconds
 
 
 def _error(message, status):
@@ -911,9 +926,9 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
                 response.headers["Access-Control-Allow-Headers"] = "Content-Type"
                 response.headers["Access-Control-Max-Age"] = "600"
                 response.vary.add("Origin")
-        elif request.path in {"/security-tests", "/assets/test.js"}:
-            # A stale security-test tab must revalidate the current telemetry
-            # allowlist instead of retaining buttons from an earlier contract.
+        elif request.path in {"/", "/security-tests"} or request.path.startswith("/assets/"):
+            # Dashboard assets are served directly from disk without a build
+            # pipeline, so stale browser caches must not retain an older UI.
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -958,6 +973,167 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
             "database": "ok",
             "database_bytes": stats["database"]["bytes"],
             "review_events": stats["reviews"]["event_count"],
+        })
+
+    @app.get("/api/active-ips")
+    def get_active_ips():
+        lookback_seconds = request.args.get("lookback_seconds", 604800)
+        try:
+            lookback_seconds = int(lookback_seconds)
+        except (ValueError, TypeError):
+            lookback_seconds = 604800
+        ip_lookbacks = {300, 900, 1800, 3600, 7200, 21600, 43200, 86400, 259200, 604800, 2592000}
+        if lookback_seconds not in ip_lookbacks:
+            lookback_seconds = 604800
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(seconds=lookback_seconds)
+        try:
+            ips = fetch_active_source_ips(cfg, start=start, end=now, limit=50)
+        except Exception:
+            ips = []
+        return jsonify({"ips": ips, "lookback_seconds": lookback_seconds})
+
+    @app.post("/api/ip-analysis")
+    def analyze_ip_behavior():
+        _validate_origin()
+        body = _json_body()
+        source_ip = body.get("source_ip")
+        auto_mode = body.get("auto", False) is True
+
+        ip_lookbacks = {300, 900, 1800, 3600, 7200, 21600, 43200, 86400, 259200, 604800, 2592000}
+        lookback_seconds = body.get("lookback_seconds", 604800)
+        if (
+            not isinstance(lookback_seconds, int)
+            or isinstance(lookback_seconds, bool)
+            or lookback_seconds not in ip_lookbacks
+        ):
+            raise ValueError("Khoảng suy luận IP phải từ 5 phút đến tối đa 30 ngày")
+
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(seconds=lookback_seconds)
+
+        if auto_mode or not source_ip or not str(source_ip).strip():
+            top_ips = fetch_active_source_ips(cfg, start=start, end=now, limit=1)
+            if not top_ips:
+                source_ip = ""
+            else:
+                source_ip = top_ips[0]["ip"]
+
+        if source_ip:
+            try:
+                parsed_ip = ipaddress.ip_address(str(source_ip).strip())
+                if parsed_ip.version != 4:
+                    raise ValueError("Chỉ hỗ trợ địa chỉ IPv4")
+                source_ip = str(parsed_ip)
+            except ValueError as exc:
+                raise ValueError(f"Địa chỉ IP không hợp lệ: {source_ip}") from exc
+
+        model = body.get("model", cfg.get("ollama", {}).get("model", "qwen2.5:7b"))
+        if model not in _allowed_models(cfg):
+            raise ValueError("Model không thuộc dashboard.allowed_models")
+
+        language = _resolve_language(body, dashboard_cfg)
+
+        if not source_ip:
+            return jsonify({
+                "source_ip": "None",
+                "total_alerts": 0,
+                "lookback_seconds": lookback_seconds,
+                "first_seen": "",
+                "last_seen": "",
+                "analysis": {
+                    "summary": (
+                        "Không có cảnh báo nào trong khoảng thời gian đã chọn."
+                        if language == "vi"
+                        else "No alerts were found in the selected time range."
+                    ),
+                    "intent": "Không phát hiện hoạt động" if language == "vi" else "No activity detected",
+                    "severity": "low",
+                    "kill_chain_stages": ["Không phát hiện giai đoạn tấn công" if language == "vi" else "No attack stage detected"],
+                    "targeted_assets": [],
+                    "mitre": [],
+                    "next_steps": ["Tiếp tục giám sát." if language == "vi" else "Continue monitoring."],
+                    "response_language": language,
+                    "confidence": 100.0,
+                    "assessment_basis": {
+                        "observed_facts": [
+                            "Không tìm thấy alert trong Wazuh Indexer."
+                            if language == "vi" else "No alert was found in Wazuh Indexer."
+                        ],
+                        "inferences": [],
+                        "uncertainties": [],
+                        "limitations": []
+                    }
+                }
+            })
+
+        fetched = fetch_alerts_window(
+            cfg,
+            start=start,
+            end=now,
+            source_ip=source_ip,
+            max_alerts=dashboard_cfg.get("max_window_alerts", 2000),
+            summary_only=False
+        )
+
+        if fetched.get("analysis_mode") == "aggregate":
+            aggregate = aggregate_rule_buckets(fetched)
+        else:
+            aggregate = aggregate_alerts(fetched.get("alerts", []))
+
+        if not aggregate.get("total_alerts"):
+            return jsonify({
+                "source_ip": source_ip,
+                "total_alerts": 0,
+                "lookback_seconds": lookback_seconds,
+                "first_seen": "",
+                "last_seen": "",
+                "analysis": {
+                    "summary": (
+                        f"Không có cảnh báo nào từ IP {source_ip} trong khoảng thời gian đã chọn."
+                        if language == "vi"
+                        else f"No alerts from IP {source_ip} were found in the selected time range."
+                    ),
+                    "intent": "Không phát hiện hoạt động" if language == "vi" else "No activity detected",
+                    "severity": "low",
+                    "kill_chain_stages": ["Không phát hiện giai đoạn tấn công" if language == "vi" else "No attack stage detected"],
+                    "targeted_assets": [],
+                    "mitre": [],
+                    "next_steps": ["Tiếp tục giám sát IP này." if language == "vi" else "Continue monitoring this IP."],
+                    "response_language": language,
+                    "confidence": 100.0,
+                    "assessment_basis": {
+                        "observed_facts": [
+                            "Không tìm thấy alert trong Wazuh Indexer."
+                            if language == "vi" else "No alert was found in Wazuh Indexer."
+                        ],
+                        "inferences": [],
+                        "uncertainties": [],
+                        "limitations": []
+                    }
+                }
+            })
+
+        result = analysis_service.analyze_ip_profile_aggregate(
+            aggregate=aggregate,
+            source_ip=source_ip,
+            model=model,
+            language=language
+        )
+
+        groups = aggregate.get("groups") or []
+        first_seen = min((group.get("first_seen", "") for group in groups if group.get("first_seen")), default="")
+        last_seen = max((group.get("last_seen", "") for group in groups if group.get("last_seen")), default="")
+        return jsonify({
+            "source_ip": source_ip,
+            "total_alerts": aggregate.get("total_alerts", 0),
+            "unique_rules": aggregate.get("unique_rules", 0),
+            "first_seen": first_seen,
+            "last_seen": last_seen,
+            "lookback_seconds": lookback_seconds,
+            "analysis": result["analysis"],
+            "coverage": result["coverage"],
+            "provenance": result["provenance"]
         })
 
     @app.get("/api/security-tests/catalog")
@@ -1095,9 +1271,11 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
             llm_parameters = _resolve_llm_parameters(body, cfg)
         except ValueError as exc:
             return _llm_parameter_error(exc)
+        attack_chain, attack_chain_seconds = _resolve_attack_chain(body)
         job_id = store.create_job(
             "manual_window", format_utc(start), format_utc(end), model, ANALYSIS_VERSION,
             language=language, delivery_channel=delivery_channel, llm_parameters=llm_parameters,
+            attack_chain=attack_chain, attack_chain_seconds=attack_chain_seconds,
         )
         runtime.notify()
         return jsonify({"job_id": job_id}), 202
@@ -1349,9 +1527,11 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
             )
         except ValueError as exc:
             return _llm_parameter_error(exc)
+        attack_chain, attack_chain_seconds = _resolve_attack_chain(body)
         now = datetime.now(timezone.utc)
         schedule = store.configure_schedule(
             enabled=enabled,
+            attack_chain=attack_chain, attack_chain_seconds=attack_chain_seconds,
             interval_seconds=interval,
             model=model,
             language=language,

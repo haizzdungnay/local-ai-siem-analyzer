@@ -148,6 +148,31 @@ def test_rich_report_downsamples_alert_map_and_bounds_plain_text():
     assert truncated.endswith("[truncated]")
 
 
+def test_attack_chain_row_is_merged_into_the_single_report():
+    """One queued analysis is one report, so the chain rides in the window report."""
+    job = job_detail()
+    job["results"].append({
+        "scope": "window",
+        "scope_key": "attack_chain",
+        "result": {
+            "severity": "high", "summary": "192.0.2.10 tried DVWA login repeatedly",
+            "intent": "brute force", "kill_chain_stages": ["10:01 - initial - rule=100121"],
+            "targeted_assets": [], "mitre": [], "next_steps": ["Block the source"],
+            "response_language": "vi", "confidence": 92, "assessment_basis": {},
+        },
+        "warnings": ["Attack chain profile for source IP 192.0.2.10"],
+    })
+
+    plain, html_body, _ = render_gmail_report(job, max_chars=8_000)
+
+    assert "Attack chain" in plain
+    assert "10:01 - initial - rule=100121" in plain
+    assert "Attack chain" in html_body
+    # The window analysis, not the chain profile, still drives severity and hashing.
+    assert "Severity: medium" in plain or "medium" in plain
+    assert "Failed authentication sequence" in plain
+
+
 def test_configure_local_hides_addresses_and_app_password(tmp_path, monkeypatch):
     monkeypatch.delenv("SIEM_GMAIL_SENDER_EMAIL", raising=False)
     monkeypatch.delenv("SIEM_GMAIL_APP_PASSWORD", raising=False)

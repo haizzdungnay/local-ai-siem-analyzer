@@ -105,6 +105,23 @@ def test_dashboard_has_batch_table_and_explicit_ai_review_panel():
     assert "openBatchDetails(job, event.currentTarget)" in javascript
 
 
+def test_attack_chain_result_has_render_target_and_history_tag():
+    """Chain jobs store kill_chain_stages/intent; the review panel must render them."""
+    html = HTML_PATH.read_text(encoding="utf-8")
+    javascript = JS_PATH.read_text(encoding="utf-8")
+
+    assert 'id="ai-chain-field"' in html
+    assert 'id="ai-chain"' in html
+    # The chain profile is a second result row on the same job, not a child job.
+    assert "row.scope_key === 'attack_chain'" in javascript
+    assert "chain.kill_chain_stages" in javascript
+    assert "result.scope === 'window' && result.scope_key !== 'attack_chain'" in javascript
+    assert "$('ai-chain-field').classList.toggle('hidden', !chainList.children.length)" in javascript
+    # ponytail: static markup/JS assertions; upgrade to a jsdom or Playwright DOM
+    # assertion when the project takes on a browser test dependency.
+    assert "job.attack_chain ?" in javascript
+
+
 def test_history_controls_meet_accessibility_semantics_and_target_size():
     html = HTML_PATH.read_text(encoding="utf-8")
     javascript = JS_PATH.read_text(encoding="utf-8")
@@ -415,6 +432,20 @@ def test_history_csv_export_neutralizes_spreadsheet_formulas():
     assert "llm_parameters" in javascript
 
 
+def test_history_rows_keep_ai_summary_clamp_and_compact_spacing():
+    css = CSS_PATH.read_text(encoding="utf-8")
+
+    assert ".history-summary-clamp { display: -webkit-box;" in css
+    assert "-webkit-line-clamp: 3; overflow: hidden;" in css
+    assert "line-height: 1.35;" in css
+    assert ".batch-table { width: 100%; min-width: 0; table-layout: fixed;" in css
+    assert ".batch-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.35; }" in css
+    assert ".batch-table th:nth-child(11) { width: 10%; }" in css
+    assert ".batch-row td:last-child { min-width: 0; max-width: none; }" in css
+    assert ".batch-table .badge { padding: 3px 4px; font-size: 9px; white-space: nowrap;" in css
+    assert ".batch-row td > small:not(.history-summary-clamp)" in css
+
+
 def test_dashboard_explains_schedule_operational_terms_and_prevents_double_submit():
     html = HTML_PATH.read_text(encoding="utf-8")
     javascript = JS_PATH.read_text(encoding="utf-8")
@@ -426,3 +457,28 @@ def test_dashboard_explains_schedule_operational_terms_and_prevents_double_submi
     assert "schedule-form" in javascript
     assert "finally" in javascript
     assert ".ops-detail dt[title]" in css
+
+
+def test_dashboard_exposes_ip_investigation_and_attack_chain_controls():
+    html = HTML_PATH.read_text(encoding="utf-8")
+    javascript = JS_PATH.read_text(encoding="utf-8")
+    css = CSS_PATH.read_text(encoding="utf-8")
+
+    for element_id in (
+        "ip-investigation", "ip-analysis-form", "ip-address", "ip-lookback",
+        "ip-model", "ip-language", "ip-analysis-submit", "ip-analysis-result",
+        "ip-result-chain", "ip-result-mitre", "ip-result-assets", "ip-result-steps",
+        "ip-result-facts", "ip-result-inferences", "ip-result-uncertainties",
+        "ip-result-limitations",
+    ):
+        assert f'id="{element_id}"' in html
+    assert '<option value="2592000">30 ngày (tối đa)</option>' in html
+    for marker in (
+        "/api/ip-analysis", "lookback_seconds", "investigateSourceIp",
+        "group.source_ip", "alert.source_ip", "renderIpAnalysis",
+    ):
+        assert marker in javascript
+    assert ".attack-chain" in css
+    assert ".ip-analysis-overview" in css
+    # Assets must stay cache-busted; the exact token changes on each UI bump.
+    assert len(set(re.findall(r"/assets/\w+\.(?:css|js)\?v=([\w-]+)", html))) == 1

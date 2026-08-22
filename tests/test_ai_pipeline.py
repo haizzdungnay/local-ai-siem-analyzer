@@ -262,6 +262,38 @@ def test_soc_prompt_is_versioned_localized_and_treats_input_as_untrusted():
     assert "assessment_basis" in english
 
 
+def test_fractional_confidence_is_rescaled_to_the_contract_percentage():
+    """A model answering 0.8 meant 80%, and must not be reported as "0.8%"."""
+    assert llm._normalized_confidence(0.8) == 80.0
+    assert llm._normalized_confidence(0.95) == 95.0
+    # Whole percentages pass through untouched, including both endpoints.
+    assert llm._normalized_confidence(85) == 85.0
+    assert llm._normalized_confidence(0) == 0.0
+    assert llm._normalized_confidence(1) == 1.0
+    assert llm._normalized_confidence(100) == 100.0
+    # Out-of-contract values still fail closed into the local fallback.
+    for bad in (True, -1, 101, "90", None):
+        assert llm._normalized_confidence(bad) is None
+    assert "khong dung thang 0-1" in llm.CONFIDENCE_FIELD_DESCRIPTION
+
+
+def test_confidence_rubric_is_calibrated_and_scoped_per_analysis_kind():
+    """Uncalibrated confidence stayed near 70-85; the rubric anchors what 90+ means."""
+    window_vi = llm.build_soc_system_prompt("window", "vi")
+    profile_vi = llm.build_soc_system_prompt("ip_profile", "vi")
+    profile_en = llm.build_soc_system_prompt("ip_profile", "en")
+
+    assert "90-100" in window_vi and "0-39" in window_vi
+    assert "không phải mức nghiêm trọng" in window_vi.lower()
+    # intent/kill_chain_stages are inferred by construction and must not cost confidence.
+    assert "intent và kill_chain_stages" in profile_vi
+    assert "intent and" in profile_en and "kill_chain_stages" in profile_en
+    # Scope rules stay scoped: a window prompt must not carry ip_profile instructions.
+    assert "kill_chain_stages" not in window_vi.split("JSON schema")[0]
+    # The rubric also travels inside the structured-output schema.
+    assert "90-100" in llm.IP_PROFILE_OUTPUT_SCHEMA["properties"]["confidence"]["description"]
+
+
 def test_analyze_alert_returns_public_trace_and_auditable_provenance(monkeypatch):
     captured = {}
     payload = {

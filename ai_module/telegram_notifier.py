@@ -203,7 +203,11 @@ def _analysis_from_job(job: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     results = job.get("results") if isinstance(job, dict) else None
     if not isinstance(results, list):
         return {}, []
-    windows = [row for row in results if isinstance(row, dict) and row.get("scope") == "window"]
+    windows = [
+        row for row in results
+        if isinstance(row, dict) and row.get("scope") == "window"
+        and row.get("scope_key") != "attack_chain"
+    ]
     if not windows:
         return {}, []
     latest = windows[-1]
@@ -214,6 +218,38 @@ def _analysis_from_job(job: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     if not isinstance(warnings, list):
         warnings = []
     return analysis, [item for item in warnings if isinstance(item, (str, int, float, bool))]
+
+
+def attack_chain_from_job(job: dict[str, Any]) -> dict[str, Any]:
+    """Return the attack-chain profile stored on the same job, if present."""
+    results = job.get("results") if isinstance(job, dict) else None
+    if not isinstance(results, list):
+        return {}
+    rows = [
+        row for row in results
+        if isinstance(row, dict) and row.get("scope_key") == "attack_chain"
+    ]
+    if not rows:
+        return {}
+    analysis = rows[-1].get("result")
+    return analysis if isinstance(analysis, dict) else {}
+
+
+MIN_UPLOAD_READ_TIMEOUT_SECONDS = 45
+MAX_UPLOAD_READ_TIMEOUT_SECONDS = 600
+ASSUMED_UPLOAD_BYTES_PER_SECOND = 8 * 1024
+
+
+def _upload_read_timeout(content_length: int, configured_seconds: int) -> int:
+    """Scale the document read timeout to the payload on a slow local uplink.
+
+    The configured value stays a floor rather than a ceiling: a timeout that
+    fires mid-upload is recorded as `uncertain`, which blocks the automatic
+    retry the operator would otherwise get.
+    """
+    budget = content_length / ASSUMED_UPLOAD_BYTES_PER_SECOND
+    floor = max(MIN_UPLOAD_READ_TIMEOUT_SECONDS, int(configured_seconds or 0))
+    return int(min(MAX_UPLOAD_READ_TIMEOUT_SECONDS, max(floor, budget)))
 
 
 def _safe_count(value: Any) -> int:
@@ -439,8 +475,10 @@ class TelegramNotifier:
                 url,
                 data={"chat_id": chat_id, "caption": caption},
                 files={"document": (filename, content, "application/pdf")},
-                # Uploads can take longer than a small sendMessage request.
-                timeout=(5, max(45, self.settings.timeout_seconds)),
+                # Uploads can take longer than a small sendMessage request, and the
+                # deadline must scale with the payload: a fixed 45s ceiling aborted
+                # mid-upload on a slow uplink once reports grew past ~350 KiB.
+                timeout=(5, _upload_read_timeout(len(content), self.settings.timeout_seconds)),
                 allow_redirects=False,
             )
         except requests.Timeout as exc:

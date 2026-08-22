@@ -43,8 +43,58 @@ def test_app_serves_ui_and_security_headers(tmp_path):
 
     security_page = app.test_client().get("/security-tests")
     security_script = app.test_client().get("/assets/test.js")
+    dashboard_script = app.test_client().get("/assets/app.js")
+    dashboard_style = app.test_client().get("/assets/styles.css")
     assert security_page.headers["Cache-Control"] == "no-store"
     assert security_script.headers["Cache-Control"] == "no-store"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert dashboard_script.headers["Cache-Control"] == "no-store"
+    assert dashboard_style.headers["Cache-Control"] == "no-store"
+
+
+def test_ip_analysis_validates_window_and_returns_localized_empty_result(tmp_path, monkeypatch):
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    monkeypatch.setattr(
+        dashboard,
+        "fetch_alerts_window",
+        lambda *args, **kwargs: {"analysis_mode": "full", "alerts": []},
+    )
+    client = app.test_client()
+
+    result = client.post(
+        "/api/ip-analysis",
+        json={
+            "source_ip": "192.168.100.30",
+            "lookback_seconds": 2592000,
+            "model": "qwen2.5:7b",
+            "language": "vi",
+        },
+    )
+    assert result.status_code == 200
+    assert result.headers["Cache-Control"] == "no-store"
+    assert result.get_json()["lookback_seconds"] == 2592000
+    assert "Không có cảnh báo" in result.get_json()["analysis"]["summary"]
+
+    too_long = client.post(
+        "/api/ip-analysis",
+        json={
+            "source_ip": "192.168.100.30",
+            "lookback_seconds": 2678400,
+            "model": "qwen2.5:7b",
+            "language": "vi",
+        },
+    )
+    ipv6 = client.post(
+        "/api/ip-analysis",
+        json={
+            "source_ip": "2001:db8::1",
+            "lookback_seconds": 604800,
+            "model": "qwen2.5:7b",
+            "language": "vi",
+        },
+    )
+    assert too_long.status_code == 422
+    assert ipv6.status_code == 422
 
 
 def test_status_tolerates_sqlite_sidecar_disappearing_during_size_check(tmp_path, monkeypatch):
@@ -1333,3 +1383,81 @@ def test_export_redacts_credential_values_keeps_operational_ids_and_declares_sco
     assert "192.0.2.30" in payload
     assert "Báo cáo tiếng Việt" in payload
     assert "chat_config" not in payload
+
+
+def test_active_ips_endpoint_aggregates_top_source_ips(tmp_path, monkeypatch):
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    monkeypatch.setattr(
+        dashboard,
+        "fetch_active_source_ips",
+        lambda *args, **kwargs: [{"ip": "192.168.100.30", "count": 15}, {"ip": "192.168.100.20", "count": 3}],
+    )
+    client = app.test_client()
+    res = client.get("/api/active-ips?lookback_seconds=86400")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["lookback_seconds"] == 86400
+    assert len(data["ips"]) == 2
+    assert data["ips"][0]["ip"] == "192.168.100.30"
+
+
+def test_ip_analysis_auto_mode_selects_top_active_ip(tmp_path, monkeypatch):
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    monkeypatch.setattr(
+        dashboard,
+        "fetch_active_source_ips",
+        lambda *args, **kwargs: [{"ip": "192.168.100.30", "count": 42}],
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "fetch_alerts_window",
+        lambda *args, **kwargs: {"analysis_mode": "full", "alerts": []},
+    )
+    client = app.test_client()
+    res = client.post(
+        "/api/ip-analysis",
+        json={
+            "auto": True,
+            "lookback_seconds": 604800,
+            "model": "qwen2.5:7b",
+            "language": "vi",
+        },
+    )
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["source_ip"] == "192.168.100.30"
+
+
+def test_attack_chain_option_is_persisted_for_manual_jobs_and_schedule(tmp_path):
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    store = app.config["DASHBOARD_STORE"]
+    client = app.test_client()
+
+    rejected = client.post("/api/jobs", json={
+        "preset_seconds": 300, "model": "qwen2.5:7b", "attack_chain": "yes",
+    })
+    assert rejected.status_code == 422
+
+    bad_window = client.post("/api/jobs", json={
+        "preset_seconds": 300, "model": "qwen2.5:7b",
+        "attack_chain": True, "attack_chain_seconds": 77,
+    })
+    assert bad_window.status_code == 422
+
+    created = client.post("/api/jobs", json={
+        "preset_seconds": 300, "model": "qwen2.5:7b", "language": "vi",
+        "attack_chain": True, "attack_chain_seconds": 86400,
+    })
+    assert created.status_code == 202
+    job = store.get_job(created.get_json()["job_id"])
+    assert job["attack_chain"] == 1
+    assert job["attack_chain_seconds"] == 86400
+    assert job["analysis_kind"] == "window"
+
+    saved = client.put("/api/schedule", json={
+        "enabled": True, "interval_seconds": 300, "model": "qwen2.5:7b",
+        "language": "vi", "attack_chain": True, "attack_chain_seconds": 3600,
+    })
+    assert saved.status_code == 200
+    assert saved.get_json()["attack_chain"] == 1
+    assert saved.get_json()["attack_chain_seconds"] == 3600

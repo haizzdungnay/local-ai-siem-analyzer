@@ -20,7 +20,7 @@ def test_store_migrates_v1_jobs_and_schedule_columns(tmp_path):
     DashboardStore(path)
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == dashboard_store.SCHEMA_VERSION
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
         schedule_columns = {row[1] for row in connection.execute("PRAGMA table_info(schedule)")}
         result_columns = {
@@ -137,7 +137,7 @@ def test_store_migrates_v3_to_v5_without_losing_jobs(tmp_path):
 
     assert migrated.get_job(job_id)["id"] == job_id
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == dashboard_store.SCHEMA_VERSION
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job_review_events'"
         ).fetchone()
@@ -244,7 +244,7 @@ def test_store_migrates_v5_delivery_checks_to_gmail_without_losing_audit(tmp_pat
     )
     assert store.get_job(gmail_job)["delivery_channel"] == "gmail"
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == dashboard_store.SCHEMA_VERSION
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert "'gmail'" in connection.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='report_deliveries'"
@@ -1150,3 +1150,90 @@ def test_security_quality_gate_marks_placeholder_basis_partial():
     assert any("inferences" in failure for failure in failures)
     assert any("uncertainties" in failure for failure in failures)
     assert any("limitations" in failure for failure in failures)
+
+
+def test_attack_chain_is_merged_into_the_same_job_and_single_delivery(monkeypatch, tmp_path):
+    store = DashboardStore(tmp_path / "dashboard.db")
+    window_job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v1", delivery_channel="gmail", attack_chain=True,
+        attack_chain_seconds=1800,
+    )
+    hit = {
+        "_index": "wazuh-alerts-4.x-2026.07.30", "_id": "abc",
+        "_source": {
+            "timestamp": "2026-07-30T11:30:00Z",
+            "rule": {"id": "5503", "level": 5, "description": "PAM failed"},
+            "agent": {"id": "001", "name": "victim"},
+            "data": {"srcip": "192.168.100.30"},
+        },
+    }
+    monkeypatch.setattr(
+        dashboard_worker, "fetch_alerts_range",
+        lambda *args, **kwargs: {"total": 1, "alerts": [hit]},
+    )
+    monkeypatch.setattr(
+        dashboard_worker, "fetch_alerts_window",
+        lambda *args, **kwargs: {"total": 1, "alerts": [hit], "analysis_mode": "full"},
+    )
+    monkeypatch.setattr(
+        dashboard_worker, "fetch_active_source_ips",
+        lambda *args, **kwargs: [{"ip": "192.168.100.30", "count": 1}],
+    )
+
+    class Service:
+        def analyze_aggregate(self, aggregate, model, language="vi", **kwargs):
+            return {
+                "analysis": {
+                    "summary": "window", "severity": "medium", "key_findings": ["a"],
+                    "mitre": [], "next_steps": ["b"], "response_language": language,
+                    "confidence": 90,
+                },
+                "coverage": {"truncated": False},
+                "partial": False,
+                "provenance": {"language_compliance": "full"},
+            }
+
+        def analyze_ip_profile_aggregate(self, aggregate, source_ip, model, language="vi", **kwargs):
+            assert source_ip == "192.168.100.30"
+            return {
+                "analysis": {
+                    "summary": "chain", "intent": "recon", "severity": "high",
+                    "kill_chain_stages": ["recon"], "targeted_assets": [],
+                    "mitre": [], "next_steps": ["block"], "response_language": language,
+                    "confidence": 80,
+                },
+                "coverage": {"truncated": False},
+                "warnings": [],
+                "provenance": {},
+            }
+
+    runtime = dashboard_worker.DashboardRuntime(
+        store, {"dashboard": {}, "wazuh_indexer": {}, "ollama": {}}, Service(),
+    )
+
+    runtime._run_job(store.claim_next_job())
+    assert store.get_job(window_job_id)["status"] == "succeeded"
+
+    # Ticking the checkbox must not spawn a second job; one queued analysis is one report.
+    assert store.claim_next_job() is None
+
+    detail = store.get_job_detail(window_job_id)
+    window_row = [row for row in detail["results"] if row["scope_key"] == "window"][0]
+    chain_row = [row for row in detail["results"] if row["scope_key"] == "attack_chain"][0]
+    assert window_row["result"]["summary"] == "window"
+    assert chain_row["result"]["kill_chain_stages"] == ["recon"]
+    assert chain_row["provenance"]["attack_chain_source_ip"] == "192.168.100.30"
+    # The chain profile uses its own 30-minute window anchored at the job window end.
+    assert chain_row["provenance"]["attack_chain_window"] == (
+        "2026-07-30T11:30:00.000Z..2026-07-30T12:00:00.000Z"
+    )
+    # A successful chain profile is a label on its own row, not a quality-gate
+    # warning on the window report.
+    assert window_row["warnings"] == []
+    assert any("192.168.100.30" in warning for warning in chain_row["warnings"])
+
+    # One report means one delivery for the whole job.
+    first = store.claim_next_delivery()
+    assert first["job_id"] == window_job_id
+    assert store.claim_next_delivery() is None

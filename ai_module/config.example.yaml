@@ -70,9 +70,9 @@ dashboard:
   max_timeline_buckets: 96
   default_language: "vi"                # vi | en
   max_pending_jobs: 100
-  max_groups_in_prompt: 20
+  max_groups_in_prompt: 40                # cat prompt lam model tu ha confidence; giu cap tren so group thuc te
   max_sample_log_chars: 1000
-  max_window_prompt_chars: 24000
+  max_window_prompt_chars: 32000
   ingest_delay_seconds: 120
   max_catchup_windows: 24
   worker_poll_seconds: 1

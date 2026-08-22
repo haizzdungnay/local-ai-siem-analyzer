@@ -14,7 +14,7 @@ from analysis_service import (
 )
 from dashboard_time import format_utc, parse_utc
 from gmail_notifier import GMAIL_CHANNEL, GmailConfigurationError, GmailDeliveryError, GmailNotifier
-from reader import fetch_alerts_window
+from reader import fetch_active_source_ips, fetch_alerts_window
 from telegram_notifier import TELEGRAM_CHANNEL, TelegramConfigurationError, TelegramDeliveryError, TelegramNotifier
 
 # Kept as a seam for existing worker tests and local integrations; it now
@@ -394,12 +394,18 @@ class DashboardRuntime:
             status = "partial" if (
                 result["partial"] or language_compliance != "full" or quality_failures
             ) else "succeeded"
+            chain = self._attack_chain_result(job)
+            if chain:
+                warnings.extend(chain["warnings"])
+                if chain["status"] == "partial":
+                    status = "partial"
             saved = self.store.save_result_and_complete_if_not_cancelled(
                 job["id"], "window", "window", result["analysis"],
                 coverage=result["coverage"], warnings=warnings,
                 provenance=provenance, latency_s=latency, status=status,
                 progress_current=aggregate["total_alerts"],
                 progress_total=aggregate["total_alerts"],
+                extra_results=[chain["row"]] if chain else None,
             )
             if not saved:
                 current = self.store.get_job(job["id"])
@@ -431,6 +437,87 @@ class DashboardRuntime:
             if job["job_type"] == "scheduled_window":
                 self.store.block_schedule(f"{type(exc).__name__}: {exc}")
 
+    def _attack_chain_result(self, job):
+        """Analyse the busiest source IP of the same window as part of this job.
+
+        The chain profile is a second result row on the same job, so one queued
+        analysis always yields one report instead of a detached follow-up job."""
+        if not job.get("attack_chain"):
+            return None
+        seconds = int(job.get("attack_chain_seconds") or 0)
+        if seconds in PRESET_SECONDS:
+            window_end = parse_utc(job["window_end"])
+            chain_start = format_utc(window_end - timedelta(seconds=seconds))
+            chain_end = format_utc(window_end)
+        else:
+            chain_start, chain_end = job["window_start"], job["window_end"]
+        try:
+            self.store.update_phase(job["id"], "analyzing_attack_chain")
+            active = fetch_active_source_ips(self.cfg, chain_start, chain_end, limit=1)
+            if not active:
+                return {
+                    "row": None, "status": "succeeded",
+                    "warnings": ["Attack chain: khong co source IP trong cua so da chon"],
+                }
+            source_ip = active[0]["ip"]
+            dashboard_cfg = self.cfg.get("dashboard", {})
+            fetched = fetch_alerts_window(
+                self.cfg, chain_start, chain_end, source_ip=source_ip,
+                max_alerts=dashboard_cfg.get("max_alerts_per_job", 2000),
+                max_rule_buckets=dashboard_cfg.get("max_aggregate_rule_buckets", 1000),
+                max_timeline_buckets=dashboard_cfg.get("max_timeline_buckets", 96),
+            )
+            if fetched.get("analysis_mode", "full") == "aggregate":
+                aggregate = aggregate_rule_buckets(fetched)
+            else:
+                aggregate = aggregate_alerts(
+                    fetched["alerts"],
+                    sample_log_chars=dashboard_cfg.get("max_sample_log_chars", 1000),
+                )
+                aggregate["timeline"] = fetched.get("timeline", [])
+            if not aggregate["total_alerts"]:
+                return {
+                    "row": None, "status": "succeeded",
+                    "warnings": [f"Attack chain: khong co alert cho {source_ip}"],
+                }
+            analysis_kwargs = {}
+            if job.get("llm_parameters"):
+                analysis_kwargs["llm_parameters"] = job["llm_parameters"]
+            started = time.perf_counter()
+            result = self.analysis_service.analyze_ip_profile_aggregate(
+                aggregate=aggregate, source_ip=source_ip, model=job["model"],
+                language=job.get("language", "vi"), **analysis_kwargs,
+            )
+            latency = time.perf_counter() - started
+            analysis = result["analysis"]
+            warnings = list(result.get("warnings") or [])
+            warnings.append(f"Attack chain profile for source IP {source_ip}")
+            provenance = dict(result.get("provenance") or {})
+            provenance["attack_chain_source_ip"] = source_ip
+            provenance["attack_chain_window"] = f"{chain_start}..{chain_end}"
+            degraded = analysis.get("severity") == "unknown"
+            return {
+                "row": {
+                    "scope": "window", "scope_key": "attack_chain", "result": analysis,
+                    "coverage": result["coverage"], "warnings": warnings,
+                    "provenance": provenance, "latency_s": latency,
+                },
+                "status": "partial" if degraded else "succeeded",
+                # A successful chain profile is not a quality problem, so it must not
+                # raise the window report's quality-gate banner.
+                "warnings": [
+                    f"Attack chain cho {source_ip} tra fallback/unknown"
+                ] if degraded else [],
+            }
+        except Exception as exc:
+            # The window report is the primary deliverable; a chain failure is
+            # reported as a warning instead of discarding the window analysis.
+            LOGGER.error("Attack-chain analysis failed for job %s", job["id"])
+            return {
+                "row": None, "status": "partial",
+                "warnings": [f"Attack chain that bai: {type(exc).__name__}"],
+            }
+
     def _advance_schedule_for_job(self, job):
         if job["job_type"] != "scheduled_window":
             return
@@ -458,6 +545,7 @@ class DashboardRuntime:
                     language=schedule.get("language", "vi"),
                     delivery_channel=schedule.get("delivery_channel", "none"),
                     llm_parameters=schedule.get("llm_parameters"),
+                    attack_chain=bool(schedule.get("attack_chain")),
                     schedule_generation=schedule["generation"],
                 )
             except Exception as exc:

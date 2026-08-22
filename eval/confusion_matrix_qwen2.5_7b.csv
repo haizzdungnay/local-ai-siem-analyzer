@@ -1,0 +1,25 @@
+configuration,ground_truth,predicted,count,row_total,row_percent
+RAG,low,low,10,13,76.9
+RAG,low,medium,2,13,15.4
+RAG,low,high,0,13,0.0
+RAG,low,invalid,1,13,7.7
+RAG,medium,low,4,13,30.8
+RAG,medium,medium,9,13,69.2
+RAG,medium,high,0,13,0.0
+RAG,medium,invalid,0,13,0.0
+RAG,high,low,1,7,14.3
+RAG,high,medium,3,7,42.9
+RAG,high,high,3,7,42.9
+RAG,high,invalid,0,7,0.0
+No RAG,low,low,9,13,69.2
+No RAG,low,medium,4,13,30.8
+No RAG,low,high,0,13,0.0
+No RAG,low,invalid,0,13,0.0
+No RAG,medium,low,4,13,30.8
+No RAG,medium,medium,9,13,69.2
+No RAG,medium,high,0,13,0.0
+No RAG,medium,invalid,0,13,0.0
+No RAG,high,low,0,7,0.0
+No RAG,high,medium,6,7,85.7
+No RAG,high,high,1,7,14.3
+No RAG,high,invalid,0,7,0.0

@@ -6,6 +6,36 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ## [Unreleased]
 
 ### Added
+- Sửa exporter ma trận nhầm lẫn: dùng nhãn tham chiếu nháp trực tiếp từ `eval/expected/*.json`, bắt buộc `review_status=draft-single-reviewer`, đổi chú thích và dòng provenance khỏi claim “adjudicated”, đồng bộ caption hai cấu hình và Việt hóa nhãn trên PNG; vẫn kiểm tra coverage/model, giữ prediction không hợp lệ ở cột `invalid`, và xuất report Markdown/CSV/PNG.
+- Tùy chọn **Phân tích chuỗi tấn công (IP tự động)** cho cả job thủ công và lịch `Fixed windows`: bật checkbox rồi đưa vào hàng đợi, cùng model sẽ chạy thêm một job `analysis_kind=attack_chain` trên đúng cửa sổ đó và tự chọn IP nguồn nhiều alert nhất.
+- Thứ tự cố định: phân tích mối đe dọa của cửa sổ log chạy trước, lưu report và xếp hàng gửi trước, sau đó mới chạy phân tích chuỗi tấn công và xếp hàng gửi báo cáo thứ hai độc lập trên cùng kênh Telegram/Gmail.
+- Khi bật tùy chọn, dropdown **Thời gian chuỗi tấn công** hiện ra để chọn riêng khoảng phân tích từ 5 phút tới 30 ngày; cửa sổ này neo tại thời điểm kết thúc của job gốc, không phụ thuộc `Khoảng nhanh`/`Interval`.
+- SQLite schema v9: thêm `jobs.analysis_kind`, `jobs.attack_chain`, `jobs.attack_chain_seconds`, `jobs.parent_job_id` và `schedule.attack_chain`, `schedule.attack_chain_seconds` bằng `ALTER TABLE`, giữ nguyên toàn bộ job lịch sử.
+- Threat hunting cục bộ: Chuyển khối Phân tích hành vi IP và chuỗi tấn công lên cùng hàng với Phân tích mới trên Dashboard UI.
+- Thêm tùy chọn Tự động phân tích (tự tìm IP có nhiều hoạt động nhất trong khoảng thời gian được chọn).
+- Hỗ trợ dropdown chọn nhanh các địa chỉ IPv4 đang hoạt động từ Wazuh Indexer (`/api/active-ips`) kèm ô nhập tay tùy chọn.
+- Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
+
+### Fixed
+- Báo cáo có chuỗi tấn công không gửi được qua Telegram: read timeout của `sendDocument` bị ghim cứng ở 45s nên upload bị hủy giữa chừng khi PDF vượt ~350 KiB trên uplink lab chậm. Timeout nay co giãn theo kích thước payload (sàn 45s, trần 600s); `telegram.timeout_seconds` đóng vai trò sàn chứ không phải trần.
+- Chain profile chạy thành công không còn bật panel **Báo cáo chưa đạt quality gate**: nhãn `Attack chain profile for source IP ...` giữ trên result row của chính chuỗi, chỉ khi chain trả fallback/unknown mới đẩy cảnh báo lên báo cáo cửa sổ.
+- `confidence` model trả theo thang 0-1 (ví dụ `0.8`) nay được quy đổi về thang hợp đồng 0-100 (`80.0`) thay vì hiển thị `0.8%`; giá trị `0`, `1` và `100` giữ nguyên, giá trị ngoài hợp đồng vẫn rơi về local fallback. Schema `description` nói thêm không dùng thang 0-1.
+
+### Changed
+- **Phân tích chuỗi tấn công (IP tự động)** khi tick trong form job nay chạy trong cùng một đợt với phân tích log: một job duy nhất sinh hai result row (`scope_key='window'` và `scope_key='attack_chain'`), một lượt delivery, thay vì tách thành job con riêng. Phân tích chuỗi riêng biệt vẫn khả dụng qua form **Threat hunting cục bộ** (`/api/ip-analysis`).
+- Báo cáo Gmail/Telegram/PDF thêm mục **Attack chain** ngay sau `Key findings`; báo cáo vẫn lấy severity, hash và cấu trúc từ phân tích cửa sổ.
+- Prompt SOC lên `soc-contract-v2`: thêm thang hiệu chỉnh `confidence` (90-100 khi mọi phát biểu đọc thẳng được từ rule ID/số lượng/IP/khung thời gian), nói rõ confidence không phải mức nghiêm trọng, và gắn rùric đó vào `description` của field trong cả ba output schema.
+- Scope `ip_profile` có quy tắc riêng: `intent` là mục tiêu của nguồn tấn công (không phải việc của analyst), `kill_chain_stages` theo thứ tự thời gian dạng `timestamp - giai đoạn - bằng chứng`, `targeted_assets` không lặp lại IP nguồn.
+- `dashboard.max_groups_in_prompt` 20 → 40 và `max_window_prompt_chars` 24000 → 32000: cửa sổ lab trước đây bị cắt prompt (20/21 group) khiến model tự hạ confidence.
+- Phase mới `analyzing_attack_chain` hiển thị tiến trình bước dựng chuỗi trên dashboard.
+
+### Fixed
+- Kết quả job `analysis_kind=attack_chain` nay có chỗ hiển thị: panel AI review thêm khối **Chuỗi tấn công theo thời gian** (`#ai-chain-field`) vẽ `kill_chain_stages`, trường root cause fallback sang `intent`, và hàng lịch sử gắn tag `· chuỗi tấn công` để phân biệt job con với job cửa sổ.
+- DB dashboard live được nâng từ `user_version` 8 lên 9 khi khởi động lại server; 237 job lịch sử giữ nguyên, backup trước migration lưu tại `ai_module/dashboard_data/dashboard.pre-v9-<timestamp>.db` (untracked).
+- Sửa bảng **Lịch sử gom log**: không để rule `small` ghi đè giới hạn ba dòng của tóm tắt AI, giảm line-height/padding của ô và giữ nút **Xem thêm** cho nội dung đầy đủ để các hàng không bị giãn hoặc che khuất; bổ sung regression UI cho hành vi này.
+- Bố trí lại 11 cột lịch sử theo tỷ lệ vừa khung, bỏ `min-width` 1120px và giữ badge trạng thái trên một dòng để không còn phải kéo ngang mới thấy `Review`, `Delivery` và `Freshness`.
+
+### Added
 - Thêm eval benchmarks (prompt injection, reproducibility, capacity, user study protocol, RAG benchmark, baseline comparison).
 - Mở rộng hỗ trợ khoảng thời gian phân tích lên tới 30 ngày (259200, 604800, 2592000s) trong reader và dashboard worker.
 - Bổ sung bộ dữ liệu RAG đầy đủ và test suite toàn diện.

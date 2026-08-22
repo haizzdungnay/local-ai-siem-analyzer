@@ -12,10 +12,10 @@ from dashboard_time import format_utc, parse_utc, utc_now
 from llm import normalize_llm_parameters
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 JOB_PHASES = {
     "queued", "fetching_alerts", "preparing_analysis", "calling_ollama",
-    "saving_result", "completed", "failed", "cancelled",
+    "analyzing_attack_chain", "saving_result", "completed", "failed", "cancelled",
 }
 REVIEW_STATUSES = {"new", "acknowledged", "investigating", "resolved", "false_positive"}
 REVIEW_SEVERITIES = {"inherit", "low", "medium", "high", "critical"}
@@ -252,6 +252,11 @@ class DashboardStore:
                             CHECK(delivery_channel IN ('none','telegram','gmail')),
                         llm_params_json TEXT NOT NULL DEFAULT '{}',
                         correlation_json TEXT NOT NULL DEFAULT '{}',
+                        analysis_kind TEXT NOT NULL DEFAULT 'window'
+                            CHECK(analysis_kind IN ('window','attack_chain')),
+                        attack_chain INTEGER NOT NULL DEFAULT 0,
+                        attack_chain_seconds INTEGER NOT NULL DEFAULT 0,
+                        parent_job_id INTEGER,
                         analysis_mode TEXT NOT NULL DEFAULT 'full' CHECK(analysis_mode IN ('full','aggregate')),
                         metrics_json TEXT NOT NULL DEFAULT '{}',
                         timeline_json TEXT NOT NULL DEFAULT '[]',
@@ -311,6 +316,8 @@ class DashboardStore:
                         delivery_channel TEXT NOT NULL DEFAULT 'none'
                             CHECK(delivery_channel IN ('none','telegram','gmail')),
                         llm_params_json TEXT NOT NULL DEFAULT '{}',
+                        attack_chain INTEGER NOT NULL DEFAULT 0,
+                        attack_chain_seconds INTEGER NOT NULL DEFAULT 0,
                         next_window_start TEXT,
                         ingest_delay_seconds INTEGER NOT NULL DEFAULT 120,
                         max_catchup_windows INTEGER NOT NULL DEFAULT 24,
@@ -405,6 +412,10 @@ class DashboardStore:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
         if version == 7:
             self._ensure_v8_security_correlation()
+        with closing(self._connect()) as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+        if version == 8:
+            self._ensure_v9_attack_chain()
         self._ensure_history_indexes()
 
     def _ensure_history_indexes(self):
@@ -455,6 +466,37 @@ class DashboardStore:
                     "ALTER TABLE jobs ADD COLUMN correlation_json TEXT NOT NULL DEFAULT '{}'"
                 )
             connection.execute("PRAGMA user_version=8")
+
+    def _ensure_v9_attack_chain(self):
+        """Add optional attack-chain follow-up flags without rewriting old rows."""
+        with self.transaction() as connection:
+            if connection.execute("PRAGMA user_version").fetchone()[0] != 8:
+                return
+            job_columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
+            if "analysis_kind" not in job_columns:
+                connection.execute(
+                    "ALTER TABLE jobs ADD COLUMN analysis_kind TEXT NOT NULL DEFAULT 'window'"
+                )
+            if "attack_chain" not in job_columns:
+                connection.execute(
+                    "ALTER TABLE jobs ADD COLUMN attack_chain INTEGER NOT NULL DEFAULT 0"
+                )
+            if "attack_chain_seconds" not in job_columns:
+                connection.execute(
+                    "ALTER TABLE jobs ADD COLUMN attack_chain_seconds INTEGER NOT NULL DEFAULT 0"
+                )
+            if "parent_job_id" not in job_columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN parent_job_id INTEGER")
+            schedule_columns = {row[1] for row in connection.execute("PRAGMA table_info(schedule)")}
+            if "attack_chain" not in schedule_columns:
+                connection.execute(
+                    "ALTER TABLE schedule ADD COLUMN attack_chain INTEGER NOT NULL DEFAULT 0"
+                )
+            if "attack_chain_seconds" not in schedule_columns:
+                connection.execute(
+                    "ALTER TABLE schedule ADD COLUMN attack_chain_seconds INTEGER NOT NULL DEFAULT 0"
+                )
+            connection.execute("PRAGMA user_version=9")
 
     def _migrate_v5_to_v6(self):
         """Rebuild channel-constrained tables because SQLite cannot alter CHECKs."""
@@ -758,22 +800,28 @@ class DashboardStore:
 
     def create_job(self, job_type, window_start, window_end, model, analysis_version,
                    *, language="vi", delivery_channel="none", llm_parameters=None,
-                   schedule_generation=None, correlation=None) -> int:
+                   schedule_generation=None, correlation=None,
+                   analysis_kind="window", attack_chain=False, attack_chain_seconds=0,
+                   parent_job_id=None) -> int:
         if language not in {"vi", "en"}:
             raise ValueError("language phải là vi hoặc en")
         _validate_delivery_channel(delivery_channel)
         llm_parameters = _validated_llm_parameters(llm_parameters)
         correlation = _validated_correlation(correlation)
+        if analysis_kind not in {"window", "attack_chain"}:
+            raise ValueError("analysis_kind phai la window hoac attack_chain")
         with self.transaction() as connection:
             cursor = connection.execute(
                 """INSERT INTO jobs(job_type,status,window_start,window_end,model,
-                   analysis_version,language,delivery_channel,llm_params_json,correlation_json,schedule_generation,created_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   analysis_version,language,delivery_channel,llm_params_json,correlation_json,schedule_generation,
+                   analysis_kind,attack_chain,attack_chain_seconds,parent_job_id,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (job_type, "pending", window_start, window_end, model,
                   analysis_version, language, delivery_channel,
                   json.dumps(llm_parameters or {}, ensure_ascii=False, separators=(",", ":")),
                   json.dumps(correlation, ensure_ascii=True, separators=(",", ":")),
-                  schedule_generation, utc_now()),
+                  schedule_generation, analysis_kind, int(bool(attack_chain)),
+                  int(attack_chain_seconds or 0), parent_job_id, utc_now()),
             )
             return cursor.lastrowid
 
@@ -1316,7 +1364,7 @@ class DashboardStore:
     def save_result_and_complete_if_not_cancelled(
             self, job_id, scope, scope_key, result, *, coverage=None, warnings=None,
             provenance=None, latency_s=0, revision=1, status="succeeded",
-            progress_current=None, progress_total=None):
+            progress_current=None, progress_total=None, extra_results=None):
         """Atomically persist a terminal result only while cancellation has not won.
 
         A model call cannot be interrupted portably, so the durable commit is the
@@ -1353,6 +1401,18 @@ class DashboardStore:
                  json.dumps(provenance or {}, ensure_ascii=False),
                  latency_s, revision, utc_now()),
             )
+            for row in extra_results or []:
+                connection.execute(
+                    """INSERT INTO analysis_results(job_id,scope,scope_key,result_json,
+                       coverage_json,warnings_json,provenance_json,latency_s,revision,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (job_id, row["scope"], row["scope_key"],
+                     json.dumps(row["result"], ensure_ascii=False),
+                     json.dumps(row.get("coverage") or {}, ensure_ascii=False),
+                     json.dumps(row.get("warnings") or [], ensure_ascii=False),
+                     json.dumps(row.get("provenance") or {}, ensure_ascii=False),
+                     row.get("latency_s", 0), row.get("revision", 1), utc_now()),
+                )
             return True
 
     def get_job_detail(self, job_id):
@@ -1514,7 +1574,8 @@ class DashboardStore:
 
     def configure_schedule(self, *, enabled, interval_seconds, model, next_window_start,
                            language="vi", delivery_channel="none", llm_parameters=None,
-                           ingest_delay_seconds=120, max_catchup_windows=24):
+                           ingest_delay_seconds=120, max_catchup_windows=24,
+                           attack_chain=False, attack_chain_seconds=0):
         if language not in {"vi", "en"}:
             raise ValueError("language phải là vi hoặc en")
         _validate_delivery_channel(delivery_channel)
@@ -1522,10 +1583,11 @@ class DashboardStore:
         with self.transaction() as connection:
             connection.execute(
                 """UPDATE schedule SET enabled=?,generation=generation+1,interval_seconds=?,
-                   model=?,language=?,delivery_channel=?,llm_params_json=?,next_window_start=?,ingest_delay_seconds=?,max_catchup_windows=?,
+                   model=?,language=?,delivery_channel=?,llm_params_json=?,attack_chain=?,attack_chain_seconds=?,next_window_start=?,ingest_delay_seconds=?,max_catchup_windows=?,
                    state=?,error='',gap_windows=0,updated_at=? WHERE singleton=1""",
                 (int(enabled), interval_seconds, model, language, delivery_channel,
-                 json.dumps(llm_parameters or {}, ensure_ascii=False, separators=(",", ":")), next_window_start,
+                 json.dumps(llm_parameters or {}, ensure_ascii=False, separators=(",", ":")),
+                 int(bool(attack_chain)), int(attack_chain_seconds or 0), next_window_start,
                  ingest_delay_seconds, max_catchup_windows,
                  "active" if enabled else "idle", utc_now()),
             )

@@ -14,7 +14,19 @@ import ollama as ollama_sdk
 from reader import validate_ollama_base_url
 
 
-SOC_PROMPT_VERSION = "soc-contract-v1"
+SOC_PROMPT_VERSION = "soc-contract-v2"
+CONFIDENCE_FIELD_DESCRIPTION = (
+    "Do chac chan ve summary va severity vua dua ra, tinh bang phan tram nguyen 0-100."
+    " Day KHONG phai muc nghiem trong cua su co."
+    " 90-100 khi moi phat bieu trong summary doc thang duoc tu truong da cung cap"
+    " (rule ID, so luong alert, IP, khung thoi gian) va khong co cach hieu hop ly nao khac."
+    " 70-89 khi con mot yeu to phai suy luan."
+    " 40-69 khi bang chung mau thuan hoac thieu truong then chot."
+    " Duoi 40 chi khi severity la unknown."
+    " Du lieu thua khong tu no lam giam diem: ghi vao uncertainties/limitations"
+    " va van cham cao cho phan thuc su quan sat duoc."
+    " Tra ve so nguyen tren thang 0-100 (vi du 95), khong dung thang 0-1 (khong tra 0.95)."
+)
 SUPPORTED_LANGUAGES = {"vi", "en"}
 OLLAMA_OPTIONS = {"temperature": 0, "seed": 42}
 DEFAULT_LLM_PARAMETERS = {
@@ -67,7 +79,10 @@ OUTPUT_SCHEMA = {
         "mitre": {"type": "string", "description": FIELD_DESCRIPTIONS["mitre"]},
         "next_steps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "response_language": {"type": "string", "enum": ["vi", "en"]},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 100},
+        "confidence": {
+            "type": "number", "minimum": 0, "maximum": 100,
+            "description": CONFIDENCE_FIELD_DESCRIPTION,
+        },
         "assessment_basis": ASSESSMENT_BASIS_SCHEMA,
     },
     # The original five fields stay required for callers and old eval data.
@@ -86,7 +101,10 @@ WINDOW_OUTPUT_SCHEMA = {
         "mitre": {"type": "array", "items": {"type": "string"}},
         "next_steps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "response_language": {"type": "string", "enum": ["vi", "en"]},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 100},
+        "confidence": {
+            "type": "number", "minimum": 0, "maximum": 100,
+            "description": CONFIDENCE_FIELD_DESCRIPTION,
+        },
         "assessment_basis": ASSESSMENT_BASIS_SCHEMA,
     },
     "required": [
@@ -97,6 +115,51 @@ WINDOW_OUTPUT_SCHEMA = {
 }
 WINDOW_OUTPUT_KEYS = set(WINDOW_OUTPUT_SCHEMA["required"])
 WINDOW_OUTPUT_OPTIONAL_KEYS = OUTPUT_OPTIONAL_KEYS
+
+IP_PROFILE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string", "minLength": 1},
+        "intent": {
+            "type": "string", "minLength": 1,
+            "description": (
+                "Muc tieu ma nguon tan cong dang theo duoi, suy ra tu telemetry da cung cap"
+                " (vi du: brute force credential, do quet lo hong, thu thap du lieu)."
+                " Khong mo ta cong viec cua analyst va khong mo ta hanh dong ung pho."
+            ),
+        },
+        "severity": {"type": "string", "enum": sorted(OUTPUT_SEVERITIES)},
+        "kill_chain_stages": {
+            "type": "array",
+            "minItems": 1,
+            "description": (
+                "Cac buoc theo thu tu thoi gian. Moi muc mot buoc, dinh dang"
+                " 'timestamp - giai doan - bang chung' voi timestamp va rule ID lay tu du lieu da cung cap."
+            ),
+            "items": {"type": "string", "minLength": 1},
+        },
+        "targeted_assets": {
+            "type": "array",
+            "description": "Agent hoac IP dich bi nham toi; khong lap lai chinh IP nguon dang phan tich.",
+            "items": {"type": "string"},
+        },
+        "mitre": {"type": "array", "items": {"type": "string"}},
+        "next_steps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "response_language": {"type": "string", "enum": ["vi", "en"]},
+        "confidence": {
+            "type": "number", "minimum": 0, "maximum": 100,
+            "description": CONFIDENCE_FIELD_DESCRIPTION,
+        },
+        "assessment_basis": ASSESSMENT_BASIS_SCHEMA,
+    },
+    "required": [
+        "summary", "intent", "severity", "kill_chain_stages", "targeted_assets",
+        "mitre", "next_steps", "response_language", "confidence", "assessment_basis",
+    ],
+    "additionalProperties": False,
+}
+IP_PROFILE_OUTPUT_KEYS = set(IP_PROFILE_OUTPUT_SCHEMA["required"])
+IP_PROFILE_OUTPUT_OPTIONAL_KEYS = OUTPUT_OPTIONAL_KEYS
 
 
 def _language_label(language: str) -> str:
@@ -178,12 +241,41 @@ def build_effective_system_prompt(scope: str, language: str, system_prompt: str 
     )
 
 
+_IP_PROFILE_RULES_VI = """Quy tắc riêng cho scope ip_profile:
+intent là mục tiêu của nguồn tấn công suy ra từ telemetry, không phải việc analyst cần làm.
+kill_chain_stages liệt kê theo thứ tự thời gian, mỗi mục một bước theo dạng
+"<timestamp> - <giai đoạn> - <bằng chứng: rule ID và số lượng>"; chỉ dùng timestamp và rule ID có trong dữ liệu.
+targeted_assets là agent hoặc IP đích, không lặp lại IP nguồn đang phân tích.
+confidence ở scope này chỉ đo mức chắc chắn về summary và severity. intent và kill_chain_stages
+vốn là suy luận nên không tự làm giảm confidence: nếu summary và severity đọc thẳng được từ
+rule ID, số lượng và timestamp đã cung cấp thì vẫn chấm 90-100 và ghi phần suy luận vào inferences.
+
+"""
+_IP_PROFILE_RULES_EN = """Scope-specific rules for ip_profile:
+intent is the goal pursued by the source address as inferred from telemetry, not the analyst's task.
+List kill_chain_stages in chronological order, one step per item, formatted as
+"<timestamp> - <stage> - <evidence: rule ID and count>", using only timestamps and rule IDs present in the data.
+targeted_assets holds destination agents or IPs and must not repeat the source IP under analysis.
+At this scope confidence measures certainty about summary and severity only. intent and
+kill_chain_stages are inherently inferred and must not lower it: when summary and severity read
+directly off the supplied rule IDs, counts, and timestamps, still score 90-100 and record the
+inferred part under inferences.
+
+"""
+_SCOPE_RULES = {
+    "alert": {"vi": "", "en": ""},
+    "window": {"vi": "", "en": ""},
+    "ip_profile": {"vi": _IP_PROFILE_RULES_VI, "en": _IP_PROFILE_RULES_EN},
+}
+
+
 def build_soc_system_prompt(scope: str, language: str = "vi", version: str = SOC_PROMPT_VERSION) -> str:
     """Return the versioned system contract used for alerts and windows."""
     _assert_language(language)
-    if scope not in {"alert", "window"}:
-        raise ValueError("scope must be 'alert' or 'window'")
-    schema = OUTPUT_SCHEMA if scope == "alert" else WINDOW_OUTPUT_SCHEMA
+    if scope not in {"alert", "window", "ip_profile"}:
+        raise ValueError("scope must be 'alert', 'window', or 'ip_profile'")
+    schema = OUTPUT_SCHEMA if scope == "alert" else (IP_PROFILE_OUTPUT_SCHEMA if scope == "ip_profile" else WINDOW_OUTPUT_SCHEMA)
+    scope_rules = _SCOPE_RULES[scope][language]
     if language == "vi":
         return f"""Bạn là chuyên gia Security Operations Center (SOC) cẩn trọng.
 Phiên bản contract: {version}. Phạm vi phân tích: {scope}.
@@ -198,9 +290,23 @@ Viết mọi trường ngôn ngữ tự nhiên bằng tiếng Việt. Giữ nguy
 và MITRE ID. Chỉ trả JSON đúng schema, không markdown hay văn bản bên ngoài.
 assessment_basis là tóm tắt bằng chứng/quyết định công khai, không phải chuỗi suy luận nội bộ
 hay lập luận riêng tư: observed_facts phải dựa trên giá trị đã cung cấp; inferences phải có điều kiện;
-uncertainties và limitations phải nêu rõ điều không thể kết luận. confidence là phần trăm từ 0 đến 100. Mỗi danh sách tối đa 10 mục,
+uncertainties và limitations phải nêu rõ điều không thể kết luận. Mỗi danh sách tối đa 10 mục,
 mỗi mục tối đa 500 ký tự.
 
+confidence là phần trăm nguyên từ 0 đến 100, đo mức chắc chắn về summary và severity
+đã đưa ra, KHÔNG phải mức nghiêm trọng của sự cố và KHÔNG phải mức chắc chắn về
+nguyên nhân gốc chưa quan sát được. Hiệu chỉnh theo thang sau:
+- 90-100: mọi phát biểu trong summary và severity đều đọc thẳng được từ trường dữ liệu đã cung cấp
+  (rule ID, số lượng alert, IP, khung thời gian) và không có cách diễn giải hợp lý nào khác.
+- 70-89: kết luận dựa trên dữ liệu đã cung cấp nhưng còn một yếu tố phải suy luận.
+- 40-69: bằng chứng mâu thuẫn hoặc thiếu trường then chốt.
+- 0-39: chỉ dùng khi severity là unknown.
+Dữ liệu thưa hoặc thiếu ngữ cảnh ngoài phạm vi không tự nó làm giảm confidence: hãy ghi
+điều đó vào uncertainties/limitations và vẫn chấm confidence cao cho phần thực sự quan sát được.
+Để giữ confidence cao, chỉ đưa vào summary những gì đọc thẳng được từ dữ liệu; mọi phỏng đoán
+về nguyên nhân, mức độ thành công hay ý đồ phải nằm ở inferences, không nằm ở summary.
+
+{scope_rules}
 JSON schema:
 {json.dumps(schema, ensure_ascii=False, separators=(',', ':'))}
 
@@ -221,9 +327,23 @@ Write every natural-language field entirely in English. Keep technical identifie
 matching this schema exactly. Do not include markdown or prose. The assessment_basis
 is a concise public evidence/decision summary, not private chain of thought or private
 reasoning: observed_facts must cite supplied values; inferences must be qualified;
-uncertainties and limitations must state what cannot be concluded. Set confidence as a percentage from 0 to 100. Limit each list
+uncertainties and limitations must state what cannot be concluded. Limit each list
 to 10 items and each item to 500 characters.
 
+Report confidence as an integer percentage from 0 to 100 measuring how certain you are
+about the summary and severity you produced. It is NOT incident severity and NOT
+certainty about an unobserved root cause. Calibrate on this scale:
+- 90-100: every claim in summary and severity reads directly off supplied fields
+  (rule IDs, alert counts, IPs, time window) with no other plausible reading.
+- 70-89: the conclusion follows from supplied data but one element had to be inferred.
+- 40-69: evidence conflicts or a decisive field is missing.
+- 0-39: reserved for severity unknown.
+Sparse data or missing out-of-scope context does not by itself lower confidence: record
+that in uncertainties/limitations and still score confidence on what was actually observed.
+To keep confidence high, put only directly readable evidence in summary; any speculation about
+cause, success, or motive belongs in inferences rather than in summary.
+
+{scope_rules}
 JSON schema:
 {json.dumps(schema, ensure_ascii=False, separators=(',', ':'))}
 
@@ -699,14 +819,31 @@ def _parse_response(raw: str, language: str = "vi") -> dict:
     return _parse_alert_payload(raw, language)[0]
 
 
+def _normalized_confidence(value):
+    """Return confidence on the 0-100 contract scale, or None when unusable.
+
+    Models occasionally answer on a 0-1 scale despite the schema, which surfaced
+    as a "0.8%" report. A fractional value is rescaled instead of being shown as
+    near-zero certainty; 0 and 1 stay literal because both are valid percentages
+    and the rubric reserves anything under 40 for unknown severity.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not 0 <= value <= 100:
+        return None
+    if 0 < value < 1:
+        return float(value) * 100
+    return float(value)
+
+
 def _enrich_contract(result: dict, language: str, *, require_extended: bool = False) -> dict | None:
     if require_extended and not OUTPUT_OPTIONAL_KEYS.issubset(result):
         return None
     response_language = result.get("response_language", language)
     if response_language not in SUPPORTED_LANGUAGES:
         return None
-    confidence = result.get("confidence", 0.0)
-    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 100:
+    confidence = _normalized_confidence(result.get("confidence", 0.0))
+    if confidence is None:
         return None
     basis = _basis(result.get("assessment_basis"), language)
     if basis is None:
@@ -747,3 +884,96 @@ def _parse_window_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
     if enriched is None:
         return _window_fallback("invalid_field", raw, language), "local_fallback"
     return enriched, "ollama_model"
+
+
+def analyze_ip_profile(ip_telemetry_text: str, source_ip: str, model: str = "qwen2.5:7b",
+                       base_url: str = "http://localhost:11434", timeout: float = 120,
+                       language: str = "vi", include_provenance: bool = False,
+                       allow_remote: bool = False, llm_parameters=None):
+    """Analyze historical multi-stage telemetry of a specific IP address."""
+    _assert_language(language)
+    validate_ollama_base_url(base_url, allow_remote=allow_remote)
+    parameters = normalize_llm_parameters(llm_parameters) if llm_parameters is not None else None
+    prompt = build_effective_system_prompt(
+        "ip_profile", language, "" if parameters is None else parameters["system_prompt"]
+    )
+    options = ollama_options(parameters)
+    request_data = _untrusted_message("IP_TELEMETRY", f"Target IP Profile: {source_ip}\n\n{ip_telemetry_text}")
+    user_sections = [request_data, _trusted_language_reminder(language)]
+    user_msg = "\n\n".join(user_sections)
+    client = ollama_sdk.Client(host=base_url, timeout=timeout)
+    response = client.chat(
+        model=model,
+        messages=[{"role": "system", "content": prompt},
+                  {"role": "user", "content": user_msg}],
+        format=IP_PROFILE_OUTPUT_SCHEMA,
+        options=options,
+    )
+    content = _response_content(response)
+    if not isinstance(content, str):
+        result, origin = _ip_profile_fallback("missing_content", language=language), "local_fallback"
+    else:
+        result, origin = _parse_ip_profile_payload(content, language=language)
+    digest, digest_source, digest_observed_at = (
+        _model_digest_metadata(client, model, _response_field(response, "model"))
+        if include_provenance else ("", "", "")
+    )
+    provenance = _provenance(
+        response, content, requested_model=model, output_origin=origin, prompt=prompt,
+        request_data=request_data, output_schema=IP_PROFILE_OUTPUT_SCHEMA, language=language,
+        model_digest=digest, model_digest_source=digest_source,
+        model_digest_observed_at=digest_observed_at, result=result, options=options,
+    )
+    return (result, provenance) if include_provenance else result
+
+
+def _ip_profile_fallback(reason: str, raw: str = "", language: str = "vi") -> dict:
+    return {
+        "summary": _localized_reason(reason, language),
+        "intent": "Unknown",
+        "severity": "unknown",
+        "kill_chain_stages": ["No kill chain reconstructed"],
+        "targeted_assets": [],
+        "mitre": [],
+        "next_steps": ["Verify IP address logs manually in Wazuh Indexer."],
+        "response_language": language,
+        "confidence": 0.0,
+        "assessment_basis": {
+            "observed_facts": ["IP telemetry could not be safely parsed."],
+            "inferences": [],
+            "uncertainties": ["Automated profile generation failed."],
+            "limitations": [f"Fallback reason: {reason}"],
+        },
+    }
+
+
+def _parse_ip_profile_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        return _ip_profile_fallback("invalid_json", raw, language), "local_fallback"
+    if not isinstance(result, dict):
+        return _ip_profile_fallback("invalid_object", raw, language), "local_fallback"
+    if not IP_PROFILE_OUTPUT_KEYS.issubset(result) or not set(result).issubset(IP_PROFILE_OUTPUT_KEYS | IP_PROFILE_OUTPUT_OPTIONAL_KEYS):
+        return _ip_profile_fallback("invalid_schema", raw, language), "local_fallback"
+    for key in ("summary", "intent"):
+        if not isinstance(result[key], str):
+            return _ip_profile_fallback("invalid_field", raw, language), "local_fallback"
+        result[key] = result[key].strip()[:2000]
+    if result["severity"] not in OUTPUT_SEVERITIES:
+        return _ip_profile_fallback("invalid_field", raw, language), "local_fallback"
+    if not isinstance(result.get("kill_chain_stages"), list) or not result["kill_chain_stages"]:
+        return _ip_profile_fallback("invalid_field", raw, language), "local_fallback"
+    if not isinstance(result.get("targeted_assets"), list):
+        result["targeted_assets"] = []
+    if not isinstance(result.get("mitre"), list):
+        result["mitre"] = []
+    steps = _bounded_strings(result["next_steps"], max_items=20, max_chars=1000, min_items=1)
+    if steps is None:
+        return _ip_profile_fallback("invalid_field", raw, language), "local_fallback"
+    result["next_steps"] = steps
+    enriched = _enrich_contract(result, language)
+    if enriched is None:
+        return _ip_profile_fallback("invalid_field", raw, language), "local_fallback"
+    return enriched, "model"
+

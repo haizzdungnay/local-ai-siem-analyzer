@@ -1,6 +1,110 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-08-14
+Ngày cập nhật: 2026-08-22
+
+## Confusion matrix qwen2.5:7b từ dữ liệu project (2026-08-22)
+
+- Trạng thái: KẾT QUẢ ĐÃ XUẤT VÀ VERIFY TRONG PHẠM VI; chưa đánh dấu hoàn tất toàn repo vì worktree có lỗi `git diff --check` tồn tại ngoài phạm vi task.
+- Nguồn dữ liệu: đủ 33/33 case trong `eval/manifest.json`; exporter dùng trực tiếp nhãn severity trong `eval/expected/*.json` và xác nhận cả 33 file có `review_status=draft-single-reviewer`; prediction từ `eval/results.csv` (RAG) và `eval/results-no-rag.csv` (no-RAG), tất cả row đều ghi model `qwen2.5:7b`.
+- Kết quả RAG, theo hàng `low/medium/high` và cột `low/medium/high/invalid`: `[10,2,0,1]`, `[4,9,0,0]`, `[1,3,3,0]`; exact-match `22/33 = 66.7%`, macro-F1 `0.660`.
+- Kết quả no-RAG: `[9,4,0,0]`, `[4,9,0,0]`, `[0,6,1,0]`; exact-match `19/33 = 57.6%`, macro-F1 `0.502`.
+- Đã cập nhật exporter `eval/export_confusion_matrix.py`, tài liệu chạy trong `eval/README.md`, report `docs/confusion_matrix_qwen2.5_7b.md`, dữ liệu máy đọc `eval/confusion_matrix_qwen2.5_7b.csv`, ảnh hai panel `docs/confusion_matrix_qwen2.5_7b.png` và entry point legacy `docs/draw confusion.py`; chú thích ảnh và dòng provenance trong report dùng đúng “Rows are reference ground truth (draft, single reviewer); cells show count and row percentage.”
+- Verification: `python eval/summarize_results.py eval/results.csv eval/results-no-rag.csv` PASS; `python eval/stats_analysis.py` PASS; targeted pytest — 23 passed; full `pytest -q` — 263 passed; `python -m py_compile eval/export_confusion_matrix.py "docs/draw confusion.py"` PASS; exporter rerun thành công; secret scan PASS; ảnh đã kiểm tra trực quan; exact-claim scan không còn “Rows are adjudicated ground truth”; task-scoped whitespace/diff check PASS.
+- Verification chưa pass toàn worktree: `git diff --check` bị hàng loạt CRLF/trailing-whitespace trong các file dirty có sẵn ngoài task; chạy lại với `core.whitespace=cr-at-eol` còn báo `ai_module/llm.py:979: new blank line at EOF`. Không sửa vì đây là thay đổi của user/luồng khác.
+- Giới hạn: đây là hai lượt baseline đã lưu trên corpus nhỏ 33 case, không phải ước lượng hiệu năng tổng quát. RAG có 1 output `severity=unknown` được giữ ở cột `invalid`; recall lớp `high` chỉ 3/7 với RAG và 1/7 khi không RAG. Không chạy inference mới vì cả hai snapshot đã đủ coverage; tránh trộn lượt stochastic mới vào baseline lịch sử.
+- Next action: nếu cần baseline theo prompt/model tag mới, chạy `eval/run_eval.py` ra file mới (không ghi đè `eval/results*.csv`) rồi mở rộng exporter bằng input explicit.
+
+## Fix Telegram khong gui duoc bao cao co attack chain (2026-08-21)
+
+- Trang thai: HOAN TAT.
+- Trieu chung: bat "Phan tich chuoi tan cong (IP tu dong)" thi bao cao khong toi Telegram/Gmail.
+- Chan doan: `report_deliveries` cho thay job #250 (attack_chain=1) ket thuc `uncertain` voi `telegram_network_error`, trong khi job #253/#254 (attack_chain=0) deu `sent`. Goi `send_report()` truc tiep tra `TimeoutError: The write operation timed out` tu `ssl.sendall` trong luc upload.
+- Nguyen nhan that: KHONG phai loi logic cua attack chain. Uplink lab do duoc ~9 KB/s (job #254, PDF 273 KiB, mat 30.7s). `_post_document()` ghim `timeout=(5, max(45, timeout_seconds))`, nen PDF ~360-390 KiB can ~41-44s cong TLS overhead la vuot tran 45s va bi huy giua chung. Attack chain chi lam PDF to them ~13 KiB, du de day payload qua nguong nhung khong phai nguyen nhan goc.
+- Sua tai `ai_module/telegram_notifier.py`: them `_upload_read_timeout()` tinh deadline theo kich thuoc payload (`ASSUMED_UPLOAD_BYTES_PER_SECOND = 8 KiB/s`), san `MIN_UPLOAD_READ_TIMEOUT_SECONDS = 45`, tran `MAX_UPLOAD_READ_TIMEOUT_SECONDS = 600` de worker khong treo vo han. `telegram.timeout_seconds` la san chu khong phai tran.
+- Verification: `python -m pytest -q` — 256 passed. Test moi: `test_document_read_timeout_scales_with_payload_size`.
+- Verification live: gui lai job #250 (bản truoc fail) thanh cong trong 3.7s, message_id 23. Job #256 chay qua worker that voi `delivery_channel=telegram` va attack_chain=on: job `succeeded`, delivery `sent`, `attempt_count=1`.
+- Luu y: Gmail dang `enabled: False` trong cau hinh local nen chi Telegram thuc su gui. Neu bat Gmail can kiem tra lai vi `gmail_notifier` dung `timeout=self.settings.timeout_seconds` (mac dinh 15s) cho SMTP; chua do duoc voi attachment lon.
+- Gioi han: `ASSUMED_UPLOAD_BYTES_PER_SECOND` la hang so uoc luong cho lab, khong do bang wire thuc te. Neu uplink cham hon 8 KB/s van co the timeout; khi do nang `telegram.timeout_seconds` de keo san len.
+- Server chay PID 4648 tren `127.0.0.1:8765`.
+- Next action: review staged diff va commit kem `CHANGELOG.md` + `HANDOFF.md`.
+
+## Fix quality-gate gia va confidence thang 0-1 (2026-08-21)
+
+- Trang thai: HOAN TAT. Hai loi phat hien tren job #250.
+- Loi 1 (do luot truoc gay ra): `_attack_chain_result()` tra ca nhan mo ta `Attack chain profile for source IP ...` trong `warnings`, roi `_run_job()` merge vao warnings cua job, nen UI bat panel "Bao cao chua dat quality gate" du chain chay thanh cong. Sua tai `ai_module/dashboard_worker.py`: nhan giu tren result row cua chinh chuoi, chi day canh bao len bao cao cua so khi chain tra fallback/unknown.
+- Loi 2: model tra `confidence` tren thang 0-1 (`0.8`) trong khi hop dong la 0-100, hien thi thanh "0.8%". Them `_normalized_confidence()` trong `ai_module/llm.py`, dung chung cho ca ba scope qua `_enrich_contract()`. Gia tri trong khoang (0,1) duoc nhan 100; `0`, `1`, `100` giu nguyen vi deu la phan tram hop le; gia tri ngoai hop dong van fail-closed ve local fallback. Bo sung cau "khong dung thang 0-1" vao `CONFIDENCE_FIELD_DESCRIPTION`.
+- Verification: `python -m pytest -q` — 255 passed. Test moi: `test_fractional_confidence_is_rescaled_to_the_contract_percentage`; cap nhat `test_attack_chain_is_merged_into_the_same_job_and_single_delivery` de chot window warnings rong.
+- Verification live: job #255 (`CyberCrew/notmythos-8b:latest`, cua so 6h, attack_chain=on) status `succeeded`, window confidence 80.0 va `warnings: []`, chain confidence 50.0 giu nhan tren row cua no. `GET /api/jobs/255` xac nhan.
+- Gioi han: chain confidence 50.0 tren cua so it alert; day la diem model tu cham theo rubric, khong phai loi hien thi. Job #250 va cac job cu van luu confidence goc trong DB, khong ghi de hoi to.
+- Server chay PID 40092 tren `127.0.0.1:8765`; asset cache-bust `?v=dashboard-20260821-4`.
+- Next action: hard-reload dashboard, mo job #255 xac nhan khong con panel quality gate va confidence hien dung; sau do review staged diff va commit kem `CHANGELOG.md` + `HANDOFF.md`.
+
+## Attack chain gop chung mot dot bao cao + confidence calibration (2026-08-21)
+
+- Trang thai: HOAN TAT.
+- Van de: tick checkbox trong form job tao ra hai dot bao cao roi rac (vi du #242 window va #243 chain). Yeu cau la mot dot duy nhat; tach rieng chi khi chay form Threat hunting cuc bo.
+- `ai_module/dashboard_worker.py`: bo `_queue_attack_chain_followup()` va `_run_attack_chain_job()`, thay bang `_attack_chain_result()` chay inline truoc khi hoan tat job cha. Khong con job con, khong con `analysis_kind`/`parent_job_id` trong luong chay.
+- `ai_module/dashboard_store.py`: `save_result_and_complete_if_not_cancelled()` nhan `extra_results`, ghi ca hai result row trong cung transaction. Them phase `analyzing_attack_chain` vao `JOB_PHASES`.
+- `ai_module/telegram_notifier.py`: `_analysis_from_job()` loai row `scope_key='attack_chain'` de bao cao chinh khong bi ghi de; them `attack_chain_from_job()`.
+- `ai_module/gmail_notifier.py` + `ai_module/telegram_pdf.py`: them muc **Attack chain** sau `Key findings` trong ca plain text, HTML va PDF.
+- `ai_module/web/app.js`: khoi chuoi tan cong doc row `scope_key === 'attack_chain'` cua chinh job; `windowResult` loc bo row chain; tag lich su doi tu `analysis_kind` sang `job.attack_chain`.
+- Confidence: prompt len `soc-contract-v2` voi thang hieu chinh 90-100/70-89/40-69/duoi 40, noi ro confidence khong phai muc nghiem trong, va nhung vao `description` cua field `confidence` trong ca ba output schema. Scope `ip_profile` co quy tac rieng cho `intent`, `kill_chain_stages`, `targeted_assets`.
+- Nguyen nhan that cua confidence thap: cua so lab bi cat prompt (`included_groups` 20/21, `truncated: True`) nen model tu ha diem. Nang `max_groups_in_prompt` 20 -> 40 va `max_window_prompt_chars` 24000 -> 32000 trong `ai_module/config.yaml` va `config.example.yaml`.
+- Do luong live (qwen2.5:7b, cua so 24h, temperature 0, seed 42):
+  - Truoc: job #244-#247 deu window confidence 85.0, status `partial`, `truncated: True`.
+  - Sau: job #248 va #249 window confidence 95.0, status `succeeded`, `truncated: False`.
+  - Chain profile giu confidence 70.0 tren 2 alert; `intent` da dung nghia ("Tan cong brute force nham thu cac mat khau dang nhap DVWA") va `kill_chain_stages` co timestamp + rule ID.
+- Verification: `python -m pytest -q` — 254 passed; `node --check ai_module/web/app.js` PASS; `python -m compileall -q ai_module` PASS.
+- Verification end-to-end: job #249 co dung hai row `scope_key` = `window` + `attack_chain` tren cung mot job, `GET /api/jobs/249` tra ca hai, khong sinh job con, chi mot delivery.
+- Test moi: `test_attack_chain_is_merged_into_the_same_job_and_single_delivery`, `test_confidence_rubric_is_calibrated_and_scoped_per_analysis_kind`, `test_attack_chain_row_is_merged_into_the_single_report`.
+- Gioi han: chain confidence 70 tren cua so chi co 2 alert; can them du lieu lab (nhieu giai doan tan cong hon) truoc khi ket luan rubric da du cho scope ip_profile. Job #238-#247 la du lieu thu nghiem con lai trong DB.
+- Server chay PID 14276 tren `127.0.0.1:8765`; asset cache-bust `?v=dashboard-20260821-3`.
+- Next action: hard-reload dashboard, mo job #249 xac nhan khoi **Chuoi tan cong theo thoi gian** hien trong cung bao cao; sau do review staged diff va commit kem `CHANGELOG.md` + `HANDOFF.md`.
+
+## Attack chain render fix + v9 migration live (2026-08-21)
+
+- Trạng thái: HOÀN TẤT. Ba lỗi độc lập trong handoff đã được sửa và verify end-to-end.
+- `ai_module/web/index.html`: thêm `#ai-chain-field` + `<ol id="ai-chain" class="attack-chain">` giữa root cause và MITRE; dùng lại class `.attack-chain` có sẵn, không thêm CSS.
+- `ai_module/web/app.js`: `renderAiReview()` fallback root cause sang `result.intent` và render `result.kill_chain_stages`, ẩn khối khi rỗng; `renderJobs()` gắn tag `· chuỗi tấn công` cho `analysis_kind === 'attack_chain'`.
+- `tests/test_dashboard_ui.py`: thêm `test_attack_chain_result_has_render_target_and_history_tag()` chốt markup/JS.
+- Backup DB trước migration: `ai_module/dashboard_data/dashboard.pre-v9-20260821-134457.db` (3047424 bytes, khớp bản gốc). Restart server → `_ensure_v9_attack_chain()` chạy, `user_version` 8 → 9.
+- Verification: `PRAGMA user_version` = 9; `PRAGMA table_info(jobs)` có đủ `analysis_kind`, `attack_chain`, `attack_chain_seconds`, `parent_job_id`; `GET /api/jobs` trả key `analysis_kind`; 237 job lịch sử giữ nguyên.
+- Verification test: `python -m pytest tests/test_dashboard_api.py tests/test_dashboard_store_worker.py tests/test_dashboard_ui.py -q` — 111 passed.
+- Cache-bust asset `?v=dashboard-20260820-2` → `?v=dashboard-20260821-1` để browser không giữ `app.js` cũ; `test_dashboard_exposes_ip_investigation_and_attack_chain_controls` chuyển từ assert token cứng sang assert mọi asset dùng chung một token.
+- Verification full: `python -m pytest -q` — 252 passed; `node --check ai_module/web/app.js` PASS; `python -m compileall -q ai_module` PASS; `GET /` và `GET /assets/app.js` trả markup/JS mới.
+- Verification end-to-end: job `#240` (24h, `qwen2.5:7b`, attack_chain=on) kết thúc `partial`, sinh job con `#241` `analysis_kind=attack_chain`, `parent_job_id=240`, status `succeeded`, result có `kill_chain_stages` và `intent` — đúng dữ liệu mà panel mới đọc.
+- Ghi chú/giới hạn: job `#238` (cửa sổ 1h) succeeded với 0 alert nên worker early-return tại `dashboard_worker.py:341` và KHÔNG queue follow-up — hành vi thiết kế, không phải bug. Job `#239` failed vì `qwen2.5:3b` chưa pull trong Ollama local; chỉ có `qwen2.5:7b`, `deepseek-r1:8b`, `nomic-embed-text`, `Foundation-Sec-8B`, `notmythos-8b`.
+- Giới hạn test: assertion UI là static markup/JS, chưa có jsdom/Playwright trong repo; render thật đã xác nhận qua payload API `#241`.
+- Server hiện chạy PID 8540 trên `127.0.0.1:8765` (PID cũ 23728 đã stop). Log runtime ghi ra `ai_module/dashboard_data/server.out.log` / `server.err.log` (untracked).
+- Next action: hard-reload dashboard (asset có query `?v=dashboard-20260820-2`, có thể cần bump khi cache), mở job `#241` xác nhận khối **Chuỗi tấn công theo thời gian** hiển thị; sau đó review staged diff và commit kèm `CHANGELOG.md` + `HANDOFF.md`.
+
+## Batch history table spacing fix (2026-08-21)
+
+- Sửa `ai_module/web/styles.css`: selector chung cho `small` không còn ghi đè `display: -webkit-box` của `.history-summary-clamp`; tóm tắt AI được giới hạn 3 dòng và vẫn mở đầy đủ qua **Xem thêm**.
+- Giảm `line-height` và padding dọc của các ô trong `.batch-table` để mốc thời gian, trạng thái và nội dung AI không kéo giãn hàng bất thường.
+- Bảng 11 cột nay dùng đúng chiều rộng khung, bỏ `min-width: 1120px`, chia tỷ lệ riêng cho từng cột và giữ badge trạng thái không bẻ chữ; không còn cần kéo ngang để thấy `Review`, `Delivery`, `Freshness`.
+- Verification: `tests/test_dashboard_ui.py` — 25 passed; full `pytest -q` — 251 passed; `node --check ai_module/web/app.js` PASS; reload dashboard và đo DOM xác nhận hàng đầu giảm khoảng 201px xuống 98px, summary có overflow ẩn đúng 3 dòng.
+- Verification bổ sung: DOM xác nhận `tableWidth=wrapperWidth=746px`, `scrollWidth=746px`, đủ 11 cột; badge `UNREVIEWED` giữ một dòng; `python -m compileall -q ai_module` PASS.
+- Blocker/giới hạn: bảng vẫn giữ scroll ngang cho toàn bộ 11 cột trên viewport hẹp; nội dung AI dài hơn 3 dòng cần mở **Xem thêm**.
+
+## Attack chain follow-up analysis (2026-08-20)
+
+- Thêm checkbox **Phân tích chuỗi tấn công (IP tự động)** vào form `Phân tích mới` (`#job-attack-chain`) và form `Fixed windows` (`#schedule-attack-chain`).
+- Worker đơn luồng xử lý FIFO: job window chạy trước, lưu result, xếp hàng delivery, rồi `_queue_attack_chain_followup()` tạo job con `analysis_kind=attack_chain` với cùng model/language/delivery/LLM snapshot và `parent_job_id`.
+- `_run_attack_chain_job()` gọi `fetch_active_source_ips(limit=1)` trên đúng `[window_start, window_end)` để lấy IP nhiều alert nhất, chạy `analyze_ip_profile_aggregate()` rồi xếp hàng delivery riêng; window rỗng hoặc không có IP thì kết thúc `succeeded` mà không gọi LLM.
+- Lỗi ở job con không ghi đè hay làm hỏng report window đã lưu.
+- Dropdown `#job-attack-chain-seconds` / `#schedule-attack-chain-seconds` chỉ hiện khi checkbox được bật; cửa sổ chuỗi tấn công neo tại `window_end` của job gốc và lùi lại đúng số giây đã chọn.
+- SQLite schema v9 migration `_ensure_v9_attack_chain()` gồm `attack_chain_seconds` cho cả `jobs` và `schedule`; API `/api/jobs` và `PUT /api/schedule` validate qua `_resolve_attack_chain()`, cờ sai kiểu hoặc preset lạ trả `422`.
+- Verification: `python -m pytest` — `250 passed`; `node --check ai_module/web/app.js` PASS; `python -m compileall -q ai_module` PASS; secret scan PASS.
+
+## Threat hunting cục bộ & Unified Control Hub (2026-08-20)
+
+- Gộp khối **Phân tích mới** và **Threat hunting cục bộ (Phân tích hành vi IP và chuỗi tấn công)** vào cùng một card/hàng điều khiển phía trên Dashboard UI (`.control-card-unified`).
+- Bổ sung tùy chọn checkbox **Tự động phân tích**: Tự động truy vấn và lùng sục địa chỉ IPv4 có số lượng alert hoạt động nhiều nhất trong khoảng thời gian đã chọn.
+- Thêm dropdown chọn nhanh địa chỉ IPv4 hoạt động thực tế từ Wazuh Indexer (`GET /api/active-ips`) kèm ô text input nhập tay tùy chọn.
+- Mở rộng dropdown thời gian phân tích đồng bộ từ 5 phút đến 30 ngày (300s -> 2592000s) và dropdown model phân tích từ allowlist.
+- Backend: Thêm `fetch_active_source_ips()` trong `reader.py`, API `GET /api/active-ips`, cập nhật `POST /api/ip-analysis` hỗ trợ auto mode.
+- Verification: 248 tests passed, compileall PASS, secret scan PASS.
 
 ## Eval benchmarks and extended timerange update (2026-08-20)
 
