@@ -1,3 +1,9 @@
+# Nghiên cứu và xây dựng mô-đun AI cục bộ hỗ trợ phân tích cảnh báo SIEM
+# Nhóm A07
+# Đinh Tuấn Dương N22DCAT014
+# Nguyễn Trung Nguyên N22DCAT039
+
+
 # local-ai-siem-analyzer
 
 > Mô-đun **AI local** đọc alert từ **Wazuh SIEM** và giải thích thành **ngôn ngữ tự nhiên**: tóm tắt cảnh báo, giải thích nguyên nhân kích hoạt rule, đánh giá mức nghiêm trọng, gợi ý bước kiểm tra/xử lý.
