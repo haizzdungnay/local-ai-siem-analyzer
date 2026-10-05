@@ -115,7 +115,8 @@ def format_for_llm(extracted: dict) -> str:
 
     full_log = extracted.get("full_log")
     if full_log:
-        lines.append(f"Log: {full_log}")
+        cleaned_log = str(full_log).replace("\x00", "")[:2000]
+        lines.append(f"Log: {cleaned_log}")
 
     # Field nào chưa xử lý riêng ở trên (fallback) — tránh mất dữ liệu
     # nếu config.yaml sau này thêm field mới mà chưa cập nhật hàm này.
@@ -124,6 +125,7 @@ def format_for_llm(extracted: dict) -> str:
                "agent.name", "agent.ip", "data.srcip", "full_log"}
     for key, val in extracted.items():
         if key not in handled:
-            lines.append(f"{_LABELS.get(key, key)}: {val}")
+            clean_val = str(val).replace("\x00", "")
+            lines.append(f"{_LABELS.get(key, key)}: {clean_val}")
 
-    return "\n".join(lines)
+    return "\n".join(lines).replace("\x00", "")

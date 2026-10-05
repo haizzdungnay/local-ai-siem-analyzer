@@ -798,6 +798,50 @@ class DashboardStore:
             if temp.exists():
                 temp.unlink()
 
+    def prune_retention_backups(self, *, max_backups=10, max_age_days=30):
+        """Delete oldest retention backup snapshots when count or age exceeds limits."""
+        if isinstance(max_backups, bool) or not isinstance(max_backups, int) or max_backups < 1:
+            raise ValueError("max_backups phai la so nguyen duong")
+        if isinstance(max_age_days, bool) or not isinstance(max_age_days, int) or max_age_days < 1:
+            raise ValueError("max_age_days phai la so nguyen duong")
+
+        backups = self.list_retention_backups()
+        deleted = []
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=max_age_days)
+
+        backups_by_time = sorted(
+            backups,
+            key=lambda b: b.get("created_at", ""),
+            reverse=True,
+        )
+
+        for index, item in enumerate(backups_by_time):
+            filename = item.get("filename", "")
+            if not filename:
+                continue
+            created_str = item.get("created_at")
+            is_too_old = False
+            if created_str:
+                try:
+                    created_dt = parse_utc(created_str)
+                    if created_dt < cutoff:
+                        is_too_old = True
+                except Exception:
+                    pass
+            is_excess = index >= max_backups
+
+            if is_too_old or is_excess:
+                db_path = self.retention_backup_dir / filename
+                json_path = db_path.with_suffix(".json")
+                try:
+                    db_path.unlink(missing_ok=True)
+                    json_path.unlink(missing_ok=True)
+                    deleted.append(filename)
+                except OSError:
+                    pass
+        return {"deleted_backups": deleted, "remaining_count": len(backups) - len(deleted)}
+
     def create_job(self, job_type, window_start, window_end, model, analysis_version,
                    *, language="vi", delivery_channel="none", llm_parameters=None,
                    schedule_generation=None, correlation=None,
@@ -1161,11 +1205,16 @@ class DashboardStore:
             if not changed:
                 raise ValueError("Delivery không ở trạng thái sending")
 
-    def retry_delivery(self, delivery_id, *, allow_sent=False):
+    def retry_delivery(self, delivery_id, *, allow_sent=False, force=False):
         if not isinstance(allow_sent, bool):
             raise ValueError("allow_sent phải là boolean")
         eligible = "('failed','uncertain','sent')" if allow_sent else "('failed','uncertain')"
         with self.transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM report_deliveries WHERE id=?", (delivery_id,)
+            ).fetchone()
+            if existing and existing["error_code"] == "telegram_timeout" and not force:
+                raise ValueError("Không retry timeout với cùng payload PDF lớn")
             changed = connection.execute(
                 f"""UPDATE report_deliveries
                    SET status='pending',error_code='',delivery_stage='none',last_error_at=NULL,
@@ -1517,6 +1566,7 @@ class DashboardStore:
         result = {"deleted_jobs": deleted, "enabled": True, "cutoff": cutoff}
         if snapshot:
             result["backup"] = snapshot
+            self.prune_retention_backups()
         return result
 
     def retention_preview(self, *, retention_days, keep_latest, sample_limit=50):

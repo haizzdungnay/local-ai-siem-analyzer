@@ -81,6 +81,5 @@ Accuracy: **19/33 (57.6%)**; macro-F1: **0.502**.
 ## Interpretation
 
 - RAG correctly classifies 22/33 cases; the one `invalid` output is `benign-23502-01`.
-- Without RAG, 19/33 cases are correct and all outputs are schema-valid.
-- In the `high` row, RAG predicts 3/7 correctly and under-calls 4/7; no-RAG predicts 1/7 correctly and under-calls 6/7.
-
+- Without RAG, 19/33 cases are correct and all outputs are schema-valid. The +9.1-point difference is not statistically significant (exact McNemar p = 0.58; 95% CI −12.1 to +30.3 points; N = 33).
+- In the `high` row, RAG predicts 3/7 correctly and under-calls 4/7; no-RAG predicts 1/7 correctly and under-calls 6/7. Recall high RAG 3/7 (Wilson 95% CI 15.8–75.0%), no-RAG 1/7 (2.6–51.3%).

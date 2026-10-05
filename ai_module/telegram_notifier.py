@@ -14,6 +14,8 @@ import json
 import math
 import os
 import re
+import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,6 +68,29 @@ class TelegramSettings:
     env_file: Path = DEFAULT_ENV_FILE
     max_message_chars: int = DEFAULT_MAX_MESSAGE_CHARS
     timeout_seconds: int = 15
+
+
+def _restrict_file_permissions(path: Path | str) -> None:
+    """Restrict file permissions to current user (0o600 on POSIX, icacls on Windows)."""
+    target = Path(path)
+    try:
+        os.chmod(target, 0o600)
+    except OSError:
+        pass
+    if sys.platform == "win32":
+        try:
+            username = os.environ.get("USERNAME")
+            if username:
+                subprocess.run(
+                    ["icacls", str(target), "/inheritance:r", "/grant:r", f"{username}:(F)"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    timeout=5,
+                )
+        except Exception:
+            pass
 
 
 def load_env_file(path: str | Path) -> dict[str, str]:
@@ -238,6 +263,7 @@ def attack_chain_from_job(job: dict[str, Any]) -> dict[str, Any]:
 MIN_UPLOAD_READ_TIMEOUT_SECONDS = 45
 MAX_UPLOAD_READ_TIMEOUT_SECONDS = 600
 ASSUMED_UPLOAD_BYTES_PER_SECOND = 8 * 1024
+MAX_PDF_BYTES = MAX_UPLOAD_READ_TIMEOUT_SECONDS * ASSUMED_UPLOAD_BYTES_PER_SECOND
 
 
 def _upload_read_timeout(content_length: int, configured_seconds: int) -> int:
@@ -415,18 +441,10 @@ class TelegramNotifier:
             )
             with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(content)
-            try:
-                os.chmod(temporary_name, 0o600)
-            except OSError:
-                # Windows ACLs are inherited; do not fail a local setup because
-                # POSIX-style mode bits are unavailable.
-                pass
+            _restrict_file_permissions(temporary_name)
             os.replace(temporary_name, target)
             temporary_name = ""
-            try:
-                os.chmod(target, 0o600)
-            except OSError:
-                pass
+            _restrict_file_permissions(target)
         except OSError as exc:
             raise TelegramConfigurationError("Không lưu được Telegram local config") from exc
         finally:
@@ -544,6 +562,29 @@ class TelegramNotifier:
         payload_sha256 = hashlib.sha256(
             summary.encode("utf-8") + b"\0" + pdf_content,
         ).hexdigest()
+
+        if len(pdf_content) > MAX_PDF_BYTES:
+            fallback_text = (
+                f"{summary}\n\n[Lưu ý: Báo cáo PDF vượt quá trần dung lượng tải lên "
+                f"({len(pdf_content)} bytes > {MAX_PDF_BYTES} bytes), đã chuyển sang gửi tóm tắt văn bản.]"
+            )[:TELEGRAM_MAX_MESSAGE_CHARS]
+            body = self._post(
+                "sendMessage",
+                {
+                    "chat_id": chat_id,
+                    "text": fallback_text,
+                    "disable_web_page_preview": True,
+                },
+            )
+            result = body.get("result") if isinstance(body.get("result"), dict) else {}
+            message_id = result.get("message_id")
+            return {
+                "message_id": str(message_id)[:80] if message_id is not None else "",
+                "payload_sha256": payload_sha256,
+                "message_count": 1,
+                "pdf_dropped": True,
+            }
+
         body = self._post_document(
             chat_id=chat_id,
             filename=f"siem-ai-report-job-{job_id}.pdf",

@@ -2,6 +2,8 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
+import pytest
+
 import dashboard_store
 import dashboard_worker
 from dashboard_store import DashboardStore
@@ -455,6 +457,27 @@ def test_legacy_partial_telegram_pdf_failure_requires_explicit_retry(tmp_path):
     assert retry["attempt_count"] == 1
 
 
+def test_retry_delivery_rejects_telegram_timeout_without_force(tmp_path):
+    store = DashboardStore(tmp_path / "dashboard.db")
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v7", delivery_channel="telegram",
+    )
+    store.complete_job(job_id, "succeeded")
+    delivery = store.enqueue_delivery(job_id, "telegram")
+    store.claim_next_delivery()
+    store.mark_delivery_problem(
+        delivery["id"], status="uncertain", error_code="telegram_timeout", stage="pdf",
+    )
+    # Attempting to retry without force must be rejected to prevent thread starvation
+    with pytest.raises(ValueError, match="Không retry timeout"):
+        store.retry_delivery(delivery["id"])
+
+    # Forcing retry explicitly allows operator override
+    forced = store.retry_delivery(delivery["id"], force=True)
+    assert forced["status"] == "pending"
+
+
 def test_delivery_worker_marks_single_document_network_failure_at_pdf_stage(tmp_path):
     store = DashboardStore(tmp_path / "dashboard.db")
     job_id = store.create_job(
@@ -543,6 +566,22 @@ def test_delivery_worker_marks_sent_without_changing_analysis_status(tmp_path, m
     assert result["status"] == "sent"
     assert result["provider_message_id"] == "321"
     assert store.get_job(job_id)["status"] == "succeeded"
+
+
+def test_prune_retention_backups_cleans_excess_snapshots(tmp_path):
+    store = DashboardStore(tmp_path / "dashboard.db")
+    # Create 3 backups
+    b1 = store.create_retention_backup(filename="retention-20260101T000000Z.db")
+    b2 = store.create_retention_backup(filename="retention-20260102T000000Z.db")
+    b3 = store.create_retention_backup(filename="retention-20260103T000000Z.db")
+    assert len(store.list_retention_backups()) == 3
+
+    # Prune with max_backups=2
+    res = store.prune_retention_backups(max_backups=2, max_age_days=365)
+    assert len(res["deleted_backups"]) == 1
+    assert "retention-20260101T000000Z.db" in res["deleted_backups"]
+    assert res["remaining_count"] == 2
+    assert len(store.list_retention_backups()) == 2
 
 
 def test_delivery_worker_routes_gmail_without_changing_analysis_status(tmp_path):

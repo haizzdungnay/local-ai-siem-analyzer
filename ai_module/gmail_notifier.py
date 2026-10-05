@@ -21,7 +21,14 @@ from email.utils import formatdate, make_msgid
 from pathlib import Path
 from typing import Any
 
-from telegram_notifier import _analysis_from_job, _safe_text, analysis_sha256, attack_chain_from_job, load_env_file
+from telegram_notifier import (
+    _analysis_from_job,
+    _restrict_file_permissions,
+    _safe_text,
+    analysis_sha256,
+    attack_chain_from_job,
+    load_env_file,
+)
 
 
 GMAIL_CHANNEL = "gmail"
@@ -528,16 +535,10 @@ class GmailNotifier:
             )
             with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(content)
-            try:
-                os.chmod(temporary_name, 0o600)
-            except OSError:
-                pass
+            _restrict_file_permissions(temporary_name)
             os.replace(temporary_name, target)
             temporary_name = ""
-            try:
-                os.chmod(target, 0o600)
-            except OSError:
-                pass
+            _restrict_file_permissions(target)
         except OSError as exc:
             raise GmailConfigurationError("Không lưu được Gmail local config") from exc
         finally:

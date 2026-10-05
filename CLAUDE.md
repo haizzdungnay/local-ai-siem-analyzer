@@ -5,7 +5,7 @@
 - Windows victim `.40` và Wazuh agent đã Active; Sysmon chưa xác nhận.
 - Không ghi credentials, hostname/IP/fingerprint live chưa sanitized vào output tracked.
 - Không chạy `eval/build_dataset.py` nếu không chủ ý rewrite `eval/cases/` và `eval/expected/`.
-- Khi dùng subagent/multi-agent trong project, chỉ dùng model Fable hoặc Opus; ưu tiên Opus.
+- Subagent/multi-agent: model chính chỉ điều phối, lên kế hoạch, ra quyết định; thực thi giao subagent tầng dưới. Main Fable → subagent `opus`; main Opus → subagent `sonnet` (Gemini) hoặc `haiku` (Opus 4.6). Không dùng `fork` (luôn chạy model chính).
 
 ## Change protocol
 

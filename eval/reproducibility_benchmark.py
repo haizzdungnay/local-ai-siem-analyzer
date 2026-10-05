@@ -14,10 +14,23 @@ import csv
 import glob
 import json
 import os
+import statistics
 import sys
 import time
 import urllib.request
-import numpy as np
+
+
+def _percentile(data: list[float], p: float) -> float:
+    """Calculate percentile value without external dependencies."""
+    if not data:
+        return 0.0
+    sorted_data = sorted(data)
+    k = (len(sorted_data) - 1) * (p / 100.0)
+    f = int(k)
+    c = f + 1
+    if c < len(sorted_data):
+        return sorted_data[f] + (k - f) * (sorted_data[c] - sorted_data[f])
+    return sorted_data[f]
 
 sys.stdout.reconfigure(encoding="utf-8")
 EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -125,22 +138,30 @@ def run_reproducibility_test(num_runs=5, case_subset=None):
 
     # Latency across runs
     all_latencies = [lat for r_lats in latencies_by_run for lat in r_lats]
+    mean_lat = statistics.mean(all_latencies) if all_latencies else 0.0
+    std_lat = statistics.pstdev(all_latencies) if len(all_latencies) > 1 else 0.0
+    p50_lat = _percentile(all_latencies, 50)
+    p95_lat = _percentile(all_latencies, 95)
+    p99_lat = _percentile(all_latencies, 99)
+    min_lat = min(all_latencies) if all_latencies else 0.0
+    max_lat = max(all_latencies) if all_latencies else 0.0
+
     print(f"4. Th?ng k? ?? tr? qua {num_runs} l??t ch?y:")
-    print(f"   - ?? tr? trung b?nh : {np.mean(all_latencies):.3f} s  (std: {np.std(all_latencies):.3f} s)")
-    print(f"   - Ph?n v? p50 (Median) : {np.percentile(all_latencies, 50):.3f} s")
-    print(f"   - Ph?n v? p95          : {np.percentile(all_latencies, 95):.3f} s")
-    print(f"   - Ph?n v? p99          : {np.percentile(all_latencies, 99):.3f} s")
-    print(f"   - Min / Max            : {np.min(all_latencies):.3f} s / {np.max(all_latencies):.3f} s")
+    print(f"   - ?? tr? trung b?nh : {mean_lat:.3f} s  (std: {std_lat:.3f} s)")
+    print(f"   - Ph?n v? p50 (Median) : {p50_lat:.3f} s")
+    print(f"   - Ph?n v? p95          : {p95_lat:.3f} s")
+    print(f"   - Ph?n v? p99          : {p99_lat:.3f} s")
+    print(f"   - Min / Max            : {min_lat:.3f} s / {max_lat:.3f} s")
     print()
-    
+
     return {
         "exact_text_rate": exact_text_rate,
         "severity_rate": severity_rate,
         "schema_rate": schema_rate,
-        "mean_latency": float(np.mean(all_latencies)),
-        "std_latency": float(np.std(all_latencies)),
-        "p50_latency": float(np.percentile(all_latencies, 50)),
-        "p95_latency": float(np.percentile(all_latencies, 95)),
+        "mean_latency": float(mean_lat),
+        "std_latency": float(std_lat),
+        "p50_latency": float(p50_lat),
+        "p95_latency": float(p95_lat),
     }
 
 

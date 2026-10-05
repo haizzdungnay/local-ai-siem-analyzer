@@ -3,6 +3,9 @@
 # Python
 __pycache__/
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
 *.pyc
 *.pyo
 *.egg-info/
