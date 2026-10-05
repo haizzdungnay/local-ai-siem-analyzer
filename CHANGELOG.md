@@ -31,7 +31,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
-- CI/CD: Gia hạn ngoại lệ lỗ hổng chưa có bản vá `PYSEC-2026-311` cho `chromadb` trong `ai_module/pip-audit-allowlist.json` đến 2026-12-31, sửa lỗi `expired vulnerability exception` tại bước audit phụ thuộc Python trong GitHub Actions.
+- CI/CD: Gia hạn ngoại lệ lỗ hổng chưa có bản vá `PYSEC-2026-311` và bổ sung các mã CVE upstream mới (`PYSEC-2026-3813`, `PYSEC-2026-3814`, `PYSEC-2026-3815`) cho `chromadb` trong `ai_module/pip-audit-allowlist.json` đến 2026-12-31, sửa lỗi `expired vulnerability exception` và `unwaived dependency vulnerability` tại bước audit phụ thuộc Python trong GitHub Actions.
 - CI/CD: Sửa lỗi SyntaxError trên Python <= 3.11 trong `eval/baseline_comparison.py` do backslash trong f-string `{...}`; loại bỏ phụ thuộc `scipy` chưa khai báo trong `eval/user_study_protocol.py` bằng hàm tính Student's t thuần thư viện chuẩn `math`; cập nhật `tests/test_rag_benchmark.py` bỏ qua an toàn khi `chromadb` chưa được cài đặt thực tế.
 - F-17: Loại bỏ phụ thuộc `numpy` chưa khai báo trong `eval/reproducibility_benchmark.py`, thay bằng thư viện chuẩn `statistics` và hàm nội bộ `_percentile()`.
 - F-10: Thiết lập trần dung lượng tải lên Telegram `MAX_PDF_BYTES = 4.915.200` bytes (600s timeout × 8 KiB/s); tự động fallback sang tin nhắn tóm tắt văn bản `sendMessage` với cờ `pdf_dropped: True` khi PDF vượt trần; chặn retry lặp lại tự động cho các lượt gửi thất bại vì `telegram_timeout` trong `DashboardStore.retry_delivery()` trừ khi chỉ định tường minh `force=True`.

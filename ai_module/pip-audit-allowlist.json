@@ -6,6 +6,24 @@
       "package": "chromadb",
       "expires": "2026-12-31",
       "reason": "pip-audit reports no fixed ChromaDB release; review or remove this exception before expiry."
+    },
+    {
+      "id": "PYSEC-2026-3813",
+      "package": "chromadb",
+      "expires": "2026-12-31",
+      "reason": "Upstream ChromaDB vulnerability; no patch available for local-ai-siem-analyzer environment."
+    },
+    {
+      "id": "PYSEC-2026-3814",
+      "package": "chromadb",
+      "expires": "2026-12-31",
+      "reason": "Upstream ChromaDB vulnerability; no patch available for local-ai-siem-analyzer environment."
+    },
+    {
+      "id": "PYSEC-2026-3815",
+      "package": "chromadb",
+      "expires": "2026-12-31",
+      "reason": "Upstream ChromaDB vulnerability; no patch available for local-ai-siem-analyzer environment."
     }
   ]
 }
