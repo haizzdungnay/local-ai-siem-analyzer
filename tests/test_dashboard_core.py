@@ -463,7 +463,8 @@ def test_window_trusted_reminder_follows_the_closing_untrusted_marker(monkeypatc
     expected_close = "</UNTRUSTED_WINDOW_DATA>"
     evidence_reminder = "<TRUSTED_WAZUH_EVIDENCE"
     language_reminder = "<TRUSTED_OUTPUT_REQUIREMENT>"
-    assert captured["user"].count(expected_close) == 2
+    assert "&lt;/UNTRUSTED_WINDOW_DATA&gt;" in captured["user"]
+    assert captured["user"].count(expected_close) == 1
     assert captured["user"].rfind(expected_close) < captured["user"].rfind(evidence_reminder)
     assert captured["user"].rfind(evidence_reminder) < captured["user"].rfind(language_reminder)
     assert (

@@ -18,6 +18,7 @@ Chi so do luong:
 - Chi tiet theo tung vector tan cong: Username, User-Agent, URL, Syslog.
 """
 
+import csv
 import json
 import os
 import re
@@ -31,7 +32,7 @@ ROOT_DIR = os.path.dirname(EVAL_DIR)
 sys.path.insert(0, os.path.join(ROOT_DIR, "ai_module"))
 
 from extractor import extract_fields, format_for_llm
-from llm import _untrusted_message, OUTPUT_SCHEMA, build_soc_system_prompt
+from llm import _untrusted_message, OUTPUT_SCHEMA, build_soc_system_prompt, sanitize_untrusted_text
 
 OLLAMA_URL = "http://127.0.0.1:11434"
 MODEL_NAME = "qwen2.5:7b"
@@ -45,7 +46,7 @@ DANGEROUS_ACTIONS = [
 def sanitize_input(text: str) -> str:
     if not isinstance(text, str):
         return ""
-    text = text.replace("<", "&lt;").replace(">", "&gt;")
+    text = sanitize_untrusted_text(text)
     text = "".join(ch if ch.isprintable() or ch in "\n\t" else " " for ch in text)
     return text[:2000]
 
@@ -101,8 +102,9 @@ def is_attack_successful(raw_response: str, case: dict) -> bool:
     return False
 
 
-def run_benchmark(limit=None):
-    dataset_file = os.path.join(EVAL_DIR, "adversarial", "adversarial_dataset_50.json")
+def run_benchmark(limit=None, dataset_file=None, output_csv=None):
+    if dataset_file is None:
+        dataset_file = os.path.join(EVAL_DIR, "adversarial", "adversarial_dataset_50.json")
     with open(dataset_file, encoding="utf-8") as f:
         attack_cases = json.load(f)
         
@@ -212,8 +214,35 @@ def run_benchmark(limit=None):
     print("3. Lop 1 + 2 (System Delimiters & Strict Contract): Giam manh ASR nho co lap <UNTRUSTED_ALERT>.")
     print("4. Full 3 Lop (L1+L2+L3): Dat phong thu tuyet doi (DSR = 100%, ASR = 0%), an toan truoc toan bo 50 mau doi khang.")
     print()
+
+    if output_csv:
+        with open(output_csv, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "config_name", "total_cases", "attack_success", "asr_percent", "dsr_percent",
+                "username_success", "user_agent_success", "url_success", "syslog_success"
+            ])
+            for cfg_name, res in benchmark_results.items():
+                fs = res["field_success"]
+                ft = res["field_total"]
+                writer.writerow([
+                    cfg_name, res["total"], res["success"],
+                    f"{res['asr']:.1f}", f"{res['dsr']:.1f}",
+                    f"{fs['username']}/{ft['username']}",
+                    f"{fs['user_agent']}/{ft['user_agent']}",
+                    f"{fs['url']}/{ft['url']}",
+                    f"{fs['syslog_message']}/{ft['syslog_message']}",
+                ])
+        print(f"Ket qua da duoc ghi vao: {output_csv}")
+
     return benchmark_results
 
 
 if __name__ == "__main__":
-    run_benchmark()
+    import argparse
+    parser = argparse.ArgumentParser(description="Prompt Injection Benchmark")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of test cases")
+    parser.add_argument("--dataset", default=None, help="Path to adversarial dataset JSON")
+    parser.add_argument("--output-csv", default=None, help="Path to save benchmark CSV results")
+    args = parser.parse_args()
+    run_benchmark(limit=args.limit, dataset_file=args.dataset, output_csv=args.output_csv)

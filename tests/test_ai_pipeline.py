@@ -229,7 +229,7 @@ def test_advanced_llm_parameters_reach_ollama_without_exposing_custom_prompt(mon
     )
 
     assert captured["options"] == {
-        "temperature": 0.35, "top_p": 0.7, "num_predict": 512, "seed": 42,
+        "temperature": 0.35, "top_p": 0.7, "num_predict": 512, "seed": 42, "num_ctx": 8192,
     }
     assert "TRUSTED_OPERATOR_GUIDANCE" in captured["messages"][0]["content"]
     assert "system_prompt" not in provenance
@@ -595,6 +595,49 @@ def test_rule_rag_indexes_valid_sources(monkeypatch, tmp_path):
         {"source": "wazuh_rule", "rule_id": "5503"},
         {"source": "mitre", "technique_id": "T1110"},
     ]
+
+
+def test_extract_mitre_ids():
+    assert llm.extract_mitre_ids("T1110: Brute Force, T1059.007: JavaScript") == ["T1110", "T1059.007"]
+    assert llm.extract_mitre_ids(["T1110", "T1078.004", "invalid"]) == ["T1110", "T1078.004"]
+    assert llm.extract_mitre_ids({"sub": "T1562.001", "other": "none"}) == ["T1562.001"]
+    assert llm.extract_mitre_ids(None) == []
+    assert llm.extract_mitre_ids("") == []
+
+
+def test_verify_mitre_ids_against_enterprise_catalog():
+    # Valid enterprise IDs should return empty unverified list
+    assert llm.verify_mitre_ids(["T1110", "T1059.007", "T1562.001"]) == []
+    # Hallucinated IDs (from audit findings) should be flagged
+    unverified = llm.verify_mitre_ids(["T1073.101", "T1053.204", "T9999"])
+    assert unverified == ["T1073.101", "T1053.204", "T9999"]
+
+
+def test_provenance_records_unverified_mitre_ids(monkeypatch):
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def chat(self, *args, **kwargs):
+            return {
+                "message": {
+                    "content": json.dumps({
+                        "summary": "Suspicious login attempt",
+                        "root_cause": "sshd brute force",
+                        "severity": "medium",
+                        "mitre": "T1073.101 (Fake Technique)",
+                        "next_steps": ["Block IP address"],
+                    })
+                }
+            }
+
+        def list(self):
+            return {"models": []}
+
+    monkeypatch.setattr(llm.ollama_sdk, "Client", Client)
+    result, provenance = llm.analyze_alert("alert", include_provenance=True)
+    assert provenance["mitre_unverified"] == ["T1073.101"]
+
 
 
 def test_rule_rag_indexes_only_when_collection_is_empty(monkeypatch, tmp_path):
@@ -963,3 +1006,130 @@ def test_main_records_truthful_rag_initialization_fallback(monkeypatch, capsys):
     assert '"fallback": "initialization_failed"' in output
     assert "RuntimeError" in output
     assert unsafe_error not in output
+
+
+def test_ollama_options_includes_num_ctx_8192():
+    """F-05: Options passed to Ollama must explicitly include num_ctx: 8192."""
+    assert llm.OLLAMA_OPTIONS.get("num_ctx") == 8192
+    opts = llm.ollama_options()
+    assert opts.get("num_ctx") == 8192
+
+
+def test_format_for_llm_truncates_long_log_at_2000_chars():
+    """F-05: full_log must be truncated to 2000 chars to avoid exhausting context window."""
+    long_log = "A" * 3500
+    text = extractor.format_for_llm({"full_log": long_log})
+    assert f"Log: {'A' * 2000}" in text
+    assert "A" * 2001 not in text
+
+
+def test_provenance_records_context_near_limit_when_eval_count_high():
+    """F-05: provenance must flag when prompt_eval_count exceeds 7000 tokens."""
+    prov_high = llm._provenance(
+        {"prompt_eval_count": 7200, "model": "qwen2.5:3b"},
+        content="{}",
+        requested_model="qwen2.5:3b",
+        output_origin="model",
+        prompt="prompt",
+        request_data="data",
+        output_schema={},
+        language="vi",
+    )
+    assert prov_high.get("context_near_limit") is True
+
+    prov_normal = llm._provenance(
+        {"prompt_eval_count": 1500, "model": "qwen2.5:3b"},
+        content="{}",
+        requested_model="qwen2.5:3b",
+        output_origin="model",
+        prompt="prompt",
+        request_data="data",
+        output_schema={},
+        language="vi",
+    )
+    assert prov_normal.get("context_near_limit") is False
+
+
+def test_soc_prompt_includes_severity_calibration_rubric():
+    """F-02: system prompt must include explicit severity calibration rubric."""
+    vi = llm.build_soc_system_prompt("alert", "vi")
+    en = llm.build_soc_system_prompt("alert", "en")
+    assert "Hiệu chỉnh severity" in vi
+    assert "critical:" in vi and "high:" in vi and "medium:" in vi and "low:" in vi
+    assert "Calibrate severity" in en
+    assert "critical:" in en and "high:" in en and "medium:" in en and "low:" in en
+
+
+def test_apply_severity_floor_elevates_low_and_medium_for_high_rule_levels():
+    """F-02: rule level >= 12 alerts must not be under-called below high."""
+    low_res = {"severity": "low", "summary": "test"}
+    med_res = {"severity": "medium", "summary": "test"}
+    high_res = {"severity": "high", "summary": "test"}
+    unk_res = {"severity": "unknown", "summary": "test"}
+
+    # Level 12: low and medium elevated to high
+    elevated_low, orig_low = llm.apply_severity_floor(low_res, 12)
+    assert elevated_low["severity"] == "high"
+    assert orig_low == "low"
+
+    elevated_med, orig_med = llm.apply_severity_floor(med_res, 12)
+    assert elevated_med["severity"] == "high"
+    assert orig_med == "medium"
+
+    # High stays high
+    kept_high, orig_high = llm.apply_severity_floor(high_res, 12)
+    assert kept_high["severity"] == "high"
+    assert orig_high is None
+
+    # Unknown stays unknown
+    kept_unk, orig_unk = llm.apply_severity_floor(unk_res, 12)
+    assert kept_unk["severity"] == "unknown"
+    assert orig_unk is None
+
+    # Level 5: medium stays medium
+    kept_med, orig_med_5 = llm.apply_severity_floor(med_res, 5)
+    assert kept_med["severity"] == "medium"
+    assert orig_med_5 is None
+
+
+def test_cjk_detection_in_provenance():
+    """F-13: Output containing CJK characters must be flagged in provenance."""
+    cjk_res = {
+        "summary": "修补 CVE-2022-1615 trên hệ thống",
+        "root_cause": "Lỗi phần mềm",
+        "key_findings": ["Tìm thấy lỗ hổng"],
+        "next_steps": ["Cập nhật"],
+        "response_language": "vi",
+    }
+    normal_res = {
+        "summary": "Hệ thống phát hiện đăng nhập thất bại",
+        "root_cause": "Sai mật khẩu",
+        "key_findings": ["1 lần thất bại"],
+        "next_steps": ["Theo dõi"],
+        "response_language": "vi",
+    }
+    prov_cjk = llm._provenance(
+        {},
+        content="{}",
+        requested_model="qwen2.5:3b",
+        output_origin="model",
+        prompt="prompt",
+        request_data="data",
+        output_schema={},
+        language="vi",
+        result=cjk_res,
+    )
+    assert prov_cjk.get("cjk_detected") is True
+
+    prov_normal = llm._provenance(
+        {},
+        content="{}",
+        requested_model="qwen2.5:3b",
+        output_origin="model",
+        prompt="prompt",
+        request_data="data",
+        output_schema={},
+        language="vi",
+        result=normal_res,
+    )
+    assert prov_normal.get("cjk_detected") is False

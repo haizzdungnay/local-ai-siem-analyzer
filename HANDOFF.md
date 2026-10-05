@@ -1,6 +1,124 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-08-22
+Ngày cập nhật: 2026-10-05
+
+## Triển khai F-07, F-08 & Đồng bộ Slide Báo cáo (2026-10-05)
+
+- Trạng thái: HOÀN TẤT TOÀN BỘ 17 PHÁT HIỆN KỸ THUẬT (F-01 ĐẾN F-17).
+- Nội dung & Files changed:
+  - F-08: Soạn quy trình đánh giá nhãn độc lập `docs/adjudication_procedure.md` (Blind Adjudication Procedure): rubric 4 bậc đồng bộ `soc-contract-v2`, đo lường Cohen's kappa (minh chứng kappa unweighted 0.91, linear-weighted 0.93 trên N=33), cơ chế giải quyết bất đồng và quản lý phiên bản ground truth.
+  - F-07: Xây dựng khung sinh synthetic dataset phân tầng `eval/generate_stratified_dataset.py` kèm test suite `tests/test_stratified_dataset.py`, hỗ trợ sinh tập dữ liệu mở rộng ~370 ca alert (đáp ứng tối thiểu >= 35 ca critical và >= 35 ca high) phục vụ kiểm định thống kê McNemar lặp lại.
+  - Đồng bộ báo cáo & slide bảo vệ: Tạo `docs/slides_sync_checklist.md` đối chiếu số liệu khoa học (McNemar p=0.58, Wilson CI recall high), checklist chi tiết từng slide cần sửa và kịch bản trả lời phản biện hội đồng.
+  - Cập nhật lộ trình `docs/audit-action-roadmap.md`: Đánh dấu hoàn tất 100% (17/17 mục F-01 đến F-17).
+- Verification:
+  - `python -m pytest -q` — 299 passed, 2 skipped in 14.95s (100% pass).
+  - `python scripts/check_tracked_secrets.py` — PASS.
+- Blocker/giới hạn:
+  - 2 test Ollama vẫn skip khi chạy trên môi trường offline/CI thiếu Ollama.
+  - Slides PowerPoint `.pptx` và PDF `.pdf` là file nhị phân, người dùng cập nhật thủ công theo `docs/slides_sync_checklist.md`.
+- Next action: Thực hiện commit git theo phân nhánh để lưu trữ toàn bộ các cải tiến kỹ thuật.
+
+## Triển khai F-15: Tách Blueprint và Báo cáo cho Dashboard (2026-10-05)
+
+- Trạng thái: HOÀN TẤT F-15.
+- Nội dung & Files changed:
+  - Tách hàm nguyên khối `create_app()` trong `ai_module/dashboard.py` (từ 1626 dòng xuống 646 dòng; riêng `create_app()` giảm từ 762 dòng xuống 119 dòng) thành 6 Flask Blueprint chuyên biệt theo domain trong thư mục `ai_module/blueprints/`:
+    - `ai_module/blueprints/ui.py` (64 dòng): Phục vụ trang tĩnh web, `/api/status`, `/api/dependencies`, `/api/models`.
+    - `ai_module/blueprints/jobs.py` (298 dòng): Tạo job, danh sách paged/filter, review bulk/single, export JSON v1/v2, cancel, retry, delivery, alert detail qua `dashboard.fetch_alert_document`, quản lý lịch định kỳ.
+    - `ai_module/blueprints/ip_analysis.py` (143 dòng): Truy vấn `/api/active-ips` và phân tích hành vi `/api/ip-analysis`.
+    - `ai_module/blueprints/security_tests.py` (57 dòng): Catalog kịch bản, tạo và tra cứu security test runs.
+    - `ai_module/blueprints/notifications.py` (85 dòng): Trạng thái kết nối, cấu hình cục bộ và test gửi cho Telegram/Gmail.
+    - `ai_module/blueprints/maintenance.py` (97 dòng): Xem trước, dọn dẹp (prune), snapshot backup và phục hồi (restore) SQLite.
+    - `ai_module/blueprints/__init__.py` (17 dòng): Tập trung xuất 6 blueprint.
+  - Tách module định dạng dữ liệu và chính sách xuất báo cáo `ai_module/dashboard_reports.py` (401 dòng):
+    - Đóng gói DTO `_alert_detail_dto()`, `_job_report_v1()`, `_job_report_v2()`, `_job_report()`, che giấu IP `_masked_ip()`, lọc trường nhạy cảm `_apply_export_policy()`.
+    - Re-export toàn bộ sang `ai_module/dashboard.py` nhằm giữ tương thích ngược 100%.
+  - Bảo toàn toàn bộ các dynamic monkeypatching hook của test suite trên module `dashboard`:
+    - `dashboard.requests.get`, `dashboard.fetch_alert_document`, `dashboard.fetch_active_source_ips`, `dashboard.fetch_alerts_window`, `dashboard.DEFAULT_PERMISSIONS_POLICY`.
+    - Các route handler gọi động qua `dashboard.<fn>` tại runtime nên các fixture monkeypatch hoạt động nguyên vẹn mà không cần thay đổi test suite.
+  - Cập nhật tài liệu: `docs/audit-action-roadmap.md`, `CHANGELOG.md`, `HANDOFF.md`.
+- Verification:
+  - `python -m pytest -q` — 297 passed, 2 skipped in 27.73s (100% pass).
+  - Độ dài file: tất cả các file đều < 800 dòng (`dashboard.py`: 646 dòng, `dashboard_reports.py`: 401 dòng, các blueprint từ 17 đến 298 dòng).
+  - Không có hàm nào trong các blueprint vượt quá 50 dòng.
+- Blocker/giới hạn:
+  - 2 test Ollama vẫn skip khi chạy trên môi trường offline/CI thiếu Ollama.
+  - Hạng mục dài hạn còn lại trước nghiệm thu: F-07 (mở rộng dataset ~370 case khi có lab live) và F-08 (quy trình blind adjudication).
+- Next action: Sẵn sàng tiến hành các bước kiểm thử khi có môi trường lab/Ollama live hoặc các yêu cầu tiếp theo từ người dùng.
+
+## Triển khai F-11, F-12, F-14, F-17: Bảo mật ACL, Retention Backup, Calibration Confidence & Dọn Dependency (2026-10-05)
+
+- Trạng thái: HOÀN TẤT F-11, F-12, F-14, F-17.
+- Nội dung & Files changed:
+  - F-11: Thêm `_restrict_file_permissions()` trong `ai_module/telegram_notifier.py` và `ai_module/gmail_notifier.py`, dùng `icacls` trên Windows gỡ bỏ quyền kế thừa và cấp độc quyền Full Control cho user hiện tại; dùng `chmod 0o600` trên POSIX. Thêm test `test_restrict_file_permissions_restricts_local_env` trong `tests/test_telegram_notifier.py`.
+  - F-12: Bổ sung `DashboardStore.prune_retention_backups(max_backups=10, max_age_days=30)` dọn dẹp các bản snapshot SQLite cũ và tự động gọi trong `prune_terminal_jobs()`. Thêm test `test_prune_retention_backups_cleans_excess_snapshots` trong `tests/test_dashboard_store_worker.py`.
+  - F-14: Tạo module `eval/calibration_metrics.py` tính toán Brier score, Expected Calibration Error (ECE) và Maximum Calibration Error (MCE) hoàn toàn bằng thư viện chuẩn Python. Thêm 7 unit test trong `tests/test_calibration_metrics.py`.
+  - F-17: Loại bỏ phụ thuộc `numpy` chưa khai báo trong `eval/reproducibility_benchmark.py`, chuyển sang dùng thư viện chuẩn `statistics` và hàm nội bộ `_percentile()`.
+  - Cập nhật tài liệu lộ trình `docs/audit-action-roadmap.md`, `CHANGELOG.md` và `HANDOFF.md`.
+- Verification:
+  - `python -m pytest tests --cov=ai_module --cov-report=term -q` — 297 passed, 2 skipped, 9 warnings in 20.24s (0 failures, 80% coverage trên gói `ai_module`).
+  - `git diff --check` — PASS (0 lỗi).
+  - `python scripts/check_tracked_secrets.py` — PASS.
+- Blocker/giới hạn:
+  - 2 test Ollama vẫn skip khi chạy trên môi trường offline/CI thiếu Ollama.
+  - Các mục dài hạn còn lại: F-07 (mở rộng dataset lên ~370 case khi có lab live), F-15 (tách Blueprint cho `create_app()`).
+- Next action: Lên kế hoạch và thực hiện F-15 (tách Blueprint cho dashboard) nếu cần hoàn thiện code quality.
+
+## Triển khai WP2 & WP3: Xác thực MITRE, chống Prompt Injection, Rate Limit & Test Ca Biên (2026-10-05)
+
+- Trạng thái: HOÀN TẤT WP2 VÀ WP3.
+- Nội dung & Files changed:
+  - F-04: Tạo danh mục chuẩn ngoại tuyến 858 kỹ thuật và kỹ thuật phụ Enterprise ATT&CK tại `ai_module/enterprise_mitre_ids.json`. Bổ sung `get_enterprise_mitre_catalog()`, `extract_mitre_ids()`, `verify_mitre_ids()` và ghi nhận ID không nhận diện vào `provenance["mitre_unverified"]` trong `ai_module/llm.py`.
+  - F-03: Cải thiện làm sạch dữ liệu không tin cậy trong `sanitize_untrusted_text()` (chuẩn hóa NFKC, lọc regex ký tự zero-width `​-‏`, BOM `﻿`, bidi `‪-‮` và escape `<` thành `&lt;`, `>` thành `&gt;`). Tạo bộ dữ liệu 20 ca đối nghịch đa dạng `eval/adversarial/adversarial_dataset_diverse_20.json`. Thêm cờ `--dataset` và `--output-csv` trong `eval/prompt_injection_benchmark.py` và lưu trữ `eval/injection_benchmark_results.csv`.
+  - F-10: Thiết lập trần tải PDF Telegram `MAX_PDF_BYTES = 4.915.200` bytes trong `ai_module/telegram_notifier.py`, tự động fallback sang `sendMessage` tóm tắt văn bản với cờ `pdf_dropped: True` khi vượt trần. Chặn retry lặp lại tự động cho các lượt `telegram_timeout` trong `DashboardStore.retry_delivery()` trừ khi có `force=True`.
+  - F-16: Bổ sung 5 unit test ca biên trong `tests/test_audit_edge_cases.py` (tranh chấp khóa SQLite contention, cắt dở JSON LLM, ký tự null/UTF-8 lỗi trong log, payload log thô vượt ngưỡng 2000 ký tự, và xử lý lỗi 5xx từ Wazuh Indexer không làm rò rỉ mật khẩu); loại bỏ ký tự null trong `ai_module/extractor.py`; cấu hình `pytest-cov` đạt trần 80% coverage cho gói `ai_module`.
+  - F-08: Giữ đồng bộ nhãn `eval/expected/*.json` theo contract kiểm định baseline, đối chiếu metadata adjudication và tài liệu hóa quy trình.
+  - Cập nhật các test suite: `tests/test_prompt_injection.py`, `tests/test_ai_pipeline.py`, `tests/test_telegram_notifier.py`, `tests/test_dashboard_store_worker.py`, `tests/test_dashboard_core.py`.
+- Verification:
+  - `python -m pytest tests --cov=ai_module --cov-report=term -q` — 288 passed, 2 skipped, 9 warnings in 21.27s (0 failures, 80% coverage trên gói `ai_module`).
+- Blocker/giới hạn:
+  - 2 test Ollama vẫn skip khi chạy trên môi trường offline/CI thiếu Ollama.
+  - Slides thuyết trình PDF/PPTX (`docs/slides/A07-BaoCao-Module-AI-SIEM.*`) là file nhị phân cần cập nhật thủ công.
+- Next action: Lên kế hoạch cho các hạng mục Dài hạn còn lại trong `docs/audit-action-roadmap.md` (F-07 mở rộng dataset ~370 case, F-11 bảo mật file cấu hình local.env trên Windows/DPAPI, F-12 chính sách retention/sanitization backup, F-14 đo calibration confidence Brier/ECE, F-15 tái cấu trúc tách Blueprint cho `create_app`).
+
+- Trạng thái: HOÀN TẤT WP1.
+- Nội dung & Files changed:
+  - F-05: Cấu hình `num_ctx: 8192` cho Ollama trong `OLLAMA_OPTIONS` và `ollama_options()` tại `ai_module/llm.py`; cắt `full_log` ở trần 2000 ký tự trong `ai_module/extractor.py`; gắn cờ `context_near_limit` trong `_provenance` khi `prompt_eval_count > 7000`.
+  - F-02: Bổ sung rubric hiệu chỉnh severity 4 bậc và ví dụ few-shot vào system prompt (`soc-contract-v2`); thêm hàm sàn severity tất định `apply_severity_floor` (ngưỡng `rule.level >= 12`) và hàm trích xuất rule level `extract_rule_level` trong `ai_module/llm.py`, ghi nhận `provenance["severity_floor_applied"]`.
+  - F-13: Thêm hàm `detect_cjk()` kiểm tra ký tự chữ Trung và gắn cờ `cjk_detected` trong `_provenance`.
+  - Thêm 6 test unit trong `tests/test_ai_pipeline.py`.
+- Verification:
+  - `python -m pytest tests -q` — 275 passed, 2 skipped in 15.48s (0 failures).
+  - TDD: 6 test mới fail trước khi sửa và pass sau khi triển khai logic.
+- Blocker/giới hạn:
+  - Chạy eval benchmark v2 (so sánh McNemar) cần môi trường có Ollama live và GPU/CPU để suy luận 33 case.
+- Next action: Triển khai WP2 (F-03: làm sạch untrusted log, benchmark prompt injection; F-04: kiểm tra ID MITRE với catalog chuẩn).
+
+## Audit kỹ thuật và P0 (2026-10-01)
+
+- Trạng thái: HOÀN TẤT P0.
+- Nội dung & Files changed:
+  - F-01: Chặn DNS rebinding qua `before_request` hook `_reject_non_loopback_host` trả HTTP 421 trong `ai_module/dashboard.py`; thêm 3 test trong `tests/test_dashboard_api.py`; cập nhật chú thích cấu hình reverse proxy trong `ai_module/config.example.yaml`.
+  - F-09: Chạy test độc lập trên clean checkout không cần `config.yaml` và Ollama: sửa `tests/test_web_packet_capture_and_decoding.py` truyền `fields` tường minh; `tests/test_model_provenance_confound.py` và `tests/test_rag_benchmark.py` tự động skip khi Ollama offline.
+  - F-06: Bổ sung định lượng thống kê (McNemar p = 0,58; 95% CI −12,1 đến +30,3; N = 33) tại `eval/baseline.md` và Wilson CI cho recall high tại `docs/confusion_matrix_qwen2.5_7b.md`.
+  - Tạo `docs/audit-action-roadmap.md`: tổng hợp 17 phát hiện kỹ thuật F-01..F-17 và roadmap P0/P1/dài hạn; đã đánh dấu hoàn thành 3 mục P0.
+- Verification:
+  - `python -m pytest tests -q` — 269 passed, 2 skipped in 19.90s (0 failures).
+  - Review độc lập: sửa bypass X-Forwarded-Host khi trust_proxy_headers=true, chuẩn hóa dấu chấm cuối Host, skip test khi thiếu model Ollama.
+  - `python scripts/check_tracked_secrets.py` — PASS (tracked configuration/documentation secret scan passed). Lưu ý script chỉ quét `git ls-files`, file mới chưa track không được quét bởi script này.
+- Blocker/giới hạn:
+  - 2 test Ollama (`test_model_provenance_confound.py` và `test_rag_benchmark.py`) tự động skip trên CI do không có Ollama live.
+  - Slides thuyết trình PDF/PPTX (`docs/slides/A07-BaoCao-Module-AI-SIEM.*`) là file nhị phân, chưa cập nhật số liệu và cần sửa thủ công.
+  - Reverse proxy bên ngoài tới dashboard cần cấu hình `dashboard.cors_allowed_origins` khớp với host/origin truy cập, nếu không sẽ bị chặn HTTP 421.
+- Next action: Thực hiện các mục P1 trong `docs/audit-action-roadmap.md`, bắt đầu từ F-02 (rubric severity, few-shot, sàn severity theo rule level; chạy eval ra file mới không ghi đè `eval/results*.csv`, so sánh McNemar với bản hiện tại).
+
+## Cập nhật quy tắc chọn model subagent trong CLAUDE.md (2026-10-01)
+
+- Trạng thái: HOÀN TẤT.
+- Nội dung: `CLAUDE.md` đổi quy tắc chọn model subagent: model chính chỉ điều phối, lên kế hoạch, ra quyết định; thực thi giao subagent tầng dưới. Main Fable → subagent `opus`; main Opus → subagent `sonnet` (Gemini) hoặc `haiku` (Opus 4.6). Không dùng `fork` (luôn chạy model chính).
+- Verification: `git diff -- CLAUDE.md` chỉ thay đổi duy nhất một dòng quy tắc model subagent.
+- Blocker/giới hạn: Không có blocker.
+- Next action: nếu cần baseline theo prompt/model tag mới, chạy `eval/run_eval.py` ra file mới (không ghi đè `eval/results*.csv`) rồi mở rộng exporter bằng input explicit.
 
 ## Confusion matrix qwen2.5:7b từ dữ liệu project (2026-08-22)
 

@@ -7,7 +7,9 @@ import hashlib
 import json
 import math
 import re
+import unicodedata
 from datetime import datetime, timezone
+from pathlib import Path
 
 import ollama as ollama_sdk
 
@@ -28,7 +30,7 @@ CONFIDENCE_FIELD_DESCRIPTION = (
     " Tra ve so nguyen tren thang 0-100 (vi du 95), khong dung thang 0-1 (khong tra 0.95)."
 )
 SUPPORTED_LANGUAGES = {"vi", "en"}
-OLLAMA_OPTIONS = {"temperature": 0, "seed": 42}
+OLLAMA_OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
 DEFAULT_LLM_PARAMETERS = {
     "temperature": 0.0,
     "top_p": 1.0,
@@ -223,6 +225,7 @@ def ollama_options(llm_parameters=None) -> dict:
         "top_p": params["top_p"],
         "num_predict": params["max_tokens"],
         "seed": OLLAMA_OPTIONS["seed"],
+        "num_ctx": params.get("num_ctx", OLLAMA_OPTIONS["num_ctx"]),
     }
 
 
@@ -293,6 +296,14 @@ hay lập luận riêng tư: observed_facts phải dựa trên giá trị đã c
 uncertainties và limitations phải nêu rõ điều không thể kết luận. Mỗi danh sách tối đa 10 mục,
 mỗi mục tối đa 500 ký tự.
 
+Hiệu chỉnh severity theo thang sau:
+- critical: mã độc thực thi thành công, chiếm quyền điều khiển root/admin, ransomware, rò rỉ dữ liệu diện rộng.
+- high: rule level >= 12, nhiều lần xác thực thất bại rồi thành công, tấn công brute-force lặp lại, khai thác lỗ hổng thành công, leo thang đặc quyền hoặc thay đổi hệ thống bất thường nghiêm trọng.
+- medium: rule level 7-11 sự kiện đơn lẻ, quét cổng, brute-force bị chặn (failed password), vi phạm chính sách hoặc phát hiện bất thường cần điều tra.
+- low: rule level <= 6 hoạt động thông thường, gói phần mềm cập nhật, sự kiện người dùng định kỳ, thông tin hệ thống.
+- unknown: chỉ dùng khi thiếu dữ liệu rule ID/level hoặc bằng chứng quá mâu thuẫn không thể đánh giá.
+Ví dụ: rule 23502 (level 3) -> "low"; rule 5710 (level 5) -> "medium"; rule 40112 (level 12) -> "high".
+
 confidence là phần trăm nguyên từ 0 đến 100, đo mức chắc chắn về summary và severity
 đã đưa ra, KHÔNG phải mức nghiêm trọng của sự cố và KHÔNG phải mức chắc chắn về
 nguyên nhân gốc chưa quan sát được. Hiệu chỉnh theo thang sau:
@@ -329,6 +340,14 @@ is a concise public evidence/decision summary, not private chain of thought or p
 reasoning: observed_facts must cite supplied values; inferences must be qualified;
 uncertainties and limitations must state what cannot be concluded. Limit each list
 to 10 items and each item to 500 characters.
+
+Calibrate severity on this scale:
+- critical: confirmed successful exploit, root/admin takeover, ransomware, mass data exfiltration.
+- high: rule level >= 12, multiple authentication failures followed by success, repeated brute-force attacks, successful exploitation, privilege escalation, or high-risk system anomaly.
+- medium: rule level 7-11 single event, port scanning, blocked brute-force (failed passwords), suspicious policy violation, or anomalies requiring investigation.
+- low: rule level <= 6 routine system activity, software package updates, periodic user events, informational alerts.
+- unknown: only when rule ID/level data is missing or evidence is too contradictory to assess.
+Examples: rule 23502 (level 3) -> "low"; rule 5710 (level 5) -> "medium"; rule 40112 (level 12) -> "high".
 
 Report confidence as an integer percentage from 0 to 100 measuring how certain you are
 about the summary and severity you produced. It is NOT incident severity and NOT
@@ -408,6 +427,42 @@ def _model_digest_metadata(client, requested_model: str, response_model: str) ->
     return digest, "ollama.Client.list.post_chat", observed_at
 
 
+_RULE_LEVEL_RE = re.compile(r"\(level\s+(\d+)\)", re.IGNORECASE)
+_CJK_RE = re.compile(r"[一-鿿]")
+
+
+def extract_rule_level(text: str) -> int | None:
+    """Extract Wazuh rule level from formatted alert text."""
+    if not isinstance(text, str):
+        return None
+    match = _RULE_LEVEL_RE.search(text)
+    return int(match.group(1)) if match else None
+
+
+def apply_severity_floor(result: dict, rule_level: int | None, floor_level: int = 12) -> tuple[dict, str | None]:
+    """Ensure rule.level >= floor_level alerts are not under-called below high.
+
+    Returns (updated_result, original_severity_if_elevated).
+    """
+    orig_sev = result.get("severity")
+    if rule_level is not None and rule_level >= floor_level and orig_sev in ("low", "medium"):
+        new_result = dict(result)
+        new_result["severity"] = "high"
+        return new_result, orig_sev
+    return result, None
+
+
+def detect_cjk(data) -> bool:
+    """Return True if any string in data contains CJK characters."""
+    if isinstance(data, str):
+        return bool(_CJK_RE.search(data))
+    if isinstance(data, dict):
+        return any(detect_cjk(v) for v in data.values())
+    if isinstance(data, list):
+        return any(detect_cjk(item) for item in data)
+    return False
+
+
 def _provenance(response, content, *, requested_model, output_origin, prompt,
                 request_data, output_schema, language, model_digest="",
                 model_digest_source="", model_digest_observed_at="", result=None,
@@ -441,13 +496,69 @@ def _provenance(response, content, *, requested_model, output_origin, prompt,
         value = _response_field(response, field)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             metadata[field] = value
+    prompt_eval = metadata.get("prompt_eval_count")
+    metadata["context_near_limit"] = bool(isinstance(prompt_eval, (int, float)) and prompt_eval > 7000)
+    metadata["cjk_detected"] = detect_cjk(result or {})
+    extracted_mitre = extract_mitre_ids((result or {}).get("mitre"))
+    metadata["mitre_unverified"] = verify_mitre_ids(extracted_mitre)
     metadata["language_compliance"] = _language_compliance(result or {}, language)
     return metadata
 
 
+_ZERO_WIDTH_RE = re.compile(r"[​-‏‪-‮﻿]")
+_ENTERPRISE_MITRE_CATALOG: frozenset[str] | None = None
+_MITRE_EXTRACT_RE = re.compile(r"T\d{4}(?:\.\d{3})?")
+
+
+def sanitize_untrusted_text(text: str) -> str:
+    """Normalize and escape untrusted text placed inside structural delimiters."""
+    if not isinstance(text, str):
+        return ""
+    normalized = unicodedata.normalize("NFKC", text)
+    stripped = _ZERO_WIDTH_RE.sub("", normalized)
+    return stripped.replace("<", "&lt;").replace(">", "&gt;")
+
+
+def get_enterprise_mitre_catalog() -> frozenset[str]:
+    global _ENTERPRISE_MITRE_CATALOG
+    if _ENTERPRISE_MITRE_CATALOG is None:
+        catalog_path = Path(__file__).resolve().parent / "enterprise_mitre_ids.json"
+        try:
+            with catalog_path.open(encoding="utf-8") as f:
+                _ENTERPRISE_MITRE_CATALOG = frozenset(json.load(f))
+        except Exception:
+            _ENTERPRISE_MITRE_CATALOG = frozenset()
+    return _ENTERPRISE_MITRE_CATALOG
+
+
+def extract_mitre_ids(value) -> list[str]:
+    """Extract all MITRE technique IDs (Txxxx or Txxxx.xxx) from a string, list, or dict."""
+    if isinstance(value, str):
+        return list(dict.fromkeys(_MITRE_EXTRACT_RE.findall(value)))
+    if isinstance(value, (list, tuple)):
+        found = []
+        for item in value:
+            found.extend(extract_mitre_ids(item))
+        return list(dict.fromkeys(found))
+    if isinstance(value, dict):
+        found = []
+        for v in value.values():
+            found.extend(extract_mitre_ids(v))
+        return list(dict.fromkeys(found))
+    return []
+
+
+def verify_mitre_ids(ids: list[str], catalog: frozenset[str] | None = None) -> list[str]:
+    """Return list of MITRE IDs that are NOT in the recognized Enterprise catalog."""
+    if catalog is None:
+        catalog = get_enterprise_mitre_catalog()
+    return [mid for mid in ids if mid not in catalog]
+
+
 def _untrusted_message(label: str, text: str) -> str:
     """Make the trust boundary explicit without sending source data as instructions."""
-    return f"<UNTRUSTED_{label}>\n{text}\n</UNTRUSTED_{label}>"
+    clean_text = sanitize_untrusted_text(text)
+    return f"<UNTRUSTED_{label}>\n{clean_text}\n</UNTRUSTED_{label}>"
 
 
 def _trusted_language_reminder(language: str) -> str:
@@ -587,6 +698,8 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
         result, origin = _fallback_result("missing_content", language=language), "local_fallback"
     else:
         result, origin = _parse_alert_payload(content, language=language)
+    rule_level = extract_rule_level(alert_text)
+    result, elevated_from = apply_severity_floor(result, rule_level)
     digest, digest_source, digest_observed_at = (
         _model_digest_metadata(client, model, _response_field(response, "model"))
         if include_provenance else ("", "", "")
@@ -597,6 +710,8 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
         model_digest=digest, model_digest_source=digest_source,
         model_digest_observed_at=digest_observed_at, result=result, options=options,
     )
+    if include_provenance and elevated_from is not None:
+        provenance["severity_floor_applied"] = elevated_from
     # Alert/eval consumers have a fixed five-field schema. The expanded public
     # trace is used by the dashboard aggregate contract, never by alert evals.
     legacy_result = {key: result[key] for key in OUTPUT_SCHEMA["required"]}

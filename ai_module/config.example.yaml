@@ -82,6 +82,7 @@ dashboard:
   # TLS/reverse proxy. Otherwise forwarded scheme headers are ignored.
   trust_proxy_headers: false
   # Optional exact browser origins for a separately hosted frontend. Never use '*'.
+  # Bắt buộc khi chạy sau reverse proxy: thêm origin proxy (vd https://dashboard.example.test) vào cors_allowed_origins, nếu không dashboard trả 421 (chặn DNS rebinding).
   # cors_allowed_origins: ["https://your-fixed-tunnel.ngrok-free.dev"]
   # Permissions-Policy uses the secure dashboard baseline by default: it denies
   # browser sensors, capture, hardware and payment capabilities not used here.

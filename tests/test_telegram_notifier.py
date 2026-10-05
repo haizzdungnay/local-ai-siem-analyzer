@@ -291,6 +291,25 @@ def test_timeout_is_marked_uncertain_for_manual_review(monkeypatch):
     assert raised.value.uncertain is True
 
 
+def test_send_report_drops_pdf_when_exceeding_max_bytes(monkeypatch):
+    monkeypatch.setenv("SIEM_TELEGRAM_BOT_TOKEN", "123456:TEST_TOKEN_SHOULD_NOT_LEAK")
+    monkeypatch.setenv("SIEM_TELEGRAM_CHAT_ID", "123456789")
+    import telegram_pdf
+    from telegram_notifier import MAX_PDF_BYTES
+    monkeypatch.setattr(
+        telegram_pdf, "render_pdf_report",
+        lambda job: b"%PDF-" + b"0" * (MAX_PDF_BYTES + 100),
+    )
+    session = Session(Response({"ok": True, "result": {"message_id": 999}}))
+    notifier = TelegramNotifier(telegram_cfg(), session=session)
+    result = notifier.send_report(job_detail())
+    assert result["pdf_dropped"] is True
+    assert result["message_id"] == "999"
+    # Document upload was skipped, sendMessage was used instead
+    assert session.calls[0][0].endswith("/sendMessage")
+    assert "vượt quá trần dung lượng" in session.calls[0][1]["json"]["text"]
+
+
 def test_notifier_requires_numeric_allowlisted_chat_id(monkeypatch):
     monkeypatch.setenv("SIEM_TELEGRAM_BOT_TOKEN", "123456:TEST_TOKEN_SHOULD_NOT_LEAK")
     monkeypatch.setenv("SIEM_TELEGRAM_CHAT_ID", "@not-allowed")
@@ -348,3 +367,12 @@ def test_configure_local_rejects_an_invalid_chat_id(tmp_path):
 
     with pytest.raises(ValueError, match="chat ID"):
         notifier.configure_local(token="123456:TEST_TOKEN_SHOULD_NOT_LEAK", chat_id="@channel")
+
+
+def test_restrict_file_permissions_restricts_local_env(tmp_path):
+    from telegram_notifier import _restrict_file_permissions
+    test_file = tmp_path / "test.local.env"
+    test_file.write_text("SECRET=12345\n", encoding="utf-8")
+    _restrict_file_permissions(test_file)
+    assert test_file.exists()
+    assert test_file.read_text(encoding="utf-8") == "SECRET=12345\n"

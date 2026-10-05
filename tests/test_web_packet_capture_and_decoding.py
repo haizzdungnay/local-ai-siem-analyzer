@@ -17,7 +17,10 @@ def test_web_attack_packet_decoding():
         "data": {"srcip": "192.168.100.30", "protocol": "GET", "id": "404", "url": "/etc/passwd"},
         "full_log": '192.168.100.30 - - [01/Jan/2026:00:00:00 +0000] "GET /etc/passwd HTTP/1.1" 404 437 "-" "curl/8.18.0"'
     }
-    extracted = extract_fields(raw_alert_traversal)
+    _FIELDS = ["rule.id", "rule.description", "rule.level", "rule.mitre.id",
+                "rule.mitre.tactic", "rule.mitre.technique", "agent.name",
+                "agent.ip", "data.srcip", "full_log"]
+    extracted = extract_fields(raw_alert_traversal, fields=_FIELDS)
     assert extracted["rule.id"] == "31101"
     assert extracted["data.srcip"] == "192.168.100.30"
     assert extracted["agent.name"] == "victim-ubuntu"
@@ -35,7 +38,10 @@ def test_web_xss_packet_decoding():
         "data": {"srcip": "192.168.100.30", "protocol": "GET", "id": "404", "url": "/<script>alert(1)</script>"},
         "full_log": '192.168.100.30 - - [01/Jan/2026:00:00:00 +0000] "GET /<script>alert(1)</script> HTTP/1.1" 404 437 "-" "curl/8.18.0"'
     }
-    extracted = extract_fields(raw_alert_xss)
+    _FIELDS = ["rule.id", "rule.description", "rule.level", "rule.mitre.id",
+                "rule.mitre.tactic", "rule.mitre.technique", "agent.name",
+                "agent.ip", "data.srcip", "full_log"]
+    extracted = extract_fields(raw_alert_xss, fields=_FIELDS)
     assert extracted["rule.id"] == "31105"
     assert extracted["data.srcip"] == "192.168.100.30"
     assert "<script>alert(1)</script>" in extracted["full_log"]

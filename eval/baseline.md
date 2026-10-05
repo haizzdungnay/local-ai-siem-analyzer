@@ -21,7 +21,7 @@ Hai lượt chạy tuần tự để tránh tranh chấp tài nguyên Ollama.
 | Latency lớn nhất | 5.020 s | 3.934 s |
 | Severity exact-match với ground truth nháp | 22/33 (66.7%) | 19/33 (57.6%) |
 
-Một output RAG (`benign-23502-01`) dùng fallback `severity=unknown`, nên `schema_valid=false` theo protocol dù JSON vẫn đọc được. Không RAG có 33/33 schema-valid.
+Một output RAG (`benign-23502-01`) dùng fallback `severity=unknown`, nên `schema_valid=false` theo protocol dù JSON vẫn đọc được. Không RAG có 33/33 schema-valid. Chênh lệch +9,1 điểm chưa có ý nghĩa thống kê (McNemar exact p = 0,58; 95% CI −12,1 đến +30,3 điểm; N = 33).
 
 ## Web cases mới
 

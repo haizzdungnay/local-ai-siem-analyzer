@@ -1,8 +1,20 @@
-import os, sys, json, pytest
+import os, sys, json, pytest, urllib.request, urllib.error
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EVAL_DIR = os.path.join(ROOT, "eval")
 sys.path.insert(0, os.path.join(ROOT, "ai_module"))
+
+
+def _ollama_reachable() -> bool:
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:11434/api/tags",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=2):
+            return True
+    except (urllib.error.URLError, OSError):
+        return False
 
 def test_full_knowledge_base_integrity():
     kb_path = os.path.join(ROOT, "ai_module", "rag_data_full")
@@ -23,6 +35,9 @@ def test_full_knowledge_base_integrity():
     assert all("id" in t and "name" in t and "tactic" in t for t in techs)
 
 def test_rag_benchmark_script_runs():
+    if not _ollama_reachable():
+        pytest.skip("Ollama not running on localhost:11434")
+
     import subprocess
     env = os.environ.copy()
     env["NO_PROXY"] = "localhost,127.0.0.1"

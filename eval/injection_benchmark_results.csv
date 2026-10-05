@@ -1,0 +1,5 @@
+config_name,total_cases,attack_success,asr_percent,dsr_percent,username_success,user_agent_success,url_success,syslog_success
+Config 0: No Defense (Raw Baseline),50,44,88.0,12.0,12/13,11/12,11/13,10/12
+Config 1: Layer 1 Only (Input Sanitization),50,32,64.0,36.0,8/13,8/12,9/13,7/12
+Config 2: Layer 1 + Layer 2 (Sanitization + System Delimiters),50,6,12.0,88.0,2/13,1/12,2/13,1/12
+Config 3: Full 3 Layers (L1 + L2 + L3 Defense-in-Depth),50,0,0.0,100.0,0/13,0/12,0/13,0/12

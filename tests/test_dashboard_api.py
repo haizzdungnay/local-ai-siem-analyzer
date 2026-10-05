@@ -1461,3 +1461,119 @@ def test_attack_chain_option_is_persisted_for_manual_jobs_and_schedule(tmp_path)
     assert saved.status_code == 200
     assert saved.get_json()["attack_chain"] == 1
     assert saved.get_json()["attack_chain_seconds"] == 3600
+
+
+# ---------------------------------------------------------------------------
+# DNS-rebinding protection: Host header allowlist
+# ---------------------------------------------------------------------------
+
+def test_dns_rebinding_get_rejected_for_attacker_host(tmp_path):
+    """GET with a DNS-rebind Host header must be rejected."""
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    client = app.test_client()
+    resp = client.get("/api/jobs", headers={"Host": "attacker.example:8765"})
+    assert resp.status_code in {400, 421}
+    assert "error" in resp.get_json()
+
+
+def test_dns_rebinding_post_rejected_with_matching_origin(tmp_path):
+    """POST with attacker Host AND matching Origin must still be rejected."""
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    client = app.test_client()
+    resp = client.post(
+        "/api/jobs",
+        json={"preset_seconds": 300, "model": "qwen2.5:3b", "language": "vi"},
+        headers={
+            "Host": "attacker.example:8765",
+            "Origin": "http://attacker.example:8765",
+        },
+    )
+    assert resp.status_code in {400, 421}
+    assert "error" in resp.get_json()
+
+
+def test_loopback_hosts_accepted(tmp_path):
+    """127.0.0.1, localhost, [::1] with any port pass the Host check."""
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    client = app.test_client()
+    for host in ("127.0.0.1:8765", "localhost:8765", "localhost", "[::1]:8765"):
+        resp = client.get("/api/status", headers={"Host": host})
+        assert resp.status_code == 200, f"Host {host!r} should be accepted"
+
+
+def _make_proxy_cfg(tmp_path, *, cors_origins=None):
+    """Config helper with trust_proxy_headers enabled."""
+    cfg = make_cfg(tmp_path)
+    cfg["dashboard"]["trust_proxy_headers"] = True
+    if cors_origins is not None:
+        cfg["dashboard"]["cors_allowed_origins"] = cors_origins
+    return cfg
+
+
+def test_xforwarded_host_bypass_blocked_when_trust_proxy_headers(tmp_path):
+    """F1: attacker sends Host: attacker + X-Forwarded-Host: localhost → 421."""
+    app = dashboard.create_app(cfg=_make_proxy_cfg(tmp_path), start_runtime=False)
+    client = app.test_client()
+    resp = client.get(
+        "/api/jobs",
+        headers={
+            "Host": "attacker.example:8765",
+            "X-Forwarded-Host": "localhost:8765",
+        },
+    )
+    assert resp.status_code == 421, (
+        f"X-Forwarded-Host rewrite must not bypass raw Host check, got {resp.status_code}"
+    )
+
+
+def test_proxy_legit_traffic_passes_with_cors_origin(tmp_path):
+    """F1: legit proxy where raw Host = proxy domain in cors_allowed_origins → pass."""
+    proxy_origin = "https://dashboard.example.test"
+    app = dashboard.create_app(
+        cfg=_make_proxy_cfg(tmp_path, cors_origins=[proxy_origin]),
+        start_runtime=False,
+    )
+    client = app.test_client()
+    resp = client.get(
+        "/api/status",
+        headers={
+            "Host": "dashboard.example.test",
+            "X-Forwarded-Host": "dashboard.example.test",
+            "X-Forwarded-Proto": "https",
+        },
+    )
+    assert resp.status_code != 421, (
+        f"Legit proxy host in cors_allowed_origins should pass, got {resp.status_code}"
+    )
+
+
+def test_trust_proxy_false_behavior_unchanged(tmp_path):
+    """F1: without trust_proxy_headers the existing behavior stays the same."""
+    cfg = make_cfg(tmp_path)
+    cfg["dashboard"]["trust_proxy_headers"] = False
+    app = dashboard.create_app(cfg=cfg, start_runtime=False)
+    client = app.test_client()
+    # Attacker host still rejected
+    resp = client.get("/api/jobs", headers={"Host": "attacker.example:8765"})
+    assert resp.status_code == 421
+    # Loopback still accepted
+    resp = client.get("/api/status", headers={"Host": "localhost:8765"})
+    assert resp.status_code == 200
+
+
+def test_trailing_dot_fqdn_localhost_accepted(tmp_path):
+    """F2: localhost. (FQDN trailing dot) must be accepted, not 421."""
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    client = app.test_client()
+    resp = client.get("/api/status", headers={"Host": "localhost.:8765"})
+    assert resp.status_code == 200, (
+        f"FQDN trailing dot localhost. should pass, got {resp.status_code}"
+    )
+
+
+def test_trailing_dot_attacker_not_accepted(tmp_path):
+    """F2: localhost.attacker.example must still be rejected."""
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    client = app.test_client()
+    resp = client.get("/api/status", headers={"Host": "localhost.attacker.example:8765"})
+    assert resp.status_code == 421
