@@ -2,16 +2,18 @@
 
 Ngày cập nhật: 2026-10-05
 
-## Fix CI/CD Matrix: Python 3.11 SyntaxError, Scipy Dependency & Subprocess ChromaDB (2026-10-05)
+## Fix CI/CD Matrix: Python 3.11 SyntaxError, Scipy Dependency & Pip-Audit Expiry (2026-10-05)
 
 - Trạng thái: HOÀN TẤT.
 - Triệu chứng: GitHub Actions CI/CD fail cả 4 matrix jobs (Ubuntu/Windows trên Python 3.11 & 3.12).
   - Python 3.11 fail bước `compileall`: `SyntaxError: f-string expression part cannot include a backslash` tại `eval/baseline_comparison.py:236`.
   - Python 3.12 fail bước `pytest`: `ModuleNotFoundError: No module named 'scipy'` tại `eval/user_study_protocol.py:25` do scipy không nằm trong `requirements-dev.txt`.
+  - Python 3.11 trên Ubuntu fail bước `audit_dependencies.py`: `ValueError: expired vulnerability exception: PYSEC-2026-311 for chromadb` do hạn ngoại lệ trong `pip-audit-allowlist.json` hết hạn ngày 2026-09-05.
 - Khắc phục & Files changed:
   - `eval/baseline_comparison.py`: Tách biến header ra ngoài `{...}` trong f-string, tương thích hoàn toàn Python <= 3.11.
   - `eval/user_study_protocol.py`: Loại bỏ dependency `scipy`, cài đặt hàm tính Student's t distribution hai phía và `_paired_ttest` bằng thư viện chuẩn `math`.
   - `tests/test_rag_benchmark.py`: Kiểm tra `chromadb` thực tế được cài đặt trên hệ thống (không phải stub từ conftest) trước khi gọi subprocess chạy benchmark.
+  - `ai_module/pip-audit-allowlist.json`: Gia hạn ngoại lệ PYSEC-2026-311 của `chromadb` đến 2026-12-31.
   - Cập nhật `CHANGELOG.md` và `HANDOFF.md`.
 - Verification:
   - `python -m compileall -q ai_module eval tests` — PASS (0 lỗi).
