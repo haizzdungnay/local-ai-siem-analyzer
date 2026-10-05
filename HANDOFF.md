@@ -2,6 +2,25 @@
 
 Ngày cập nhật: 2026-10-05
 
+## Fix CI/CD Matrix: Python 3.11 SyntaxError, Scipy Dependency & Subprocess ChromaDB (2026-10-05)
+
+- Trạng thái: HOÀN TẤT.
+- Triệu chứng: GitHub Actions CI/CD fail cả 4 matrix jobs (Ubuntu/Windows trên Python 3.11 & 3.12).
+  - Python 3.11 fail bước `compileall`: `SyntaxError: f-string expression part cannot include a backslash` tại `eval/baseline_comparison.py:236`.
+  - Python 3.12 fail bước `pytest`: `ModuleNotFoundError: No module named 'scipy'` tại `eval/user_study_protocol.py:25` do scipy không nằm trong `requirements-dev.txt`.
+- Khắc phục & Files changed:
+  - `eval/baseline_comparison.py`: Tách biến header ra ngoài `{...}` trong f-string, tương thích hoàn toàn Python <= 3.11.
+  - `eval/user_study_protocol.py`: Loại bỏ dependency `scipy`, cài đặt hàm tính Student's t distribution hai phía và `_paired_ttest` bằng thư viện chuẩn `math`.
+  - `tests/test_rag_benchmark.py`: Kiểm tra `chromadb` thực tế được cài đặt trên hệ thống (không phải stub từ conftest) trước khi gọi subprocess chạy benchmark.
+  - Cập nhật `CHANGELOG.md` và `HANDOFF.md`.
+- Verification:
+  - `python -m compileall -q ai_module eval tests` — PASS (0 lỗi).
+  - `python -m pytest tests -q -p no:cacheprovider` — 299 passed, 2 skipped (100% pass).
+  - `python scripts/check_tracked_secrets.py` — PASS.
+  - `node --check ai_module/web/app.js` — PASS.
+  - `bash -n scripts/attacks/*.sh .githooks/pre-commit` — PASS.
+- Next action: Commit và push lên `main` để kích hoạt lại CI/CD runner xác nhận 4/4 xanh.
+
 ## Triển khai F-07, F-08 & Đồng bộ Slide Báo cáo (2026-10-05)
 
 - Trạng thái: HOÀN TẤT TOÀN BỘ 17 PHÁT HIỆN KỸ THUẬT (F-01 ĐẾN F-17).

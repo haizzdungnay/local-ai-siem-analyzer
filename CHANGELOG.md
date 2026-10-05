@@ -31,6 +31,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
+- CI/CD: Sửa lỗi SyntaxError trên Python <= 3.11 trong `eval/baseline_comparison.py` do backslash trong f-string `{...}`; loại bỏ phụ thuộc `scipy` chưa khai báo trong `eval/user_study_protocol.py` bằng hàm tính Student's t thuần thư viện chuẩn `math`; cập nhật `tests/test_rag_benchmark.py` bỏ qua an toàn khi `chromadb` chưa được cài đặt thực tế.
 - F-17: Loại bỏ phụ thuộc `numpy` chưa khai báo trong `eval/reproducibility_benchmark.py`, thay bằng thư viện chuẩn `statistics` và hàm nội bộ `_percentile()`.
 - F-10: Thiết lập trần dung lượng tải lên Telegram `MAX_PDF_BYTES = 4.915.200` bytes (600s timeout × 8 KiB/s); tự động fallback sang tin nhắn tóm tắt văn bản `sendMessage` với cờ `pdf_dropped: True` khi PDF vượt trần; chặn retry lặp lại tự động cho các lượt gửi thất bại vì `telegram_timeout` trong `DashboardStore.retry_delivery()` trừ khi chỉ định tường minh `force=True`.
 - F-05: Cấu hình `num_ctx: 8192` cho Ollama trong `OLLAMA_OPTIONS` và `ollama_options()`; cắt xén `full_log` ở mức 2000 ký tự trong `extractor.py` tránh làm tràn context; gắn cờ `context_near_limit` trong provenance khi `prompt_eval_count > 7000`.

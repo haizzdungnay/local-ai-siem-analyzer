@@ -38,11 +38,16 @@ def test_rag_benchmark_script_runs():
     if not _ollama_reachable():
         pytest.skip("Ollama not running on localhost:11434")
 
+    chroma_mod = sys.modules.get("chromadb")
+    if chroma_mod is None or getattr(chroma_mod, "__file__", None) is None:
+        pytest.skip("chromadb not installed")
+
     import subprocess
     env = os.environ.copy()
     env["NO_PROXY"] = "localhost,127.0.0.1"
     env["HTTP_PROXY"] = ""
     env["HTTPS_PROXY"] = ""
+    env["PYTHONPATH"] = os.path.join(ROOT, "ai_module") + os.pathsep + env.get("PYTHONPATH", "")
     res = subprocess.run([sys.executable, os.path.join(EVAL_DIR, "rag_benchmark.py")], capture_output=True, text=True, env=env)
     assert res.returncode == 0
     assert "Hit Rate@k" in res.stdout

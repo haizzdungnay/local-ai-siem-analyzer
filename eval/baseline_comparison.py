@@ -233,7 +233,8 @@ def main():
     for model_name in ["Baseline Heuristic A (Lvl 0-4:L, 5-7:M, 8+:H)", "C?u h?nh A (Qwen2.5-7B + RAG)"]:
         mat = method_metrics[model_name]["matrix"]
         print(f"--- {model_name} ---")
-        print(f"{'Th?c t? \ D? ?o?n':<20}{'Low':>8}{'Medium':>8}{'High':>8}")
+        col_header = "Thực tế \\ Dự đoán"
+        print(f"{col_header:<20}{'Low':>8}{'Medium':>8}{'High':>8}")
         for actual in ["low", "medium", "high"]:
             row = mat[actual]
             print(f"{actual:<20}{row['low']:>8}{row['medium']:>8}{row['high']:>8}")

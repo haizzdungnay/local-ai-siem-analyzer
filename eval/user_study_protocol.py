@@ -22,10 +22,40 @@ import math
 import os
 import sys
 import numpy as np
-from scipy import stats
 
 sys.stdout.reconfigure(encoding="utf-8")
 EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _t_distribution_p_value(t_stat: float, df: int) -> float:
+    """Calculate two-sided p-value for Student's t distribution using stdlib math."""
+    t = abs(t_stat)
+    if t == 0:
+        return 1.0
+    coeff = math.gamma((df + 1) / 2) / (math.sqrt(math.pi * df) * math.gamma(df / 2))
+    steps = 10000
+    upper = max(t + 50.0, 100.0)
+    dt = (upper - t) / steps
+    total = 0.0
+    for i in range(steps):
+        s = t + (i + 0.5) * dt
+        val = (1.0 + (s * s) / df) ** (-(df + 1) / 2)
+        total += val * dt
+    return min(1.0, max(0.0, 2.0 * coeff * total))
+
+
+def _paired_ttest(a, b):
+    """Calculate paired t-test statistic and two-sided p-value."""
+    diffs = [x - y for x, y in zip(a, b)]
+    n = len(diffs)
+    if n < 2:
+        return 0.0, 1.0
+    mean_diff = sum(diffs) / n
+    variance = sum((d - mean_diff) ** 2 for d in diffs) / (n - 1)
+    se = math.sqrt(variance / n) if variance > 0 else 1e-12
+    t_stat = mean_diff / se
+    p_val = _t_distribution_p_value(t_stat, n - 1)
+    return t_stat, p_val
 
 
 def generate_and_analyze_user_study_results():
@@ -59,10 +89,10 @@ def generate_and_analyze_user_study_results():
     acc_improvement_pct = mean_ai_acc - mean_manual_acc
 
     # Paired t-test for Time reduction
-    t_stat_time, p_val_time = stats.ttest_rel(manual_user_time, ai_user_time)
-    
+    t_stat_time, p_val_time = _paired_ttest(manual_user_time, ai_user_time)
+
     # Paired t-test for Accuracy improvement
-    t_stat_acc, p_val_acc = stats.ttest_rel(ai_user_acc, manual_user_acc)
+    t_stat_acc, p_val_acc = _paired_ttest(ai_user_acc, manual_user_acc)
 
     print("=" * 85)
     print("B?O C?O K?T QU? TH? NGHI?M NG??I D?NG: HI?U QU? GI?M TH?I GIAN TRIAGE (M?C 11)")
