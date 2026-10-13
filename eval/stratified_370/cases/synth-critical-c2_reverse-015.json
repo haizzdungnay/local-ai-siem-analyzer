@@ -1,0 +1,19 @@
+{
+  "agent": {
+    "id": "008",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.40"
+  },
+  "data": {
+    "dst_ip": "203.0.113.88",
+    "dst_port": 4444,
+    "process": "/bin/bash"
+  },
+  "rule": {
+    "id": "100203",
+    "level": 14,
+    "description": "Active reverse shell communication to external C2."
+  },
+  "full_log": "Interactive Bash session established outbound connection to external IP 203.0.113.88:4444 without TTY.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

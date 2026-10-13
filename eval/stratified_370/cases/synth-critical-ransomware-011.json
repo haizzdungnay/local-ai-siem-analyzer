@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "id": "005",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.41"
+  },
+  "data": {
+    "file": "C:\\Users\\victim\\Documents\\report.docx.locked",
+    "process": "vssadmin.exe"
+  },
+  "rule": {
+    "id": "100201",
+    "level": 15,
+    "description": "Ransomware file encryption activity detected."
+  },
+  "full_log": "Mass file modification with encrypted extension (.locked) and shadow copies deletion attempt by PID 25260.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

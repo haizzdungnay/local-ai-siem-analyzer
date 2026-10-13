@@ -1,0 +1,29 @@
+{
+  "case_id": "synth-critical-ransomware-014",
+  "provenance": "synthetic-stratified",
+  "scenario": "ransomware_encryption",
+  "rule_id": "100201",
+  "disposition": "malicious",
+  "severity": "critical",
+  "mitre_ids": [
+    "T1486"
+  ],
+  "mitre_tactics": [
+    "Impact"
+  ],
+  "summary_reference": "Ransomware đang mã hóa dữ liệu hàng loạt và cố gắng xóa shadow copies.",
+  "root_cause_reference": "Mã độc ransomware thực thi lệnh mã hóa và gọi vssadmin xóa bản sao lưu phục hồi.",
+  "required_facts": [
+    "Ransomware file encryption activity detected.",
+    "shadow copies deletion attempt"
+  ],
+  "forbidden_claims": [
+    "Không suy đoán tác động vượt ngoài phạm vi chứng cứ có trong nhật ký.",
+    "Không đưa ra khuyến nghị can thiệp phá hủy hệ thống mà không có xác minh sơ bộ."
+  ],
+  "next_steps_reference": [
+    "Cô lập ngay lập tức máy trạm khỏi mạng",
+    "Bảo toàn bộ nhớ RAM phục vụ điều tra số"
+  ],
+  "review_status": "draft-single-reviewer"
+}

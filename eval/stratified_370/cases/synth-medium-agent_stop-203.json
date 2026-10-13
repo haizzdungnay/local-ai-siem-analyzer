@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "id": "003",
+    "name": "victim-win10",
+    "ip": "10.0.0.24"
+  },
+  "data": {
+    "status": "disconnected"
+  },
+  "rule": {
+    "id": "506",
+    "level": 8,
+    "description": "Wazuh agent stopped or disconnected."
+  },
+  "full_log": "Wazuh agent daemon on endpoint 'victim-win10' stopped unexpectedly.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

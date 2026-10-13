@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "id": "002",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.41"
+  },
+  "data": {
+    "srcip": "10.0.0.60",
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "5760",
+    "level": 5,
+    "description": "sshd: Failed attempt to login using root account."
+  },
+  "full_log": "Failed password for root from 10.0.0.60 port 46049 ssh2.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

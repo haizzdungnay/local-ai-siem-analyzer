@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "id": "010",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.30"
+  },
+  "data": {
+    "command": "/usr/sbin/logrotate"
+  },
+  "rule": {
+    "id": "5402",
+    "level": 3,
+    "description": "Successful sudo or cron task execution."
+  },
+  "full_log": "Cron task /usr/sbin/logrotate executed successfully by root.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

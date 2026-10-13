@@ -8,7 +8,11 @@ Không ghi đè eval/cases/ và eval/expected/ hiện có.
 import argparse
 import json
 import random
+import sys
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 SEVERITY_TEMPLATES = {

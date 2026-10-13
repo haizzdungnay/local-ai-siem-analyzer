@@ -34,8 +34,11 @@ def test_sqlite_busy_timeout_handling(tmp_path):
     try:
         # A separate connection with short timeout should encounter OperationalError
         conn3 = sqlite3.connect(db_path, timeout=0.01)
-        with pytest.raises(sqlite3.OperationalError):
-            conn3.execute("INSERT INTO jobs (job_type) VALUES ('test')")
+        try:
+            with pytest.raises(sqlite3.OperationalError):
+                conn3.execute("INSERT INTO jobs (job_type) VALUES ('test')")
+        finally:
+            conn3.close()
     finally:
         conn2.rollback()
         conn2.close()

@@ -21,9 +21,12 @@ def test_reviewer_annotations_and_kappa():
     adj_path = os.path.join(EVAL_DIR, "adjudicated_severity.json")
     
     assert os.path.exists(r1_path) and os.path.exists(r2_path) and os.path.exists(adj_path)
-    r1 = json.load(open(r1_path, encoding="utf-8"))
-    r2 = json.load(open(r2_path, encoding="utf-8"))
-    adj = json.load(open(adj_path, encoding="utf-8"))
+    with open(r1_path, encoding="utf-8") as f:
+        r1 = json.load(f)
+    with open(r2_path, encoding="utf-8") as f:
+        r2 = json.load(f)
+    with open(adj_path, encoding="utf-8") as f:
+        adj = json.load(f)
     
     assert len(r1) == 33 and len(r2) == 33 and len(adj) == 33
     for cid in r1:

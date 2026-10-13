@@ -117,9 +117,12 @@ def main():
         with open(path, encoding="utf-8") as f:
             cases[cid] = json.load(f)
 
-    r1_data = json.load(open(os.path.join(EVAL_DIR, "annotations_reviewer1.json"), encoding="utf-8"))
-    r2_data = json.load(open(os.path.join(EVAL_DIR, "annotations_reviewer2.json"), encoding="utf-8"))
-    adj_data = json.load(open(os.path.join(EVAL_DIR, "adjudicated_severity.json"), encoding="utf-8"))
+    with open(os.path.join(EVAL_DIR, "annotations_reviewer1.json"), encoding="utf-8") as f:
+        r1_data = json.load(f)
+    with open(os.path.join(EVAL_DIR, "annotations_reviewer2.json"), encoding="utf-8") as f:
+        r2_data = json.load(f)
+    with open(os.path.join(EVAL_DIR, "adjudicated_severity.json"), encoding="utf-8") as f:
+        adj_data = json.load(f)
 
     case_ids = sorted(cases.keys())
     y_r1 = [r1_data[cid]["severity"] for cid in case_ids]

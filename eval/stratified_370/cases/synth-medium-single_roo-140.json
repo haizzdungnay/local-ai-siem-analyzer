@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "id": "008",
+    "name": "victim-win10",
+    "ip": "10.0.0.42"
+  },
+  "data": {
+    "srcip": "10.0.0.60",
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "5760",
+    "level": 5,
+    "description": "sshd: Failed attempt to login using root account."
+  },
+  "full_log": "Failed password for root from 10.0.0.60 port 57303 ssh2.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

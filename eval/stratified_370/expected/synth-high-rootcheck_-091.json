@@ -1,0 +1,29 @@
+{
+  "case_id": "synth-high-rootcheck_-091",
+  "provenance": "synthetic-stratified",
+  "scenario": "rootcheck_trojan_binary",
+  "rule_id": "510",
+  "disposition": "malicious",
+  "severity": "high",
+  "mitre_ids": [
+    "T1574.006"
+  ],
+  "mitre_tactics": [
+    "Persistence"
+  ],
+  "summary_reference": "Rootcheck phát hiện nghi vấn file hệ thống bị trojan hóa.",
+  "root_cause_reference": "Chữ ký rootcheck khớp với binary hệ thống; cần xác thực tính toàn vẹn gói.",
+  "required_facts": [
+    "Host-based anomaly detection event (rootcheck).",
+    "Trojaned version of file detected."
+  ],
+  "forbidden_claims": [
+    "Không suy đoán tác động vượt ngoài phạm vi chứng cứ có trong nhật ký.",
+    "Không đưa ra khuyến nghị can thiệp phá hủy hệ thống mà không có xác minh sơ bộ."
+  ],
+  "next_steps_reference": [
+    "Xác minh checksum với package manager gốc",
+    "So sánh hash binary trước khi cô lập"
+  ],
+  "review_status": "draft-single-reviewer"
+}

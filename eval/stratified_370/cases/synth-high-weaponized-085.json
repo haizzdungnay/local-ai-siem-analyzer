@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "id": "004",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.23"
+  },
+  "data": {
+    "uri": "/cgi-bin/test.cgi?cmd=id",
+    "status": 200
+  },
+  "rule": {
+    "id": "100204",
+    "level": 13,
+    "description": "Web vulnerability exploitation attempt matching CVE signature."
+  },
+  "full_log": "HTTP request matching known RCE exploit pattern targeting Apache HTTP server.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

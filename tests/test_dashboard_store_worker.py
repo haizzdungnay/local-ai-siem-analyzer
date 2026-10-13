@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 
 import pytest
@@ -11,7 +12,7 @@ from dashboard_store import DashboardStore
 
 def test_store_migrates_v1_jobs_and_schedule_columns(tmp_path):
     path = tmp_path / "dashboard.db"
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.executescript("""
             CREATE TABLE jobs (id INTEGER PRIMARY KEY);
             CREATE TABLE schedule (singleton INTEGER PRIMARY KEY);
@@ -21,19 +22,19 @@ def test_store_migrates_v1_jobs_and_schedule_columns(tmp_path):
 
     DashboardStore(path)
 
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == dashboard_store.SCHEMA_VERSION
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
         schedule_columns = {row[1] for row in connection.execute("PRAGMA table_info(schedule)")}
         result_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(analysis_results)")
         }
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job_review_events'"
+        ).fetchone()
     assert {"language", "analysis_mode", "metrics_json", "timeline_json", "phase", "delivery_channel", "llm_params_json", "correlation_json"} <= job_columns
     assert {"language", "delivery_channel", "llm_params_json"} <= schedule_columns
     assert "provenance_json" in result_columns
-    assert connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job_review_events'"
-    ).fetchone()
 
 
 def test_llm_snapshot_is_private_in_public_job_and_schedule_payloads(tmp_path):
@@ -130,7 +131,7 @@ def test_store_migrates_v3_to_v5_without_losing_jobs(tmp_path):
         "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
         "qwen2.5:7b", "dashboard-v3",
     )
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.execute("DROP TRIGGER job_review_events_no_update")
         connection.execute("DROP TABLE job_review_events")
         connection.execute("PRAGMA user_version=3")
@@ -138,7 +139,7 @@ def test_store_migrates_v3_to_v5_without_losing_jobs(tmp_path):
     migrated = DashboardStore(path)
 
     assert migrated.get_job(job_id)["id"] == job_id
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == dashboard_store.SCHEMA_VERSION
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job_review_events'"
@@ -150,7 +151,7 @@ def test_store_migrates_v3_to_v5_without_losing_jobs(tmp_path):
 
 def test_store_migrates_v5_delivery_checks_to_gmail_without_losing_audit(tmp_path):
     path = tmp_path / "dashboard.db"
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.executescript("""
             CREATE TABLE jobs (
                 id INTEGER PRIMARY KEY,
@@ -245,7 +246,7 @@ def test_store_migrates_v5_delivery_checks_to_gmail_without_losing_audit(tmp_pat
         "qwen2.5:7b", "dashboard-v6", delivery_channel="gmail",
     )
     assert store.get_job(gmail_job)["delivery_channel"] == "gmail"
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == dashboard_store.SCHEMA_VERSION
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert "'gmail'" in connection.execute(
@@ -260,7 +261,7 @@ def test_store_migrates_v2_to_v5_without_losing_jobs(tmp_path):
         "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
         "qwen2.5:7b", "dashboard-v2",
     )
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.execute("DROP TRIGGER job_review_events_no_update")
         connection.execute("DROP TABLE job_review_events")
         connection.execute("PRAGMA user_version=2")
@@ -290,7 +291,7 @@ def test_review_history_is_append_only_and_visible_in_list_and_detail(tmp_path):
     assert detail["review"] == latest
     assert detail["review_history"] == [first, latest]
     assert listed["review"] == latest
-    with sqlite3.connect(tmp_path / "dashboard.db") as connection:
+    with closing(sqlite3.connect(tmp_path / "dashboard.db")) as connection:
         try:
             connection.execute("UPDATE job_review_events SET note='changed' WHERE id=?", (first["id"],))
         except sqlite3.DatabaseError as exc:

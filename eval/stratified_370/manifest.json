@@ -1,0 +1,2233 @@
+{
+  "version": "local-ai-siem-stratified/v1",
+  "total_cases": 370,
+  "seed": 42,
+  "strata_counts": {
+    "critical": 37,
+    "high": 55,
+    "medium": 139,
+    "low": 139
+  },
+  "cases": [
+    {
+      "case_id": "synth-critical-c2_reverse-001",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-ransomware-002",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-ransomware-003",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-004",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-ransomware-005",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-credential-006",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-007",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-ransomware-008",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-009",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-ransomware-010",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-ransomware-011",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-012",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-ransomware-013",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-ransomware-014",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-015",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-credential-016",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-credential-017",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-ransomware-018",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-019",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-credential-020",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-021",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-ransomware-022",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-ransomware-023",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-credential-024",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-credential-025",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-credential-026",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-027",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-028",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-029",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-credential-030",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-credential-031",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-ransomware-032",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-ransomware-033",
+      "severity": "critical",
+      "rule_id": "100201",
+      "scenario": "ransomware_encryption"
+    },
+    {
+      "case_id": "synth-critical-c2_reverse-034",
+      "severity": "critical",
+      "rule_id": "100203",
+      "scenario": "c2_reverse_shell_active"
+    },
+    {
+      "case_id": "synth-critical-credential-035",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-credential-036",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-critical-credential-037",
+      "severity": "critical",
+      "rule_id": "100202",
+      "scenario": "credential_dumping_mimikatz"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-038",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-brute_forc-039",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-040",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-041",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-brute_forc-042",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-weaponized-043",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-weaponized-044",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-brute_forc-045",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-046",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-047",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-048",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-brute_forc-049",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-brute_forc-050",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-051",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-052",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-053",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-054",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-055",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-056",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-057",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-058",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-059",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-weaponized-060",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-061",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-062",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-063",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-brute_forc-064",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-brute_forc-065",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-brute_forc-066",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-brute_forc-067",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-weaponized-068",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-069",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-070",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-brute_forc-071",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-072",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-073",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-weaponized-074",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-brute_forc-075",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-brute_forc-076",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-077",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-078",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-brute_forc-079",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-weaponized-080",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-081",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-082",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-brute_forc-083",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-084",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-weaponized-085",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-brute_forc-086",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-brute_forc-087",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-brute_forc-088",
+      "severity": "high",
+      "rule_id": "5712",
+      "scenario": "brute_force_threshold_exceeded"
+    },
+    {
+      "case_id": "synth-high-weaponized-089",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-weaponized-090",
+      "severity": "high",
+      "rule_id": "100204",
+      "scenario": "weaponized_cve_exploit"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-091",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-high-rootcheck_-092",
+      "severity": "high",
+      "rule_id": "510",
+      "scenario": "rootcheck_trojan_binary"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-093",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-094",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-095",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-096",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-097",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-098",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-099",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-100",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-101",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-102",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-103",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-104",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-105",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-106",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-107",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-108",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-109",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-110",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-111",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-112",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-113",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-114",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-115",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-116",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-117",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-118",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-119",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-120",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-121",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-122",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-123",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-124",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-125",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-126",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-127",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-128",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-129",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-130",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-131",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-132",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-133",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-134",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-135",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-136",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-137",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-138",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-139",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-140",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-141",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-142",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-143",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-144",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-145",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-146",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-147",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-148",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-149",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-150",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-151",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-152",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-153",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-154",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-155",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-156",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-157",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-158",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-159",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-160",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-161",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-162",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-163",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-164",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-165",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-166",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-167",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-168",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-169",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-170",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-171",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-172",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-173",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-174",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-175",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-176",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-177",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-178",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-179",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-180",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-181",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-182",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-183",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-184",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-185",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-186",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-187",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-188",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-189",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-190",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-191",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-192",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-193",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-194",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-195",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-196",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-197",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-198",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-199",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-200",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-201",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-202",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-203",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-204",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-205",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-206",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-207",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-208",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-209",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-210",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-211",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-212",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-single_roo-213",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-214",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-215",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-216",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-217",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-suspicious-218",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-single_roo-219",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-220",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-suspicious-221",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-222",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-suspicious-223",
+      "severity": "medium",
+      "rule_id": "91540",
+      "scenario": "suspicious_powershell_download"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-224",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-225",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-226",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-227",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-228",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-229",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-medium-agent_stop-230",
+      "severity": "medium",
+      "rule_id": "506",
+      "scenario": "agent_stoppage"
+    },
+    {
+      "case_id": "synth-medium-single_roo-231",
+      "severity": "medium",
+      "rule_id": "5760",
+      "scenario": "single_root_ssh_failure"
+    },
+    {
+      "case_id": "synth-low-solved_cve-232",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-233",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-234",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-235",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-236",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-237",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-238",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-239",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-240",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-241",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-242",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-243",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-244",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-245",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-246",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-routine_cr-247",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-routine_cr-248",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-249",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-250",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-251",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-252",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-253",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-254",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-255",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-256",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-257",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-258",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-259",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-260",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-routine_cr-261",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-routine_cr-262",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-263",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-264",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-265",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-266",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-267",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-268",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-269",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-270",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-271",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-272",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-273",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-274",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-275",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-276",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-277",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-278",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-279",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-280",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-281",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-282",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-283",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-284",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-285",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-286",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-287",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-288",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-289",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-290",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-291",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-292",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-293",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-294",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-295",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-routine_cr-296",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-routine_cr-297",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-298",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-299",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-300",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-301",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-302",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-303",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-304",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-305",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-306",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-307",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-308",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-309",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-310",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-311",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-312",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-313",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-314",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-315",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-316",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-317",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-318",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-319",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-320",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-321",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-322",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-323",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-324",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-325",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-326",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-327",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-328",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-329",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-330",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-331",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-332",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-333",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-334",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-335",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-336",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-337",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-338",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-339",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-340",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-341",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-342",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-routine_cr-343",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-344",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-345",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-346",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-347",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-348",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-349",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-350",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-351",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-352",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-353",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-354",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-355",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-356",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-357",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-solved_cve-358",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-solved_cve-359",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-360",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-361",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    },
+    {
+      "case_id": "synth-low-normal_use-362",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-363",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-364",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-365",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-366",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-solved_cve-367",
+      "severity": "low",
+      "rule_id": "23502",
+      "scenario": "solved_cve_package_update"
+    },
+    {
+      "case_id": "synth-low-normal_use-368",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-normal_use-369",
+      "severity": "low",
+      "rule_id": "5501",
+      "scenario": "normal_user_login"
+    },
+    {
+      "case_id": "synth-low-routine_cr-370",
+      "severity": "low",
+      "rule_id": "5402",
+      "scenario": "routine_cron_job"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "id": "003",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.35"
+  },
+  "data": {
+    "file": "/usr/bin/diff",
+    "title": "Trojaned version of file detected."
+  },
+  "rule": {
+    "id": "510",
+    "level": 12,
+    "description": "Host-based anomaly detection event (rootcheck)."
+  },
+  "full_log": "Trojaned version of file '/usr/bin/diff' detected by signature match in rootcheck audit.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

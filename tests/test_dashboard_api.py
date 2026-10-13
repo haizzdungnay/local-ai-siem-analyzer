@@ -32,21 +32,21 @@ def make_cfg(tmp_path):
 
 def test_app_serves_ui_and_security_headers(tmp_path):
     app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
-    response = app.test_client().get("/")
+    client = app.test_client()
+    with client.get("/") as response:
+        assert response.status_code == 200
+        assert b"Wazuh AI Analyst" in response.data
+        assert "default-src 'self'" in response.headers["Content-Security-Policy"]
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["Permissions-Policy"] == dashboard.DEFAULT_PERMISSIONS_POLICY
+        assert "Strict-Transport-Security" not in response.headers
 
-    assert response.status_code == 200
-    assert b"Wazuh AI Analyst" in response.data
-    assert "default-src 'self'" in response.headers["Content-Security-Policy"]
-    assert response.headers["X-Content-Type-Options"] == "nosniff"
-    assert response.headers["Permissions-Policy"] == dashboard.DEFAULT_PERMISSIONS_POLICY
-    assert "Strict-Transport-Security" not in response.headers
-
-    security_page = app.test_client().get("/security-tests")
-    security_script = app.test_client().get("/assets/test.js")
-    dashboard_script = app.test_client().get("/assets/app.js")
-    dashboard_style = app.test_client().get("/assets/styles.css")
-    assert security_page.headers["Cache-Control"] == "no-store"
-    assert security_script.headers["Cache-Control"] == "no-store"
+    with client.get("/security-tests") as security_page, \
+         client.get("/assets/test.js") as security_script, \
+         client.get("/assets/app.js") as dashboard_script, \
+         client.get("/assets/styles.css") as dashboard_style:
+        assert security_page.headers["Cache-Control"] == "no-store"
+        assert security_script.headers["Cache-Control"] == "no-store"
     assert response.headers["Cache-Control"] == "no-store"
     assert dashboard_script.headers["Cache-Control"] == "no-store"
     assert dashboard_style.headers["Cache-Control"] == "no-store"
@@ -128,7 +128,8 @@ def test_security_test_page_and_api_are_local_allowlist_only(tmp_path):
     }
     client = dashboard.create_app(cfg=cfg, start_runtime=False).test_client()
 
-    assert client.get("/security-tests").status_code == 200
+    with client.get("/security-tests") as res:
+        assert res.status_code == 200
     catalog = client.get("/api/security-tests/catalog").get_json()
     assert len(catalog["scenarios"]) == 18
     assert catalog["enabled"] is False
@@ -268,37 +269,34 @@ def test_security_headers_allow_policy_override_and_only_send_hsts_over_https(tm
     app = dashboard.create_app(cfg=cfg, start_runtime=False)
     client = app.test_client()
 
-    http = client.get("/")
-    assert http.headers["Permissions-Policy"] == "geolocation=(), camera=()"
-    assert "Strict-Transport-Security" not in http.headers
+    with client.get("/") as http:
+        assert http.headers["Permissions-Policy"] == "geolocation=(), camera=()"
+        assert "Strict-Transport-Security" not in http.headers
 
-    https = client.get("/", headers={"X-Forwarded-Proto": "https"})
-    assert https.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+    with client.get("/", headers={"X-Forwarded-Proto": "https"}) as https:
+        assert https.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
 
 
 def test_permissions_policy_can_be_explicitly_disabled(tmp_path):
     cfg = make_cfg(tmp_path)
     cfg["dashboard"]["security_headers"] = {"permissions_policy": None}
-    response = dashboard.create_app(cfg=cfg, start_runtime=False).test_client().get("/")
-
-    assert "Permissions-Policy" not in response.headers
+    with dashboard.create_app(cfg=cfg, start_runtime=False).test_client().get("/") as response:
+        assert "Permissions-Policy" not in response.headers
 
 
 def test_hsts_only_configuration_keeps_permissions_policy_baseline(tmp_path):
     cfg = make_cfg(tmp_path)
     cfg["dashboard"]["security_headers"] = {"hsts": "max-age=60"}
-    response = dashboard.create_app(cfg=cfg, start_runtime=False).test_client().get("/")
-
-    assert response.headers["Permissions-Policy"] == dashboard.DEFAULT_PERMISSIONS_POLICY
+    with dashboard.create_app(cfg=cfg, start_runtime=False).test_client().get("/") as response:
+        assert response.headers["Permissions-Policy"] == dashboard.DEFAULT_PERMISSIONS_POLICY
 
 
 def test_untrusted_forwarded_proto_cannot_enable_hsts(tmp_path):
     cfg = make_cfg(tmp_path)
     cfg["dashboard"].update(trust_proxy_headers=False, security_headers={"hsts": "max-age=60"})
     app = dashboard.create_app(cfg=cfg, start_runtime=False)
-    response = app.test_client().get("/", headers={"X-Forwarded-Proto": "https"})
-
-    assert "Strict-Transport-Security" not in response.headers
+    with app.test_client().get("/", headers={"X-Forwarded-Proto": "https"}) as response:
+        assert "Strict-Transport-Security" not in response.headers
 
 
 def test_optional_security_header_config_rejects_crlf(tmp_path):

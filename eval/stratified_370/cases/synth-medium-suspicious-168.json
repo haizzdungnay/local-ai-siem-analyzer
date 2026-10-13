@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "id": "005",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.43"
+  },
+  "data": {
+    "command": "powershell.exe -NoP -NonI -W Hidden -Exec Bypass"
+  },
+  "rule": {
+    "id": "91540",
+    "level": 8,
+    "description": "PowerShell command execution with encoded or download syntax."
+  },
+  "full_log": "PowerShell spawned with hidden window and execution policy bypass flags.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

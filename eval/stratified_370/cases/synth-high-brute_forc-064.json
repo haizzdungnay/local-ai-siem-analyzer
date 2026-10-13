@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "id": "003",
+    "name": "victim-ubuntu",
+    "ip": "10.0.0.23"
+  },
+  "data": {
+    "srcip": "10.0.0.50",
+    "dstuser": "root"
+  },
+  "rule": {
+    "id": "5712",
+    "level": 12,
+    "description": "sshd: brute force trying to get access to the system."
+  },
+  "full_log": "Multiple failed SSH logins (count: 25) within 60s from source IP 10.0.0.50.",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

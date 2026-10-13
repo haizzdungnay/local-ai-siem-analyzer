@@ -1,0 +1,28 @@
+{
+  "case_id": "synth-medium-agent_stop-104",
+  "provenance": "synthetic-stratified",
+  "scenario": "agent_stoppage",
+  "rule_id": "506",
+  "disposition": "suspicious",
+  "severity": "medium",
+  "mitre_ids": [
+    "T1562.001"
+  ],
+  "mitre_tactics": [
+    "Defense Evasion"
+  ],
+  "summary_reference": "Agent giám sát bảo mật bị dừng hoặc ngắt kết nối bất thường.",
+  "root_cause_reference": "Tiến trình giám sát endpoint bị tắt do bảo trì hoặc can thiệp dịch vụ.",
+  "required_facts": [
+    "Wazuh agent stopped or disconnected."
+  ],
+  "forbidden_claims": [
+    "Không suy đoán tác động vượt ngoài phạm vi chứng cứ có trong nhật ký.",
+    "Không đưa ra khuyến nghị can thiệp phá hủy hệ thống mà không có xác minh sơ bộ."
+  ],
+  "next_steps_reference": [
+    "Kiểm tra trạng thái kết nối mạng của agent",
+    "Xác nhận lịch bảo trì với quản trị viên endpoint"
+  ],
+  "review_status": "draft-single-reviewer"
+}

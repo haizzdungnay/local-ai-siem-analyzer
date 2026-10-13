@@ -111,11 +111,11 @@ def summarize(path):
 def summarize_ai_judgments(path, result_paths):
     with Path(path).open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    expected_keys = {
-        (result_path.name, row["case_id"])
-        for result_path in result_paths
-        for row in csv.DictReader(result_path.open(newline="", encoding="utf-8"))
-    }
+    expected_keys = set()
+    for result_path in result_paths:
+        with result_path.open(newline="", encoding="utf-8") as r_handle:
+            for row in csv.DictReader(r_handle):
+                expected_keys.add((result_path.name, row["case_id"]))
     actual_keys = [(row["source_results"], row["case_id"]) for row in rows]
     if len(actual_keys) != len(set(actual_keys)):
         raise ValueError(f"{path}: duplicate AI judgment")

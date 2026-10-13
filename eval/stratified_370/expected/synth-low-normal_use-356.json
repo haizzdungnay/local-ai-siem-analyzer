@@ -1,0 +1,23 @@
+{
+  "case_id": "synth-low-normal_use-356",
+  "provenance": "synthetic-stratified",
+  "scenario": "normal_user_login",
+  "rule_id": "5501",
+  "disposition": "benign",
+  "severity": "low",
+  "mitre_ids": [],
+  "mitre_tactics": [],
+  "summary_reference": "Phiên làm việc người dùng cục bộ được mở thành công.",
+  "root_cause_reference": "Người dùng đăng nhập bình thường vào hệ thống.",
+  "required_facts": [
+    "Login session opened for local user."
+  ],
+  "forbidden_claims": [
+    "Không suy đoán tác động vượt ngoài phạm vi chứng cứ có trong nhật ký.",
+    "Không đưa ra khuyến nghị can thiệp phá hủy hệ thống mà không có xác minh sơ bộ."
+  ],
+  "next_steps_reference": [
+    "Hoạt động vận hành thông thường, không cần hành động can thiệp"
+  ],
+  "review_status": "draft-single-reviewer"
+}

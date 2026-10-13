@@ -1,0 +1,28 @@
+{
+  "case_id": "synth-medium-suspicious-216",
+  "provenance": "synthetic-stratified",
+  "scenario": "suspicious_powershell_download",
+  "rule_id": "91540",
+  "disposition": "suspicious",
+  "severity": "medium",
+  "mitre_ids": [
+    "T1059.001"
+  ],
+  "mitre_tactics": [
+    "Execution"
+  ],
+  "summary_reference": "Thực thi PowerShell với cờ ẩn cửa sổ và vượt qua chính sách thực thi.",
+  "root_cause_reference": "Script hoặc người dùng gọi PowerShell với tham số thường dùng bởi công cụ tấn công.",
+  "required_facts": [
+    "PowerShell command execution with encoded or download syntax."
+  ],
+  "forbidden_claims": [
+    "Không suy đoán tác động vượt ngoài phạm vi chứng cứ có trong nhật ký.",
+    "Không đưa ra khuyến nghị can thiệp phá hủy hệ thống mà không có xác minh sơ bộ."
+  ],
+  "next_steps_reference": [
+    "Kiểm tra tiến trình cha đã gọi PowerShell",
+    "Xem xét nội dung script đầy đủ trong ScriptBlock log"
+  ],
+  "review_status": "draft-single-reviewer"
+}

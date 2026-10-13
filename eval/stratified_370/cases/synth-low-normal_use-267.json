@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "id": "002",
+    "name": "victim-win10",
+    "ip": "10.0.0.44"
+  },
+  "data": {
+    "user": "analyst"
+  },
+  "rule": {
+    "id": "5501",
+    "level": 3,
+    "description": "Login session opened for local user."
+  },
+  "full_log": "PAM session opened for user analyst by (uid=0).",
+  "timestamp": "2026-10-05T08:00:00.000+0000"
+}

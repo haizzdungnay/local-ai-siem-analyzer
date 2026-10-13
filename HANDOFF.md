@@ -1,6 +1,40 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-10-05
+Ngày cập nhật: 2026-10-06
+
+## Hoàn tất 4 Nhiệm vụ Offline: Lab Preflight Diagnostic, Stratified Dataset 370, Clean ResourceWarnings & Defense Cheatsheet (2026-10-06)
+
+- Trạng thái: HOÀN TẤT TOÀN BỘ 4 HẠNG MỤC OFFLINE.
+- Nội dung & Files changed:
+  1. **Lab Preflight Diagnostic Checker (`scripts/lab_preflight_check.py` & `tests/test_lab_preflight_check.py`)**:
+     - Tự động chẩn đoán và kiểm tra sẵn sàng toàn bộ hạ tầng SOC đa dịch vụ:
+       - Wazuh Indexer (`:9200`): HTTP OpenSearch cluster health, số lượng node và trạng thái green/yellow; lưu ý đây là nơi lưu trữ alert thật.
+       - Wazuh Manager API (`:55000`): Xác thực JWT và kiểm tra quản trị agent/rule; lưu ý KHÔNG dùng để lưu alert.
+       - Ollama LLM (`:11434`): Kiểm tra `/api/tags` và quét danh sách model khuyến nghị (`qwen2.5:7b`, `qwen2.5:3b`, `nomic-embed-text`).
+       - Victim Endpoints: Kiểm tra trạng thái Agent của Ubuntu `.20` và Windows `.40` (ghi nhận rõ ràng agent Active nhưng Sysmon chưa xác nhận).
+     - Định dạng báo cáo kép: Markdown/bảng trực quan CLI hoặc JSON có cấu trúc (`--json`).
+     - Tách nhỏ hàm (< 50 dòng), xử lý an toàn không rò rỉ credential, kèm 15 unit test độc lập.
+  2. **Tập dữ liệu phân tầng 370 ca giả lập (`eval/stratified_370/`)**:
+     - Thực thi thành công `eval/generate_stratified_dataset.py`, sinh 370 ca synthetic stratified (37 critical, 55 high, 139 medium, 139 low) vào `eval/stratified_370/cases/` và `expected/`, kèm `manifest.json`.
+     - Phục vụ kiểm định thống kê McNemar lặp lại (power >= 0.8) mà không cần kết nối Wazuh live và không ghi đè `eval/cases/` gốc.
+     - Sửa lỗi encoding `UnicodeEncodeError: 'charmap'` trên console Windows `cp1252` bằng `sys.stdout.reconfigure(encoding="utf-8")`.
+  3. **Triệt tiêu hoàn toàn 10 cảnh báo `ResourceWarning` unclosed database/file**:
+     - Bọc đóng kết nối SQLite qua `from contextlib import closing` và `with closing(sqlite3.connect(...))` trong `tests/test_dashboard_store_worker.py` và `tests/test_audit_edge_cases.py`.
+     - Quản lý đóng file descriptor tường minh `with open(...)` trong `tests/test_severity_groundtruth_baseline.py`, `eval/baseline_comparison.py`, `eval/summarize_results.py`.
+     - Bọc đóng WSGI response iterator `with client.get(...) as resp:` trong `tests/test_dashboard_api.py`.
+     - Toàn bộ test suite chạy sạch 0 cảnh báo dưới cờ `-W default`.
+  4. **Cẩm nang phản biện bảo vệ đề tài (`docs/defense_cheatsheet_qa.md`)**:
+     - Tổng hợp câu trả lời chuẩn xác số liệu, viện dẫn lý thuyết an ninh mạng và học máy cho Top 10 câu hỏi hóc búa nhất của Hội đồng đánh giá (chênh lệch RAG $p=0.58$, kích thước tham số Llama 3.2 3.2B vs Qwen 7B, quy trình Blind Adjudication Ground Truth, phòng vệ Prompt Injection 4 lớp, kiến trúc Indexer :9200 vs Manager :55000, kiểm soát ảo giác MITRE, độ nhạy Recall High, kiến trúc phân rã 6 Blueprints và hạn chế/hướng phát triển phòng lab).
+- Verification:
+  - `python -m pytest -q -W default` — **314 passed, 2 skipped, 0 warnings** (100% pass).
+  - `python scripts/check_tracked_secrets.py` — PASS.
+  - `python scripts/lab_preflight_check.py --timeout 0.2 --json` — PASS (nhận diện chính xác và trả JSON format).
+  - `python -m compileall -q ai_module eval tests scripts` — PASS.
+- Blocker/giới hạn:
+  - Môi trường lab live (Wazuh Docker trên `.10`, Windows Victim `.40`) cần khởi động VMware và cấu hình card mạng Host-only `192.168.100.0/24` khi bắt đầu thực nghiệm trực tiếp.
+- Next action:
+  - Khi bắt đầu mở lab VM: Chạy `python scripts/lab_preflight_check.py` để kiểm tra kết nối trước khi phát động các kịch bản tấn công.
+  - Người dùng cập nhật thủ công các slide trình chiếu PowerPoint dựa trên `docs/slides_sync_checklist.md` và `docs/defense_cheatsheet_qa.md`.
 
 ## Fix CI/CD Matrix: Python 3.11 SyntaxError, Scipy Dependency & Pip-Audit Expiry (2026-10-05)
 
