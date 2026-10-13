@@ -1,7 +1,7 @@
 # Cẩm Nang Phản Biện Bảo Vệ Đề Tài (Defense Cheatsheet Q&A)
 ## Local AI SIEM Analyzer — Nhóm A07
 
-> **Mục đích:** Tài liệu tra cứu nhanh câu trả lời chuẩn xác, đanh thép, bám sát số liệu thực nghiệm và lý thuyết an ninh mạng cho Top 10 câu hỏi hóc búa nhất của Hội đồng đánh giá.  
+> **Mục đích:** Tài liệu tra cứu nhanh câu trả lời chuẩn xác, đanh thép, bám sát số liệu thực nghiệm và lý thuyết an ninh mạng cho Top 10 câu hỏi hóc búa nhất của Hội đồng đánh giá.
 > **Nguyên tắc trả lời:** Khách quan khoa học, không ngụy biện, không thổi phồng kết quả, viện dẫn chính xác số liệu từ corpus thực nghiệm.
 
 ---

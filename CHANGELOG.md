@@ -34,6 +34,8 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
+- Sửa lỗi circular import giữa `dashboard.py` và `blueprints` khi khởi chạy trực tiếp dạng script (`python ai_module/dashboard.py`): đăng ký alias `sys.modules["dashboard"] = sys.modules[__name__]` trước khi import blueprints.
+- CI/CD: Xóa trailing whitespace tại dòng 4 của `docs/defense_cheatsheet_qa.md` gây lỗi `git diff --check HEAD^ HEAD` trên runner Ubuntu / Python 3.11; đăng ký `sys.modules["dashboard"]` khi chạy `__main__` trong `ai_module/dashboard.py` tránh nạp lại module khi các blueprints import dashboard.
 - Triệt tiêu 10 cảnh báo `ResourceWarning: unclosed database/file` trên toàn bộ test suite pytest (bọc kết nối SQLite trong `contextlib.closing` tại `tests/test_dashboard_store_worker.py` và `tests/test_audit_edge_cases.py`; quản lý ngữ cảnh file I/O `with open(...)` tại `tests/test_severity_groundtruth_baseline.py`, `eval/baseline_comparison.py`, `eval/summarize_results.py`; và bọc WSGI response iterator `with client.get(...) as resp:` tại `tests/test_dashboard_api.py`), đưa test suite về trạng thái 0 warning dưới cờ `-W default`.
 - Sửa lỗi `UnicodeEncodeError: 'charmap'` trên console Windows cp1252 khi chạy `eval/generate_stratified_dataset.py` bằng `sys.stdout.reconfigure(encoding="utf-8")`.
 - CI/CD: Gia hạn ngoại lệ lỗ hổng chưa có bản vá `PYSEC-2026-311` và bổ sung các mã CVE upstream mới (`PYSEC-2026-3813`, `PYSEC-2026-3814`, `PYSEC-2026-3815`) cho `chromadb` trong `ai_module/pip-audit-allowlist.json` đến 2026-12-31, sửa lỗi `expired vulnerability exception` và `unwaived dependency vulnerability` tại bước audit phụ thuộc Python trong GitHub Actions.

@@ -60,6 +60,9 @@ from dashboard_reports import (
 if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
+if __name__ == "__main__":
+    sys.modules["dashboard"] = sys.modules[__name__]
+
 from blueprints import (
     ip_analysis_bp,
     jobs_bp,

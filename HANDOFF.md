@@ -1,6 +1,45 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-10-06
+Ngày cập nhật: 2026-10-13
+
+## Khởi chạy thành công Web App Dashboard và xác minh Lab Live (2026-10-13)
+
+- Trạng thái: HOÀN TẤT.
+- Nội dung & Files changed:
+  1. **Khởi chạy Dashboard Web App (`ai_module/dashboard.py`)**:
+     - Cài đặt các thư viện thiếu trên môi trường host (`ollama`, `waitress`, `chromadb`).
+     - Tải model Ollama cần thiết: `qwen2.5:3b` và `nomic-embed-text`.
+     - Tạo file cấu hình môi trường lab `ai_module/config.yaml` (gitignored), kết nối an toàn tới Wazuh Indexer `https://192.168.100.10:9200`.
+     - Sửa lỗi circular import `sys.modules["dashboard"] = sys.modules[__name__]` trong `ai_module/dashboard.py` khi khởi chạy dạng script trực tiếp.
+     - Web app đang chạy ngầm và lắng nghe tại `http://127.0.0.1:8765`.
+  2. **Xác minh kết nối Lab VMware live**:
+     - Wazuh Indexer OpenSearch `:9200`: `green` (1 node, 97 shards), kết nối HTTP/TLS thành công.
+     - Ollama LLM `:11434`: 5 models (`qwen2.5:3b`, `nomic-embed-text`, `qwen35-pentest:latest`, ...).
+     - Kiểm tra end-to-end: Đã tạo và xử lý thành công job phân tích manual window 24h trên 536 alert thực tế từ Wazuh Indexer, LLM local sinh báo cáo tiếng Việt đầy đủ cấu trúc.
+- Verification:
+  - `python -m pytest -q` — 315 passed, 1 skipped (100% pass).
+  - `python scripts/check_tracked_secrets.py` — PASS.
+  - `http://127.0.0.1:8765/api/dependencies` — indexer ok, ollama ok.
+  - `http://127.0.0.1:8765/api/jobs/2` — status `succeeded`, total_alerts 536.
+- Blocker/giới hạn:
+  - Wazuh Manager API (`:55000`) cần đối chiếu lại mật khẩu nếu muốn kiểm tra trạng thái agent qua CLI `scripts/lab_preflight_check.py` (không ảnh hưởng đến chức năng phân tích alert của web app).
+- Next action:
+  - Người dùng truy cập trình duyệt tại `http://127.0.0.1:8765` để trải nghiệm trực quan giao diện dashboard.
+
+## Fix CI/CD trailing whitespace trên defense cheatsheet và gỡ lỗi double-import dashboard (2026-10-13)
+
+- Trạng thái: HOÀN TẤT.
+- Nguyên nhân: GitHub Actions workflow `python-tests.yml` (bước `Check commit whitespace and credential placeholders` trên Ubuntu/Python 3.11) kiểm tra `git diff --check HEAD^ HEAD` và bắt lỗi trailing whitespace tại dòng 4 trong `docs/defense_cheatsheet_qa.md`.
+- Khắc phục:
+  1. Loại bỏ trailing whitespace cuối dòng 4 của `docs/defense_cheatsheet_qa.md`.
+  2. Bổ sung `if __name__ == "__main__": sys.modules["dashboard"] = sys.modules[__name__]` trong `ai_module/dashboard.py` để tránh nạp module lần hai khi các blueprints thực thi `import dashboard`.
+- Verification:
+  - `git diff --check` PASS (không còn bất kỳ trailing whitespace nào).
+  - `python scripts/check_tracked_secrets.py` PASS.
+  - `python -m pytest -q -W default` PASS (314 passed, 2 skipped, 0 warnings).
+  - `python -m compileall -q ai_module eval tests scripts` PASS.
+  - `node --check ai_module/web/app.js` PASS.
+- Next action: Push commit lên `origin/main` và kiểm tra kết quả CI/CD trên GitHub Actions qua `gh run list`.
 
 ## Hoàn tất 4 Nhiệm vụ Offline: Lab Preflight Diagnostic, Stratified Dataset 370, Clean ResourceWarnings & Defense Cheatsheet (2026-10-06)
 
