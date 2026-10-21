@@ -44,6 +44,7 @@ def status():
         "database": "ok",
         "database_bytes": stats["database"]["bytes"],
         "review_events": stats["reviews"]["event_count"],
+        "hardware": __import__("llm").detect_system_hardware(),
     })
 
 

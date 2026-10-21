@@ -558,6 +558,14 @@ class AnalysisService:
         rag_context, rag_provenance = self._window_rag_context(aggregate)
         prompt = self._append_window_rag_context(prompt, rag_context, rag_provenance)
         trusted_evidence = security_test_evidence_contract(aggregate)
+        # Adaptive hardware resource pacing:
+        # Prioritize response fidelity/quality and smooth GPU memory bandwidth over rushed generation
+        enriched_params = dict(llm_parameters or {})
+        from llm import adaptive_pacing_options
+        pacing = adaptive_pacing_options(model_name=model)
+        for k, v in pacing.items():
+            enriched_params.setdefault(k, v)
+
         result, provenance = analyze_window(
             prompt,
             model=model,
@@ -566,7 +574,7 @@ class AnalysisService:
             language=language,
             include_provenance=True,
             allow_remote=self.cfg["ollama"].get("allow_remote", False),
-            llm_parameters=llm_parameters,
+            llm_parameters=enriched_params,
             trusted_evidence=trusted_evidence,
         )
         result, echo_redaction_count = _redact_exact_sample_log_echoes(

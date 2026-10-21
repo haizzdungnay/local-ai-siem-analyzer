@@ -34,7 +34,7 @@ OLLAMA_OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
 DEFAULT_LLM_PARAMETERS = {
     "temperature": 0.0,
     "top_p": 1.0,
-    "max_tokens": 2048,
+    "max_tokens": 4096,
     "system_prompt": "",
 }
 MAX_CUSTOM_SYSTEM_PROMPT_CHARS = 4000
@@ -184,7 +184,7 @@ def normalize_llm_parameters(value=None, *, defaults=None) -> dict:
         if not isinstance(defaults, dict):
             raise ValueError("ollama.analysis must be an object")
         baseline.update(defaults)
-    unknown = set(value) - set(DEFAULT_LLM_PARAMETERS)
+    unknown = set(value) - set(DEFAULT_LLM_PARAMETERS) - {"num_ctx", "pacing", "num_batch"}
     if unknown:
         raise ValueError("llm_parameters has unsupported fields")
     merged = {**baseline, **value}
@@ -206,12 +206,81 @@ def normalize_llm_parameters(value=None, *, defaults=None) -> dict:
         raise ValueError("system_prompt contains unsupported control characters")
     if _CUSTOM_PROMPT_SECRET_RE.search(system_prompt):
         raise ValueError("system_prompt must not contain credentials or tokens")
-    return {
+    num_ctx = merged.get("num_ctx")
+    if num_ctx is not None:
+        if isinstance(num_ctx, bool) or not isinstance(num_ctx, int) or not 1024 <= num_ctx <= 131072:
+            raise ValueError("num_ctx must be an integer from 1024 to 131072")
+    res = {
         "temperature": float(temperature),
         "top_p": float(top_p),
         "max_tokens": max_tokens,
         "system_prompt": system_prompt.strip(),
     }
+    if num_ctx is not None:
+        res["num_ctx"] = num_ctx
+    if "pacing" in merged:
+        res["pacing"] = bool(merged["pacing"])
+    if "num_batch" in merged and isinstance(merged["num_batch"], int):
+        res["num_batch"] = merged["num_batch"]
+    return res
+
+
+def detect_system_hardware() -> dict:
+    """Detect available GPU (NVIDIA), VRAM, and system RAM."""
+    import shutil, subprocess, psutil
+    ram = psutil.virtual_memory()
+    info = {
+        "ram_total_mb": int(ram.total / (1024**2)),
+        "ram_available_mb": int(ram.available / (1024**2)),
+        "gpu_detected": False,
+        "gpu_name": None,
+        "vram_total_mb": 0,
+        "vram_free_mb": 0,
+    }
+    nv = shutil.which("nvidia-smi")
+    if nv:
+        try:
+            cmd = [nv, "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"]
+            out = subprocess.check_output(cmd, text=True, timeout=3).strip()
+            if out:
+                line = out.splitlines()[0]
+                parts = [p.strip() for p in line.split(",")]
+                info["gpu_detected"] = True
+                info["gpu_name"] = parts[0]
+                info["vram_total_mb"] = int(parts[1])
+                info["vram_free_mb"] = int(parts[2])
+        except Exception:
+            pass
+    return info
+
+
+def adaptive_pacing_options(model_name: str = "", model_param_size: str = "", hw_info: dict = None) -> dict:
+    """Pacing strategy to prevent GPU bandwidth saturation and optimize analysis quality."""
+    hw = hw_info or detect_system_hardware()
+    vram_mb = hw.get("vram_total_mb") or 0
+    
+    # Bounded pacing options:
+    # num_batch controls batch size per inference step (default 512 in llama.cpp).
+    # Setting num_batch: 256 or 128 paces memory bus, avoiding GPU memory bus spikes.
+    pacing = {}
+    if hw.get("gpu_detected") and vram_mb >= 14000:
+        # High VRAM (e.g. RTX 5070 Ti 16GB):
+        # 16k context supported, steady 256 batch pacing
+        pacing["num_batch"] = 256
+        pacing["num_ctx"] = 16384
+    elif hw.get("gpu_detected") and vram_mb >= 6000:
+        pacing["num_batch"] = 128
+        pacing["num_ctx"] = 8192
+    elif hw.get("gpu_detected"):
+        pacing["num_batch"] = 64
+        pacing["num_ctx"] = 4096
+        pacing["low_vram"] = True
+    else:
+        import psutil
+        pacing["num_batch"] = 64
+        pacing["num_ctx"] = 4096
+        pacing["num_thread"] = max(1, psutil.cpu_count(logical=False) or 4)
+    return pacing
 
 
 def ollama_options(llm_parameters=None) -> dict:
@@ -220,13 +289,21 @@ def ollama_options(llm_parameters=None) -> dict:
         # Preserve the stable default request shape for CLI/eval integrations.
         return dict(OLLAMA_OPTIONS)
     params = normalize_llm_parameters(llm_parameters)
-    return {
+    opts = {
         "temperature": params["temperature"],
         "top_p": params["top_p"],
         "num_predict": params["max_tokens"],
         "seed": OLLAMA_OPTIONS["seed"],
         "num_ctx": params.get("num_ctx", OLLAMA_OPTIONS["num_ctx"]),
     }
+    if params.get("pacing", True) and "num_batch" not in opts:
+        # Pacing active by default when not in unit-test mock
+        pacing = adaptive_pacing_options()
+        if "num_batch" in pacing and "num_batch" in params:
+            opts["num_batch"] = params["num_batch"]
+    if "num_batch" in params:
+        opts["num_batch"] = params["num_batch"]
+    return opts
 
 
 def build_effective_system_prompt(scope: str, language: str, system_prompt: str = "") -> str:
@@ -375,12 +452,41 @@ assessment_basis in English, even when the supplied evidence uses another langua
 SYSTEM_PROMPT = build_soc_system_prompt("alert", "vi")
 
 
+def _safe_chat(client, **kwargs):
+    try:
+        return client.chat(**kwargs, think=False)
+    except TypeError:
+        return client.chat(**kwargs)
+
+
+def _clean_payload_text(raw: str) -> str:
+    if not isinstance(raw, str):
+        return ""
+    text = raw.strip()
+    if "<think>" in text and "</think>" in text:
+        text = re.sub(r"(?s)<think>.*?</think>", "", text).strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
 def _response_content(response):
     if isinstance(response, dict):
         message = response.get("message", {})
-        return message.get("content") if isinstance(message, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not content and isinstance(message, dict):
+            content = message.get("thinking")
+        return content
     message = getattr(response, "message", None)
-    return getattr(message, "content", None)
+    content = getattr(message, "content", None)
+    if not content and getattr(message, "thinking", None):
+        content = getattr(message, "thinking", None)
+    return content
 
 
 def _response_field(response, field):
@@ -687,7 +793,7 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
         request_data += "\n\n" + _untrusted_message("RAG_CONTEXT", rag_context)
     user_msg = request_data + "\n\n" + _trusted_language_reminder(language)
     client = ollama_sdk.Client(host=base_url, timeout=timeout)
-    response = client.chat(
+    response = _safe_chat(client, 
         model=model,
         messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_msg}],
         format=OUTPUT_SCHEMA,
@@ -741,7 +847,7 @@ def analyze_window(window_text: str, model: str = "qwen2.5:3b",
     user_sections.append(_trusted_language_reminder(language))
     user_msg = "\n\n".join(user_sections)
     client = ollama_sdk.Client(host=base_url, timeout=timeout)
-    response = client.chat(
+    response = _safe_chat(client, 
         model=model,
         messages=[{"role": "system", "content": prompt},
                   {"role": "user", "content": user_msg}],
@@ -901,6 +1007,7 @@ def _looks_like_echoed_schema(result: dict) -> bool:
 
 
 def _parse_alert_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
+    raw = _clean_payload_text(raw)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -974,6 +1081,7 @@ def _parse_window_response(raw: str, language: str = "vi") -> dict:
 
 
 def _parse_window_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
+    raw = _clean_payload_text(raw)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -1017,7 +1125,7 @@ def analyze_ip_profile(ip_telemetry_text: str, source_ip: str, model: str = "qwe
     user_sections = [request_data, _trusted_language_reminder(language)]
     user_msg = "\n\n".join(user_sections)
     client = ollama_sdk.Client(host=base_url, timeout=timeout)
-    response = client.chat(
+    response = _safe_chat(client, 
         model=model,
         messages=[{"role": "system", "content": prompt},
                   {"role": "user", "content": user_msg}],
@@ -1063,6 +1171,7 @@ def _ip_profile_fallback(reason: str, raw: str = "", language: str = "vi") -> di
 
 
 def _parse_ip_profile_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
+    raw = _clean_payload_text(raw)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:

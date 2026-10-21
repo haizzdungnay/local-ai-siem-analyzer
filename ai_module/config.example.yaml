@@ -29,7 +29,8 @@ ollama:
   analysis:
     temperature: 0
     top_p: 1
-    max_tokens: 2048                # sent to Ollama as num_predict
+    max_tokens: 4096                # sent to Ollama as num_predict
+    num_ctx: 16384                  # 16k context for lab GPU RTX 5070 Ti 16GB
     # system_prompt: "Optional bounded analyst focus; do not put credentials here."
   base_url: "http://localhost:11434"
   allow_remote: false              # remote only when true with an HTTPS endpoint
@@ -64,15 +65,15 @@ dashboard:
   host: "127.0.0.1"
   port: 8765
   database_path: "dashboard_data/dashboard.db"
-  allowed_models: ["qwen2.5:3b", "qwen2.5:7b"]
+  allowed_models: ["qwen2.5:3b", "qwen2.5:7b", "qwen35-9b-pentest-v5"]
   max_alerts_per_job: 2000              # detail cap; vượt cap tự chuyển aggregate-only
   max_aggregate_rule_buckets: 1000
   max_timeline_buckets: 96
   default_language: "vi"                # vi | en
   max_pending_jobs: 100
-  max_groups_in_prompt: 40                # cat prompt lam model tu ha confidence; giu cap tren so group thuc te
+  max_groups_in_prompt: 100                # cat prompt lam model tu ha confidence; giu cap tren so group thuc te
   max_sample_log_chars: 1000
-  max_window_prompt_chars: 32000
+  max_window_prompt_chars: 64000
   ingest_delay_seconds: 120
   max_catchup_windows: 24
   worker_poll_seconds: 1

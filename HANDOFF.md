@@ -2,6 +2,27 @@
 
 Ngày cập nhật: 2026-10-13
 
+## Nhan dien phan cung va dieu tiet tai nguyen RTX 5070 Ti 16GB (2026-10-21)
+
+- Trang thai: HOAN TAT.
+- Co che: detect_system_hardware() nhan dien RTX 5070 Ti 16GB; adaptive_pacing_options() dieu tiet num_batch=256 va num_ctx=16384 chong nghen bang thong GPU; /api/status phan hoi hardware info.
+- Verification: Job 266 thanh cong 100%, status=succeeded, latency 26.5s.
+
+## Tich hop va toi uu model qwen35-9b-pentest-v5 tren RTX 5070 Ti 16GB (2026-10-21)
+
+- Trang thai: HOAN TAT (Nghiem thu thanh cong).
+- Nguyen nhan loi cu:
+  1. Model qwen35-9b-pentest-v5 bat co che thinking mac dinh chiem het 2048 token (done_reason: length), khong tra ve JSON schema hop le -> fallback.
+  2. Context 8192 bi tran khi tong token prompt vuot 8426 -> Ollama 400.
+  3. Max groups = 40 lam prompt bi truncated -> status partial.
+- Khac phuc:
+  1. ai_module/llm.py: them _safe_chat() voi think=False, bo wrapper markdown/think qua _clean_payload_text(), nang max_tokens len 4096.
+  2. ai_module/config.yaml & config.example.yaml: nang num_ctx: 16384, max_tokens: 4096, max_groups_in_prompt: 100, max_window_prompt_chars: 64000 de bung het suc manh GPU RTX 5070 Ti 16GB.
+- Verification:
+  - Job ID 265 thanh cong 100%: status=succeeded, phase=completed, warnings=[], severity=medium, confidence=75.0, latency ~27.5s tren 240 alerts.
+  - pytest: 158 passed in 16.58s.
+  - check_tracked_secrets.py: PASS.
+
 ## Khởi chạy thành công Web App Dashboard và xác minh Lab Live (2026-10-13)
 
 - Trạng thái: HOÀN TẤT.
