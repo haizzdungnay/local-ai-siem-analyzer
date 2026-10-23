@@ -9,6 +9,8 @@
 > Mô-đun **AI local** đọc alert từ **Wazuh SIEM** và giải thích thành **ngôn ngữ tự nhiên**: tóm tắt cảnh báo, giải thích nguyên nhân kích hoạt rule, đánh giá mức nghiêm trọng, gợi ý bước kiểm tra/xử lý.
 
 Đề tài thực tập Local AI Module for Analyzing and Interpreting SIEM Security Alerts. Trọng tâm là **chất lượng AI diễn giải log**, không xây SIEM mới. Repo chứa tài liệu/scrip demo đã sanitize; config live và credential phải ở `ai_module/config.yaml` gitignored hoặc secret manager. Xem [`docs/security-governance.md`](docs/security-governance.md).
+> **Roadmap mới (23/10/2026):** [Hybrid AI Model Gateway — quản lý model local/cloud, API key và định tuyến trên dashboard](docs/hybrid-ai-gateway-roadmap.md). Đây mới là kế hoạch, **chưa triển khai**; cơ chế Ollama hiện tại vẫn đang được sử dụng.
+
 
 ---
 

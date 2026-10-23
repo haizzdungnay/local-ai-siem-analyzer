@@ -1,6 +1,17 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-10-13
+Ngày cập nhật: 2026-10-23
+
+
+## Hybrid AI Model Gateway roadmap (2026-10-23) — PLANNED ONLY
+
+- Status: Roadmap created as documentation only. No implementation, deployment or credential changes.
+- New document: `docs/hybrid-ai-gateway-roadmap.md` (G0–G6; architecture, compatibility, admin UI, security and testing gates).
+- Documentation sync: README.md, docs/product-roadmap.md, CHANGELOG.md and HANDOFF.md.
+- Baseline: main `baa7913cf78118220c6b107b400e6fe8dec810cb`; GitHub Actions run `39628600799` FAILED on all four matrix jobs due to missing `psutil` import and resulting /api/status/analysis failures.
+- Blockers: fix G0 CI before merging runtime changes; verify hardware policy behavior for CPU and low VRAM; perform explicit owner approval for cloud egress and provider API keys.
+- Verification: documentation/GitHub tree and PR diff review only; **no pytest or live cloud/lab benchmark has been run** for this planning change.
+- Next action: execute G0 stabilization in a separate PR; then implement G1 registry/migration before API key and cloud feature work.
 
 ## Nhan dien phan cung va dieu tiet tai nguyen RTX 5070 Ti 16GB (2026-10-21)
 
