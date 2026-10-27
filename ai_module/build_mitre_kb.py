@@ -2,6 +2,7 @@
 """build_mitre_kb.py — Trich MITRE ATT&CK tu mitre.db (Wazuh) -> mitre_techniques.json."""
 import argparse
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -20,6 +21,15 @@ def dump_schema(con):
     print("[SCHEMA]", file=sys.stderr)
     for t in tables(con):
         print(f"  {t}: {cols(con, t)}", file=sys.stderr)
+
+
+CITATION_RE = re.compile(r"\s*\(Citation:[^)]*\)")
+
+
+def clean_text(value):
+    """Bo trich dan '(Citation: ...)' cua ATT&CK; chuan hoa khoang trang."""
+    text = CITATION_RE.sub("", value or "")
+    return re.sub(r"[ \t]+", " ", text).strip()
 
 
 def first_present(candidates, available):
@@ -72,7 +82,15 @@ def build(db_path):
             d = dict(zip(mc, r))
             mit_name[d.get(idc)] = d.get(namec) if namec else None
 
+    mit_ext = {}
+    if "reference" in tbls:
+        for sid, eid in con.execute(
+                "SELECT id, external_id FROM reference "
+                "WHERE source='mitre-attack' AND external_id LIKE 'M%'"):
+            mit_ext.setdefault(sid, eid)
+
     tech_mit = {}
+    tech_mit_detail = {}
     mlink = first_present(["mitigate", "has_mitigation", "technique_has_mitigation"], tbls)
     if mlink:
         lc = cols(con, mlink)
@@ -87,6 +105,15 @@ def build(db_path):
                     tech_mit.setdefault(tech, [])
                     if nm and nm not in tech_mit[tech]:
                         tech_mit[tech].append(nm)
+                    # Huong dan giam thieu RIENG cho cap (technique, mitigation):
+                    # mitigate.description, khong phai mo ta chung cua mitigation.
+                    guidance = clean_text(d.get("description"))
+                    if nm and guidance:
+                        tech_mit_detail.setdefault(tech, []).append({
+                            "id": mit_ext.get(mit, ""),
+                            "name": nm,
+                            "guidance": guidance,
+                        })
 
     # STIX id (attack-pattern--...) -> ATT&CK external id (T1110). Alert Wazuh
     # mang rule.mitre.id dang T-ID, rag.py/test cung ky vong T-ID.
@@ -122,10 +149,12 @@ def build(db_path):
         rec = {
             "id": ext_id[tid],
             "name": d.get(namec) if namec else "",
-            "description": (d.get(descc) or "").strip() if descc else "",
+            "description": clean_text(d.get(descc)) if descc else "",
             "tactics": tech_tactics.get(tid, []),
-            "detection": (d.get(detc) or "").strip() if detc else "",
+            "detection": clean_text(d.get(detc)) if detc else "",
             "mitigations": tech_mit.get(tid, []),
+            "mitigation_details": sorted(
+                tech_mit_detail.get(tid, []), key=lambda m: (m["id"], m["name"])),
             "subtechnique_of": ext_id.get(parent, parent or ""),
         }
         parts = [f"{rec['id']} {rec['name']}"]

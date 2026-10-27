@@ -2,6 +2,36 @@
 
 Ngày cập nhật: 2026-10-27
 
+## P0 bước 3 — re-index KB mới + `main.py --demo` (2026-10-27)
+
+- Trạng thái: HOÀN TẤT (chỉ ghi nhận, chưa sửa retrieval theo yêu cầu P0).
+- Lệnh: `cd ai_module; python main.py --demo` (`qwen2.5:7b`, `rag.data_dir: rag_data` → `resolve_config_paths()` ghép theo `MODULE_DIR`).
+- Kết quả:
+  - RAG ready, `indexed_now = 5080` (4473 rule + 607 technique).
+  - Alert 1 (rule 550, FIM): `rag.state = context_used`, `result_count = 1`.
+  - Alert 2 (rule 5712, SSH brute force): `rag.state = no_matching_context`, `result_count = 0` — semantic RAG KHÔNG trả về gì cho case chính. Mô tả trong alert mẫu ("SSHD brute force trying to get access to the system.") khác mô tả ruleset ("sshd: brute force trying to get access to the system. Non existent user."); với `DEFAULT_RELEVANCE_THRESHOLD = 1.0` (khoảng cách Chroma L2) chỉ văn bản gần như trùng mới qua ngưỡng → retrieval hiện tại hoạt động như so khớp chuỗi. Bằng chứng trực tiếp cho exact lookup theo `rule.id` (P1).
+  - `next_steps` alert 5712 chung chung ("Theo dõi IP…", "Cập nhật cấu hình SSH…"): không có bước xác minh 5715/5501 cùng `srcip`, không có nhánh block/cô lập có điều kiện.
+  - Alert 2 `language_compliance = partial` (root_cause chép nguyên mô tả rule tiếng Anh).
+  - Alert 3–9: `load_sample_alerts()` coi mỗi file `eval/samples/*.json` là một alert; 7 file export OpenSearch (`benign*.json`, `kb1–kb5.json`) bị phân tích như alert rỗng (`no approved alert metadata`).
+  - CLI ghi `num_ctx = 8192` trong provenance trong khi `config.yaml` `ollama.analysis.num_ctx = 16384` — `main.py` không truyền `ollama.analysis` vào `analyze_alert()`; dashboard chưa kiểm tra.
+- Next action: commit KB Tầng 1–2; quyết định chuyển 7 file export sang thư mục riêng (gitignored); bước 4 smoke test lab.
+
+## KB playbook — Tầng 1 (MITRE mitigation) + Tầng 2 (Elastic) (2026-10-27)
+
+- Trạng thái: HOÀN TẤT phần dữ liệu Tầng 1–2; CHƯA nối vào `llm.py`/`rag.py`; Tầng 3 (playbook tự viết theo rule.id) chưa làm.
+- Mục tiêu: `next_steps` hiện do LLM tự sinh (prompt chỉ có `FIELD_DESCRIPTIONS["next_steps"]`, và field này không gắn vào schema nên model không thấy); KB cũ chỉ trả lời "rule là gì", không có "phải làm gì".
+- Đã xong:
+  1. `build_mitre_kb.py` → `mitre_techniques.json` thêm `mitigation_details` (M-ID + guidance theo technique), bỏ `(Citation: ...)`. Ví dụ T1110: M1018, M1027, M1032, M1036.
+  2. `build_playbook_kb.py` → `rag_data/elastic_playbooks.json` (gitignored): 496 playbook, trung bình 6,5 bước điều tra / 3,5 FP / 6,6 bước ứng phó. Phủ technique lab: T1110 (8), T1136 (8), T1098 (12), T1548.003 (12), T1070.002 (4), T1562.001 (23), T1053.003 (5), T1078 (11), T1505.003 (16).
+  3. `tests/test_build_kb.py` (5 test).
+- Verification (clone sạch + thay đổi): `pytest -q` 319 passed, 2 skipped; `compileall` OK; `git diff --cached --check` PASS; `check_tracked_secrets --staged` PASS.
+- Sinh lại Tầng 2: `git clone https://github.com/elastic/detection-rules.git ..\detection-rules` → `git -C ..\detection-rules checkout eb500af68b91137727b377c810973d1ccb60c856` → `python ai_module/build_playbook_kb.py ..\detection-rules -o ai_module/rag_data/elastic_playbooks.json`.
+- Blocker/giới hạn:
+  - Map Elastic theo technique ID là gần đúng: T1059.004 có 110 playbook → khi nối vào pipeline phải chọn lọc (ưu tiên khớp tên/tag, giới hạn số mục), không nhét hết.
+  - Bước Elastic viết cho telemetry Elastic (ECS); đã lọc công cụ Elastic nhưng vẫn có thể còn bước không áp dụng được cho Wazuh.
+  - Playbook ngoài không được lấy từ đáp án `eval/build_dataset.py` (tránh leakage); Tầng 3 phải viết từ ngữ nghĩa rule, không từ `eval/samples/kb*.json`.
+- Next action: Tầng 3 — khung `playbooks.json` theo rule.id (`verify → if_success → if_failed → fp_conditions → sources`) cho ~10–15 rule lab; sau đó P1 nối exact lookup vào `analyze_alert()` (thêm block `PLAYBOOK`).
+
 ## P0 v2.0.0 — bước 1–2: gỡ credential, KB RAG đầy đủ (2026-10-27)
 
 - Trạng thái: ĐANG LÀM (xong bước 1–2/5; chưa commit).

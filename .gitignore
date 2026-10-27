@@ -26,6 +26,8 @@ ai_module/rag_data/*.db
 # Ruleset Wazuh thô dùng để build KB (đã trích vào rag_data/wazuh_rules.json)
 ai_module/rag_data/rules/
 wz_rules.tar.gz
+# Playbook trích từ Elastic detection-rules (Elastic License 2.0) — sinh lại bằng build_playbook_kb.py, không phân phối trên repo public
+ai_module/rag_data/elastic_playbooks.json
 ai_module/rag_data/chroma/
 /rag_data/chroma/
 
