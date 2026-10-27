@@ -41,6 +41,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
+- CI/CD: Nâng cấp phụ thuộc Pillow từ 12.3.0 lên 13.0.0 trong ai_module/requirements.txt để giải quyết loạt 38 cảnh báo CVE mới từ pip-audit (GHSA-78g4-xqwv-q3g8, PYSEC-2026-4327, PYSEC-2026-4328).
 - Sửa lỗi crash CI/CD (GitHub Actions 39628600799) và runtime trên môi trường CPU/low-VRAM: bổ sung khai báo psutil==7.0.0 vào ai_module/requirements.txt; thiết kế cơ chế fallback mềm sử dụng thư viện chuẩn (/proc/meminfo trên Linux, ctypes trên Windows, os.cpu_count()) trong detect_system_hardware() và adaptive_pacing_options() khi psutil vắng mặt; bổ sung cho phép các tham số điều tiết phần cứng (low_vram, num_thread, num_batch, num_ctx, pacing) trong normalize_llm_parameters() và ollama_options() của ai_module/llm.py; xóa 4 vị trí trailing whitespace gây lỗi git diff --check; bổ sung unit test test_hardware_detection_and_pacing_options trong tests/test_ai_pipeline.py.
 - CI: nâng `Pillow` 12.3.0 → 13.0.0 trong `ai_module/requirements.txt` — bước `scripts/audit_dependencies.py` (pip-audit) fail với 38 advisory, bản sửa duy nhất 13.0.0 (PyPI 2026-10-16). Phần `psutil` dùng bản sửa của `eacad9e` (`psutil==7.0.0` + fallback stdlib).
 - `ai_module/build_mitre_kb.py`: đóng kết nối sqlite bằng `contextlib.closing` (hết `ResourceWarning`).

@@ -89,6 +89,17 @@ Ngày cập nhật: 2026-10-27
   - Shell trên máy host qua desktop bridge lỗi; lệnh git/python chạy tay trên PowerShell.
 - Next action: bước 3 — `config.yaml` đặt `rag.data_dir: rag_data`, `ollama.model: qwen2.5:7b`; chạy `python ai_module/main.py --demo` re-index (~5080 doc) và kiểm tra `[REFERENCE source=wazuh_rule ...]`.
 
+## Nâng cấp Pillow 13.0.0 & Xử lý dependency audit CI/CD (2026-10-27)
+
+- Trạng thái: HOÀN TẤT.
+- File thay đổi:
+  - ai_module/requirements.txt: Nâng cấp Pillow==12.3.0 lên Pillow==13.0.0 để loại bỏ 38 cảnh báo CVE mới từ pip-audit trong job Ubuntu Python 3.11.
+- Verification:
+  - python -m pytest tests -q -p no:cacheprovider: 318 passed, 2 skipped.
+  - tests/test_telegram_notifier.py: 16 passed (xác nhận tương thích đầy đủ tính năng xuất PDF và vẽ biểu đồ hình ảnh).
+  - python scripts/check_tracked_secrets.py: PASS.
+  - git diff --check: PASS.
+
 ## Ổn định G0 CI/CD & Xử lý lỗi kỹ thuật Hardware Pacing (2026-10-27)
 
 - Trạng thái: HOÀN TẤT.
