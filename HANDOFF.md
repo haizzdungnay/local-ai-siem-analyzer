@@ -2,6 +2,39 @@
 
 Ngày cập nhật: 2026-10-27
 
+## G0 — sửa 2 blocker CI trước khi push (2026-10-27)
+
+- Trạng thái: HOÀN TẤT trên môi trường sạch giống CI; CHỜ GitHub Actions xác nhận sau push.
+- Nguyên nhân:
+  1. `ai_module/llm.py` (`detect_system_hardware()`, `adaptive_pacing_options()`) import `psutil` nhưng `ai_module/requirements.txt` không khai báo → venv sạch: 13 test fail (`tests/test_dashboard_core.py`…), khớp run `39628600799` FAILED 4/4 job ghi ở mục Gateway 2026-10-23. Máy dev pass vì đã cài sẵn `psutil`.
+  2. `scripts/audit_dependencies.py` (pip-audit, bước CI Linux/3.11) fail: `Pillow==12.3.0` có 38 advisory, bản sửa duy nhất là 13.0.0 (PyPI 2026-10-16, `requires_python >=3.11`).
+- Sửa: thêm `psutil==7.2.2`; nâng `Pillow==13.0.0` trong `ai_module/requirements.txt`. `build_mitre_kb.py` đóng kết nối sqlite bằng `contextlib.closing` (hết 2 `ResourceWarning`; output KB không đổi byte nào).
+- Verification (venv mới, chỉ `pip install -r ai_module/requirements-dev.txt`, Python 3.13):
+  - `python -m pytest tests -q -p no:cacheprovider -W default` — 319 passed, 2 skipped, 0 warning (gồm test render PDF Telegram dùng Pillow).
+  - `python scripts/audit_dependencies.py --requirements ai_module/requirements-dev.txt --allowlist ai_module/pip-audit-allowlist.json` — passed; 5 exception ChromaDB còn hiệu lực (hết hạn 2026-12-31).
+  - `python -m compileall -q ai_module eval tests` — OK.
+- Giới hạn: `pylock.toml` chưa có `psutil` / Pillow 13 — chưa sinh lại lock; CI không dùng lock. Chưa chạy trên Windows runner và Python 3.11/3.12 (chỉ CI kiểm).
+- Remote: `origin/main` đã ở `7056267` (PR #7 Gateway roadmap, sửa `CHANGELOG.md`, `HANDOFF.md`, `README.md`, `docs/`); phải `git pull` trước khi push và gộp conflict 2 ledger.
+
+## Quyết định hướng nghiên cứu: RAG lai + nhánh so sánh QLoRA (2026-10-27)
+
+- Trạng thái: ĐÃ THỐNG NHẤT trong nhóm; CHỜ thầy hướng dẫn xác nhận (giữ tên đề tài đã đăng ký, fine-tune là nhánh đối chứng trong phần "đánh giá").
+- Câu hỏi nghiên cứu: với alert SIEM mà rule ID không phân biệt lành/độc (cặp FP-trap B4 useradd vs KB1 backdoor cùng 5902; 554; 5402; 31101), tra cứu tri thức có cấu trúc (RAG lai) hay tinh chỉnh model (QLoRA) giúp LLM local 7B/16 GB đưa ra kết luận và next_steps có căn cứ tốt hơn, và mỗi cách thất bại ở đâu.
+- Bảng cấu hình (cùng base model, cùng tập test khóa, cùng schema `soc-contract-v2`):
+  - B1 base · B2a base + RAG semantic (hiện tại) · B2b base + RAG lai (exact rule.id/mitre.id + playbook Tầng 1–3)
+  - B3 base + QLoRA · B4 QLoRA + RAG lai · (B5 + correlation window/ip_profile nếu kịp)
+  - Mỗi cấu hình chạy cả `qwen2.5:3b` và `qwen2.5:7b` khi khả thi.
+- Ràng buộc bắt buộc (không vi phạm, nếu không kết quả không bảo vệ được):
+  1. RAG lai phải chạy đúng (đo recall retrieval) TRƯỚC khi so với QLoRA — so QLoRA với RAG đang trả 0 kết quả (5712) là so với đối thủ hỏng.
+  2. Tập test khóa + SHA-256 TRƯỚC khi train. Đề xuất: `eval/samples/kb1–kb5` + `benign*` (đã thu, chưa ai train trên đó) = test; dữ liệu train SFT lấy từ kịch bản lab MỚI (biến thể / Atomic Red Team), chia theo `scenario_id`, không chia ngẫu nhiên từng log.
+  3. Playbook Tầng 3 viết từ ngữ nghĩa rule, không từ `kb*.json` hay đáp án `eval/build_dataset.py`.
+  4. Output tham chiếu SFT nếu sinh bằng model lớn hơn → khai báo là distillation, có người review mẫu.
+  5. Báo cáo cả prediction thô và sau `apply_severity_floor()`.
+  6. Báo cáo kết quả âm tính.
+- Chia việc đề xuất: Nguyên — hạ tầng, dữ liệu test/train, RAG lai, playbook Tầng 3, validator, eval retrieval/ablation RAG, Windows held-out. Dương — pipeline QLoRA, dataset SFT, B3/B4, 3b vs 7b, thí nghiệm phản chứng (playbook sai), VRAM/latency. Reviewer 2 chéo cho nhau.
+- Cần xác minh: số Cohen's kappa 0,91 trong `docs/defense_cheatsheet_qa.md` không có dữ liệu gốc trong `eval/adjudicated_severity.json`; `eval/expected/*.json` vẫn `draft-single-reviewer`.
+- Thứ tự việc tiếp theo: (1) script đo recall RAG semantic theo rule.id trên `eval/cases/`; (2) Tầng 3 playbook; (3) P1 nối exact lookup + PLAYBOOK vào `analyze_alert()`; (4) khóa tập test; (5) song song Dương dựng pipeline QLoRA trên dữ liệu train mới.
+
 ## P0 bước 3 — re-index KB mới + `main.py --demo` (2026-10-27)
 
 - Trạng thái: HOÀN TẤT (chỉ ghi nhận, chưa sửa retrieval theo yêu cầu P0).

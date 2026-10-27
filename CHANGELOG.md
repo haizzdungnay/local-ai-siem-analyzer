@@ -40,6 +40,8 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
+- CI: khai báo `psutil==7.2.2` trong `ai_module/requirements.txt` (`llm.py` import nhưng thiếu dependency → 13 test fail trên venv sạch); nâng `Pillow` 12.3.0 → 13.0.0 (38 advisory pip-audit, bản sửa duy nhất 13.0.0).
+- `ai_module/build_mitre_kb.py`: đóng kết nối sqlite bằng `contextlib.closing` (hết `ResourceWarning`).
 - `ai_module/build_mitre_kb.py`: thêm `mitigation_details` theo từng technique (`{id: M10xx, name, guidance}` từ `mitigate.description` — hướng dẫn riêng cho cặp technique/mitigation, trước đó bị bỏ, chỉ giữ tên); bỏ trích dẫn `(Citation: ...)` khỏi `description`, `detection`, `guidance`. 514/607 technique có mitigation, tổng 1200 mục.
 - `ai_module/build_mitre_kb.py`: dùng ATT&CK external ID (`T1110`) thay STIX ID (`attack-pattern--...`) cho `id` và `subtechnique_of` (join bảng `reference`, `source='mitre-attack'`); loại 131 technique revoked và 12 deprecated (750 → 607); ghi JSON UTF-8, LF, sort theo `id`. `build_rag_kb.py` cũng ghi LF (`newline="\n"`) — trên Windows `write_text` mặc định sinh CRLF làm `git diff --check` của CI fail. Toàn bộ 165 technique ID mà rule Wazuh tham chiếu đều có trong KB.
 - `.gitignore`: bỏ qua `ai_module/rag_data/rules/` và `wz_rules.tar.gz` (ruleset thô dùng để build KB).

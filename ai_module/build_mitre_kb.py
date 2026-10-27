@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 
@@ -40,7 +41,11 @@ def first_present(candidates, available):
 
 
 def build(db_path):
-    con = sqlite3.connect(db_path)
+    with closing(sqlite3.connect(db_path)) as con:
+        return _build(con)
+
+
+def _build(con):
     tbls = tables(con)
     dump_schema(con)
 
@@ -182,8 +187,8 @@ def main():
     args = ap.parse_args()
 
     if args.schema:
-        con = sqlite3.connect(args.db)
-        dump_schema(con)
+        with closing(sqlite3.connect(args.db)) as con:
+            dump_schema(con)
         return
 
     out = build(args.db)
