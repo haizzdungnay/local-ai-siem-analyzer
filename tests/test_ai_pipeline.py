@@ -1133,3 +1133,28 @@ def test_cjk_detection_in_provenance():
         result=normal_res,
     )
     assert prov_normal.get("cjk_detected") is False
+
+
+def test_hardware_detection_and_pacing_options(monkeypatch):
+    """G0: Hardware detection must be graceful without psutil; pacing options must normalize cleanly."""
+    cpu_pacing = llm.adaptive_pacing_options(hw_info={"gpu_detected": False})
+    norm_cpu = llm.normalize_llm_parameters(cpu_pacing)
+    assert norm_cpu["num_batch"] == 64
+    assert norm_cpu["num_ctx"] == 4096
+    assert "num_thread" in norm_cpu
+
+    low_vram_pacing = llm.adaptive_pacing_options(hw_info={"gpu_detected": True, "vram_total_mb": 4096})
+    norm_low = llm.normalize_llm_parameters(low_vram_pacing)
+    assert norm_low["low_vram"] is True
+
+    high_vram_pacing = llm.adaptive_pacing_options(hw_info={"gpu_detected": True, "vram_total_mb": 16000})
+    norm_high = llm.normalize_llm_parameters(high_vram_pacing)
+    assert norm_high["num_batch"] == 256
+    assert norm_high["num_ctx"] == 16384
+
+    import sys
+    monkeypatch.setitem(sys.modules, "psutil", None)
+    hw = llm.detect_system_hardware()
+    assert isinstance(hw, dict)
+    assert "gpu_detected" in hw
+    assert "ram_total_mb" in hw

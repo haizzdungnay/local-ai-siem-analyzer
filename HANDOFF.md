@@ -1,6 +1,29 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-10-23
+Ngày cập nhật: 2026-10-27
+
+
+## Ổn định G0 CI/CD & Xử lý lỗi kỹ thuật Hardware Pacing (2026-10-27)
+
+- Trạng thái: HOÀN TẤT.
+- File thay đổi:
+  - ai_module/requirements.txt: Bổ sung khai báo psutil==7.0.0.
+  - ai_module/llm.py:
+    - detect_system_hardware(): Bổ sung fallback thư viện chuẩn (/proc/meminfo trên Linux, ctypes trên Windows) an toàn khi thiếu psutil; không làm gián đoạn /api/status.
+    - adaptive_pacing_options(): Dùng os.cpu_count() fallback khi không có psutil.
+    - normalize_llm_parameters(): Cho phép và validate các tham số điều tiết phần cứng (low_vram, num_thread, num_batch, num_ctx, pacing), triệt tiêu lỗi ném ngoại lệ khi chạy trên máy CPU hoặc GPU < 6GB.
+    - ollama_options(): Ánh xạ đúng low_vram, num_thread, num_batch và sửa logic pacing mặc định.
+    - Xóa các trailing whitespace gây lỗi git diff --check.
+  - tests/test_ai_pipeline.py: Bổ sung unit test test_hardware_detection_and_pacing_options kiểm thử trọn vẹn cả ca có và không có psutil, chuẩn hóa pacing CPU/GPU.
+- Verification:
+  - python -m pytest tests -q -p no:cacheprovider: 315 passed, 2 skipped in 16.8s.
+  - Test mô phỏng môi trường thiếu psutil (sys.modules['psutil'] = None): 315 passed, 2 skipped (100% pass, triệt tiêu hoàn toàn 13 ca lỗi gãy CI trước đó).
+  - python -m compileall -q ai_module eval tests: PASS.
+  - python scripts/check_tracked_secrets.py: PASS.
+  - git diff --check: PASS (0 lỗi whitespace).
+  - node --check ai_module/web/app.js: PASS.
+- Blockers / Giới hạn: Không có.
+- Next action: Sẵn sàng tiến hành giai đoạn G1 theo roadmap docs/hybrid-ai-gateway-roadmap.md.
 
 
 ## Hybrid AI Model Gateway roadmap (2026-10-23) — PLANNED ONLY
