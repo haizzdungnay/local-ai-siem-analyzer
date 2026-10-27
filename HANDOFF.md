@@ -3,6 +3,17 @@
 Ngày cập nhật: 2026-10-27
 
 
+## Nâng cấp Pillow 13.0.0 & Xử lý dependency audit CI/CD (2026-10-27)
+
+- Trạng thái: HOÀN TẤT.
+- File thay đổi:
+  - ai_module/requirements.txt: Nâng cấp Pillow==12.3.0 lên Pillow==13.0.0 để loại bỏ 38 cảnh báo CVE mới từ pip-audit trong job Ubuntu Python 3.11.
+- Verification:
+  - python -m pytest tests -q -p no:cacheprovider: 318 passed, 2 skipped.
+  - tests/test_telegram_notifier.py: 16 passed (xác nhận tương thích đầy đủ tính năng xuất PDF và vẽ biểu đồ hình ảnh).
+  - python scripts/check_tracked_secrets.py: PASS.
+  - git diff --check: PASS.
+
 ## Ổn định G0 CI/CD & Xử lý lỗi kỹ thuật Hardware Pacing (2026-10-27)
 
 - Trạng thái: HOÀN TẤT.
