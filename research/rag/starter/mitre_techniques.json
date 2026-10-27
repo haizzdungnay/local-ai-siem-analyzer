@@ -1,0 +1,50 @@
+[
+  {
+    "id": "T1110",
+    "name": "Brute Force",
+    "tactic": "Credential Access",
+    "description": "Kẻ tấn công thử đăng nhập nhiều lần với các mật khẩu khác nhau (hoặc tài khoản khác nhau) để chiếm quyền truy cập hợp lệ. Bao gồm các kỹ thuật con: Password Guessing, Password Spraying, Credential Stuffing."
+  },
+  {
+    "id": "T1110.001",
+    "name": "Password Guessing",
+    "tactic": "Credential Access",
+    "description": "Thử lần lượt nhiều mật khẩu cho 1 tài khoản cụ thể cho tới khi đăng nhập thành công. Đây là dạng brute-force cổ điển, thường gây ra nhiều alert login-failed liên tiếp từ cùng 1 tài khoản/IP."
+  },
+  {
+    "id": "T1595",
+    "name": "Active Scanning",
+    "tactic": "Reconnaissance",
+    "description": "Kẻ tấn công chủ động quét mục tiêu (cổng mạng, dịch vụ web, lỗ hổng) để thu thập thông tin trước khi tấn công. Công cụ điển hình: nmap, nikto, sqlmap."
+  },
+  {
+    "id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactic": "Initial Access",
+    "description": "Khai thác lỗ hổng trong ứng dụng/dịch vụ có thể truy cập từ Internet (web server, API) để giành quyền truy cập ban đầu vào hệ thống. Thường đi kèm dấu hiệu SQL injection, XSS, path traversal trong log web server."
+  },
+  {
+    "id": "T1565.001",
+    "name": "Stored Data Manipulation",
+    "tactic": "Impact",
+    "description": "Kẻ tấn công (hoặc mã độc) chỉnh sửa dữ liệu đã lưu trữ trên hệ thống nhằm gây ảnh hưởng tới tính toàn vẹn hoặc để che giấu dấu vết. Thường biểu hiện qua alert File Integrity Monitoring (FIM) khi checksum của file quan trọng thay đổi bất thường."
+  },
+  {
+    "id": "T1078",
+    "name": "Valid Accounts",
+    "tactic": "Defense Evasion, Persistence, Privilege Escalation, Initial Access",
+    "description": "Kẻ tấn công sử dụng thông tin đăng nhập hợp lệ (đã đánh cắp hoặc đoán được) để truy cập hệ thống, khiến hoạt động trông giống người dùng bình thường và khó bị phát hiện hơn so với khai thác lỗ hổng."
+  },
+  {
+    "id": "T1543.003",
+    "name": "Windows Service",
+    "tactic": "Persistence, Privilege Escalation",
+    "description": "Tạo hoặc chỉnh sửa Windows Service để duy trì quyền truy cập lâu dài hoặc leo thang đặc quyền. Cần phân biệt với các service hệ thống hợp lệ như Software Protection Platform."
+  },
+  {
+    "id": "T1562.004",
+    "name": "Disable or Modify System Firewall",
+    "tactic": "Defense Evasion",
+    "description": "Kẻ tấn công tắt hoặc chỉnh sửa cấu hình firewall để mở đường cho lưu lượng độc hại hoặc để duy trì kết nối ra ngoài (C2) mà không bị chặn."
+  }
+]
