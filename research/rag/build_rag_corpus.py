@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT = ROOT / "research" / "rag" / "generated"
-STARTER = ROOT / "ai_module" / "rag_data"
+STARTER = ROOT / "research" / "rag" / "starter"
 MITRE_URL = ("https://raw.githubusercontent.com/mitre-attack/attack-stix-data/"
              "master/enterprise-attack/enterprise-attack-20.0.json")
 TECHNIQUE_ID = re.compile(r"^T[0-9]{4}(?:\.[0-9]{3})?$")
