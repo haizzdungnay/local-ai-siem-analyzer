@@ -63,3 +63,7 @@ webhook/email, OAuth hoặc remote multi-user.
 3. Live VI/EN có provenance/hash/language compliance; fallback không persist raw output.
 4. Dashboard chỉ listen loopback bằng production WSGI server.
 5. `CHANGELOG.md` cập nhật trước `HANDOFF.md`; PR xanh mới được merge vào `main`.
+
+## Hướng mở rộng được lập kế hoạch ngày 2026-10-23: Hybrid AI Model Gateway
+
+Tài liệu triển khai chi tiết: [Hybrid AI Model Gateway](hybrid-ai-gateway-roadmap.md). Trạng thái **PLANNED**, chưa có provider cloud/model manager/vault nào được triển khai trong thay đổi tài liệu này. Các gate G0–G6 bổ sung lớp quản lý model/provider mà không thay thế Wazuh, RAG, SOC contract và human review. Các điều kiện an toàn hiện tại vẫn áp dụng: loopback-only, local-first, cloud egress opt-in, CI xanh trước khi merge tính năng, không auto-remediation.
