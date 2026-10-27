@@ -1,6 +1,27 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-10-13
+Ngày cập nhật: 2026-10-27
+
+## P0 v2.0.0 — bước 1–2: gỡ credential, KB RAG đầy đủ (2026-10-27)
+
+- Trạng thái: ĐANG LÀM (xong bước 1–2/5; chưa commit).
+- Đã xong:
+  1. Xóa block credential cuối `docs/DATN OPS.md` (−25 dòng); thêm `CREDENTIALS.local.md` vào `.gitignore`.
+  2. KB mới: `wazuh_rules.json` 4473 rule; `mitre_techniques.json` 607 technique active, `id` dạng `T1110`. Sửa `build_mitre_kb.py` (STIX ID → external ID, bỏ revoked/deprecated, ghi LF); `build_rag_kb.py` ghi LF; `wazuh_rules.json` chuyển CRLF → LF (nội dung JSON không đổi).
+  3. `.gitignore` bỏ qua `ai_module/rag_data/rules/`, `wz_rules.tar.gz`. `mitre.db` vẫn ignored qua `ai_module/rag_data/*.db`.
+- Verification (chạy trên clone sạch `baa7913` + thay đổi trên):
+  - `python scripts/check_tracked_secrets.py` — PASS.
+  - `python -m pytest -q` — 314 passed, 2 skipped.
+  - `rag._load_source`: 4473 + 607 = 5080 doc, có `mitre-T1110`.
+  - `git diff --check` — PASS.
+  - KB đọc bằng `encoding="utf-8"`: 0 ký tự hỏng, 0 id trùng, 0 description rỗng.
+- Blocker/giới hạn:
+  - Password lab vẫn nằm trong git history của repo public (từ `f9d251f`); chưa đổi password, chưa rewrite history.
+  - `check_tracked_secrets.py` không phát hiện credential dạng bảng markdown (xem CHANGELOG/Security).
+  - Baseline cũ (33 case, McNemar p = 0,58) chạy với KB 11 rule / 8 technique — kết luận "RAG không khác biệt" phải đọc trong giới hạn KB đó; cần chạy lại sau khi re-index.
+  - `eval/samples/kb1–kb5.json`, `benign*.json` chưa track: chứa hostname/IP agent live chưa sanitize, kb2/kb5 ~4–5 MB; chờ quyết định có push không.
+  - Shell trên máy host qua desktop bridge lỗi; lệnh git/python chạy tay trên PowerShell.
+- Next action: bước 3 — `config.yaml` đặt `rag.data_dir: rag_data`, `ollama.model: qwen2.5:7b`; chạy `python ai_module/main.py --demo` re-index (~5080 doc) và kiểm tra `[REFERENCE source=wazuh_rule ...]`.
 
 ## Nhan dien phan cung va dieu tiet tai nguyen RTX 5070 Ti 16GB (2026-10-21)
 

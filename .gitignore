@@ -18,9 +18,14 @@ venv/
 ai_module/config.yaml
 ai_module/telegram.local.env
 ai_module/gmail.local.env
+# Credential lab chỉ lưu local (repo public)
+CREDENTIALS.local.md
 
 # RAG vector store (sinh lại được)
 ai_module/rag_data/*.db
+# Ruleset Wazuh thô dùng để build KB (đã trích vào rag_data/wazuh_rules.json)
+ai_module/rag_data/rules/
+wz_rules.tar.gz
 ai_module/rag_data/chroma/
 /rag_data/chroma/
 

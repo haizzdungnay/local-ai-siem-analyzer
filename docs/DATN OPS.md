@@ -259,28 +259,3 @@ Ngược thứ tự bật:
 | Agent `Disconnected` | `wazuh-agent` chưa chạy hoặc mạng Victim lỗi | Mục 3 |
 | AI job failed ở `calling_ollama` | Ollama chưa chạy / thiếu model | `ollama list`, `ollama pull <model>` |
 | AI job failed ở `fetching_alerts` | Indexer down hoặc sai credential trong `config.yaml` | Mục 7.2 |
-
-# Credential lab — CHỈ LƯU TRÊN MÁY, KHÔNG COMMIT
-
-> File này phải nằm trong `.gitignore` (dòng `CREDENTIALS.local.md`). Kiểm tra trước mỗi lần push:
-> `git check-ignore CREDENTIALS.local.md` phải in ra tên file.
-
-Cập nhật lần cuối: 2026-10-13 — toàn bộ lab dùng chung password `kali`.
-
-## Hệ điều hành
-
-| Máy | IP | Username | Password |
-|---|---|---|---|
-| SIEM Ubuntu | 192.168.100.10 | `wazuh` | `kali` |
-| Victim Ubuntu | 192.168.100.20 | `trnguyn` | `kali` |
-| Attacker Kali | 192.168.100.30 | `kali` | `kali` |
-| Victim Windows | 192.168.100.40 | `victim` | `kali` |
-
-## Dịch vụ
-
-| Dịch vụ | URL | Username | Password | Ghi chú |
-|---|---|---|---|---|
-| Wazuh Dashboard / Indexer | https://192.168.100.10 , :9200 | `admin` | `kali` | Nếu sai thử `SecretPassword` (mặc định) |
-| Wazuh Manager API | https://192.168.100.10:55000 | `wazuh-wui` | `kali` | Đối chiếu `API_PASSWORD` trong `docker-compose.yml` nếu sai |
-| DVWA | http://192.168.100.20/DVWA/ | `admin` | `kali` | Nếu sai thử `password` (mặc định DVWA) |
-| MariaDB (DVWA) | localhost trên Victim | `dvwa` | `kali` | |
