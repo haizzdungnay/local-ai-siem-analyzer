@@ -61,3 +61,11 @@ wazuh-data/
 
 ai_module/dashboard-live*.log
 tmp_tests/
+
+# Thesis research: never commit raw source logs, reviewed private labels or generated indices
+research/rag/generated/
+research/datasets/raw/
+research/datasets/private/
+research/training/checkpoints/
+research/training/outputs/
+*.safetensors

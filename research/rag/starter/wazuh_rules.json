@@ -1,0 +1,46 @@
+[
+  {
+    "id": "5503",
+    "description": "PAM: User login failed. Xảy ra khi có 1 lần đăng nhập thất bại qua PAM (thường là SSH/console) trên Linux. Nếu lặp lại nhiều lần trong thời gian ngắn từ cùng 1 IP, đây là dấu hiệu điển hình của tấn công dò mật khẩu (brute-force)."
+  },
+  {
+    "id": "5710",
+    "description": "sshd: Attempt to login using a non-existent user. Ai đó cố đăng nhập SSH bằng username không tồn tại trên hệ thống — thường thấy trong giai đoạn dò quét tài khoản (user enumeration) trước khi brute-force."
+  },
+  {
+    "id": "5712",
+    "description": "sshd: Multiple authentication failures. Wazuh tổng hợp nhiều lần xác thực SSH thất bại liên tiếp từ cùng nguồn — mức độ nghiêm trọng cao hơn 1 lần login fail đơn lẻ, gần như chắc chắn là brute-force đang diễn ra."
+  },
+  {
+    "id": "550",
+    "description": "Integrity checksum changed (File Integrity Monitoring - FIM). Một file được giám sát đã bị thay đổi nội dung (checksum md5/sha1/sha256 khác so với baseline). Cần xem file cụ thể nào bị đổi để đánh giá mức độ nghiêm trọng — file cấu hình hệ thống (vd /etc/passwd, /etc/shadow) nghiêm trọng hơn nhiều so với file log thông thường."
+  },
+  {
+    "id": "554",
+    "description": "File added to the system (FIM). Một file mới xuất hiện trong thư mục đang được giám sát. Có thể là hoạt động hợp lệ (cài đặt phần mềm) hoặc dấu hiệu file độc hại/backdoor được thả vào hệ thống."
+  },
+  {
+    "id": "31151",
+    "description": "Web attack returned code 200 (potential attack success). Cảnh báo web server phản hồi HTTP 200 cho 1 request có dấu hiệu tấn công (SQLi, XSS, path traversal...) — nghĩa là request đáng ngờ có thể đã thành công thay vì bị chặn."
+  },
+  {
+    "id": "31101",
+    "description": "Web attack: SQL injection attempt. Phát hiện chuỗi ký tự nghi vấn SQL injection trong tham số request gửi tới web server."
+  },
+  {
+    "id": "100",
+    "description": "Web scan/reconnaissance detected. Công cụ quét lỗ hổng web (nikto, sqlmap, nmap script) được phát hiện đang quét mục tiêu — thường là bước trinh sát (reconnaissance) trước khi tấn công thật sự."
+  },
+  {
+    "id": "60106",
+    "description": "Windows Logon Success. Sự kiện đăng nhập Windows thành công (Event ID 4624). Bình thường ở mức độ thấp, nhưng cần chú ý nếu đăng nhập xảy ra vào giờ bất thường, từ tài khoản đặc quyền, hoặc kèm theo các alert khác trên cùng máy trong cùng khung thời gian."
+  },
+  {
+    "id": "60642",
+    "description": "Software protection service scheduled successfully. Sự kiện định kỳ bình thường của Windows Software Protection Platform (liên quan tới license/activation). Mức độ rủi ro thấp, không phải dấu hiệu tấn công trong đa số trường hợp."
+  },
+  {
+    "id": "18152",
+    "description": "Windows Firewall configuration changed. Cấu hình tường lửa Windows bị thay đổi — cần kiểm tra ai thực hiện thay đổi và thay đổi đó có mở thêm cổng/dịch vụ không mong muốn hay không."
+  }
+]

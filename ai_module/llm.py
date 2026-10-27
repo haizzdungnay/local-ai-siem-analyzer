@@ -184,7 +184,7 @@ def normalize_llm_parameters(value=None, *, defaults=None) -> dict:
         if not isinstance(defaults, dict):
             raise ValueError("ollama.analysis must be an object")
         baseline.update(defaults)
-    unknown = set(value) - set(DEFAULT_LLM_PARAMETERS) - {"num_ctx", "pacing", "num_batch"}
+    unknown = set(value) - set(DEFAULT_LLM_PARAMETERS) - {"num_ctx", "pacing", "num_batch", "low_vram", "num_thread"}
     if unknown:
         raise ValueError("llm_parameters has unsupported fields")
     merged = {**baseline, **value}
@@ -210,6 +210,18 @@ def normalize_llm_parameters(value=None, *, defaults=None) -> dict:
     if num_ctx is not None:
         if isinstance(num_ctx, bool) or not isinstance(num_ctx, int) or not 1024 <= num_ctx <= 131072:
             raise ValueError("num_ctx must be an integer from 1024 to 131072")
+    num_batch = merged.get("num_batch")
+    if num_batch is not None:
+        if isinstance(num_batch, bool) or not isinstance(num_batch, int) or not 1 <= num_batch <= 2048:
+            raise ValueError("num_batch must be an integer from 1 to 2048")
+    num_thread = merged.get("num_thread")
+    if num_thread is not None:
+        if isinstance(num_thread, bool) or not isinstance(num_thread, int) or not 1 <= num_thread <= 256:
+            raise ValueError("num_thread must be an integer from 1 to 256")
+    low_vram = merged.get("low_vram")
+    if low_vram is not None:
+        if not isinstance(low_vram, bool):
+            raise ValueError("low_vram must be a boolean")
     res = {
         "temperature": float(temperature),
         "top_p": float(top_p),
@@ -220,18 +232,60 @@ def normalize_llm_parameters(value=None, *, defaults=None) -> dict:
         res["num_ctx"] = num_ctx
     if "pacing" in merged:
         res["pacing"] = bool(merged["pacing"])
-    if "num_batch" in merged and isinstance(merged["num_batch"], int):
-        res["num_batch"] = merged["num_batch"]
+    if num_batch is not None:
+        res["num_batch"] = num_batch
+    if num_thread is not None:
+        res["num_thread"] = num_thread
+    if low_vram is not None:
+        res["low_vram"] = low_vram
     return res
 
 
 def detect_system_hardware() -> dict:
     """Detect available GPU (NVIDIA), VRAM, and system RAM."""
-    import shutil, subprocess, psutil
-    ram = psutil.virtual_memory()
+    import os, shutil, subprocess
+    from pathlib import Path
+    ram_total_mb = 0
+    ram_avail_mb = 0
+    try:
+        import psutil
+        ram = psutil.virtual_memory()
+        ram_total_mb = int(ram.total / (1024**2))
+        ram_avail_mb = int(ram.available / (1024**2))
+    except Exception:
+        pass
+    if not ram_total_mb:
+        try:
+            meminfo = Path("/proc/meminfo")
+            if meminfo.is_file():
+                for line in meminfo.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("MemTotal:"):
+                        ram_total_mb = int(line.split()[1]) // 1024
+                    elif line.startswith("MemAvailable:"):
+                        ram_avail_mb = int(line.split()[1]) // 1024
+        except Exception:
+            pass
+    if not ram_total_mb:
+        try:
+            import ctypes
+            class _MEMSTAT(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            stat = _MEMSTAT()
+            stat.dwLength = ctypes.sizeof(_MEMSTAT)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                ram_total_mb = int(stat.ullTotalPhys / (1024**2))
+                ram_avail_mb = int(stat.ullAvailPhys / (1024**2))
+        except Exception:
+            pass
     info = {
-        "ram_total_mb": int(ram.total / (1024**2)),
-        "ram_available_mb": int(ram.available / (1024**2)),
+        "ram_total_mb": ram_total_mb,
+        "ram_available_mb": ram_avail_mb,
         "gpu_detected": False,
         "gpu_name": None,
         "vram_total_mb": 0,
@@ -258,7 +312,7 @@ def adaptive_pacing_options(model_name: str = "", model_param_size: str = "", hw
     """Pacing strategy to prevent GPU bandwidth saturation and optimize analysis quality."""
     hw = hw_info or detect_system_hardware()
     vram_mb = hw.get("vram_total_mb") or 0
-    
+
     # Bounded pacing options:
     # num_batch controls batch size per inference step (default 512 in llama.cpp).
     # Setting num_batch: 256 or 128 paces memory bus, avoiding GPU memory bus spikes.
@@ -276,10 +330,16 @@ def adaptive_pacing_options(model_name: str = "", model_param_size: str = "", hw
         pacing["num_ctx"] = 4096
         pacing["low_vram"] = True
     else:
-        import psutil
+        import os
+        cpu_count = 4
+        try:
+            import psutil
+            cpu_count = psutil.cpu_count(logical=False) or os.cpu_count() or 4
+        except Exception:
+            cpu_count = os.cpu_count() or 4
         pacing["num_batch"] = 64
         pacing["num_ctx"] = 4096
-        pacing["num_thread"] = max(1, psutil.cpu_count(logical=False) or 4)
+        pacing["num_thread"] = max(1, cpu_count)
     return pacing
 
 
@@ -296,13 +356,17 @@ def ollama_options(llm_parameters=None) -> dict:
         "seed": OLLAMA_OPTIONS["seed"],
         "num_ctx": params.get("num_ctx", OLLAMA_OPTIONS["num_ctx"]),
     }
-    if params.get("pacing", True) and "num_batch" not in opts:
-        # Pacing active by default when not in unit-test mock
+    if params.get("pacing", False):
         pacing = adaptive_pacing_options()
-        if "num_batch" in pacing and "num_batch" in params:
-            opts["num_batch"] = params["num_batch"]
+        for k, v in pacing.items():
+            if k not in params:
+                opts[k] = v
     if "num_batch" in params:
         opts["num_batch"] = params["num_batch"]
+    if "low_vram" in params:
+        opts["low_vram"] = params["low_vram"]
+    if "num_thread" in params:
+        opts["num_thread"] = params["num_thread"]
     return opts
 
 
@@ -793,7 +857,7 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
         request_data += "\n\n" + _untrusted_message("RAG_CONTEXT", rag_context)
     user_msg = request_data + "\n\n" + _trusted_language_reminder(language)
     client = ollama_sdk.Client(host=base_url, timeout=timeout)
-    response = _safe_chat(client, 
+    response = _safe_chat(client,
         model=model,
         messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_msg}],
         format=OUTPUT_SCHEMA,
@@ -847,7 +911,7 @@ def analyze_window(window_text: str, model: str = "qwen2.5:3b",
     user_sections.append(_trusted_language_reminder(language))
     user_msg = "\n\n".join(user_sections)
     client = ollama_sdk.Client(host=base_url, timeout=timeout)
-    response = _safe_chat(client, 
+    response = _safe_chat(client,
         model=model,
         messages=[{"role": "system", "content": prompt},
                   {"role": "user", "content": user_msg}],
@@ -1125,7 +1189,7 @@ def analyze_ip_profile(ip_telemetry_text: str, source_ip: str, model: str = "qwe
     user_sections = [request_data, _trusted_language_reminder(language)]
     user_msg = "\n\n".join(user_sections)
     client = ollama_sdk.Client(host=base_url, timeout=timeout)
-    response = _safe_chat(client, 
+    response = _safe_chat(client,
         model=model,
         messages=[{"role": "system", "content": prompt},
                   {"role": "user", "content": user_msg}],

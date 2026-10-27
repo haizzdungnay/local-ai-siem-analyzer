@@ -2,19 +2,22 @@
 
 Ngày cập nhật: 2026-10-27
 
-## G0 — sửa 2 blocker CI trước khi push (2026-10-27)
+## Merge `origin/main@eacad9e` + Pillow 13 cho pip-audit (2026-10-27)
 
-- Trạng thái: HOÀN TẤT trên môi trường sạch giống CI; CHỜ GitHub Actions xác nhận sau push.
-- Nguyên nhân:
-  1. `ai_module/llm.py` (`detect_system_hardware()`, `adaptive_pacing_options()`) import `psutil` nhưng `ai_module/requirements.txt` không khai báo → venv sạch: 13 test fail (`tests/test_dashboard_core.py`…), khớp run `39628600799` FAILED 4/4 job ghi ở mục Gateway 2026-10-23. Máy dev pass vì đã cài sẵn `psutil`.
-  2. `scripts/audit_dependencies.py` (pip-audit, bước CI Linux/3.11) fail: `Pillow==12.3.0` có 38 advisory, bản sửa duy nhất là 13.0.0 (PyPI 2026-10-16, `requires_python >=3.11`).
-- Sửa: thêm `psutil==7.2.2`; nâng `Pillow==13.0.0` trong `ai_module/requirements.txt`. `build_mitre_kb.py` đóng kết nối sqlite bằng `contextlib.closing` (hết 2 `ResourceWarning`; output KB không đổi byte nào).
-- Verification (venv mới, chỉ `pip install -r ai_module/requirements-dev.txt`, Python 3.13):
-  - `python -m pytest tests -q -p no:cacheprovider -W default` — 319 passed, 2 skipped, 0 warning (gồm test render PDF Telegram dùng Pillow).
-  - `python scripts/audit_dependencies.py --requirements ai_module/requirements-dev.txt --allowlist ai_module/pip-audit-allowlist.json` — passed; 5 exception ChromaDB còn hiệu lực (hết hạn 2026-12-31).
-  - `python -m compileall -q ai_module eval tests` — OK.
-- Giới hạn: `pylock.toml` chưa có `psutil` / Pillow 13 — chưa sinh lại lock; CI không dùng lock. Chưa chạy trên Windows runner và Python 3.11/3.12 (chỉ CI kiểm).
-- Remote: `origin/main` đã ở `7056267` (PR #7 Gateway roadmap, sửa `CHANGELOG.md`, `HANDOFF.md`, `README.md`, `docs/`); phải `git pull` trước khi push và gộp conflict 2 ledger.
+- Trạng thái: HOÀN TẤT local; CHỜ GitHub Actions xác nhận sau push.
+- Merge `main` local (3 commit: KB đầy đủ + gỡ credential, KB Tầng 1–2, ledger) với `origin/main@eacad9e` (14 commit: PR #7 Gateway roadmap, PR #8 `research/`, `eacad9e` G0 psutil).
+- Conflict đã gộp:
+  - `ai_module/requirements.txt`: lấy `psutil==7.0.0` của `eacad9e` (có fallback stdlib trong `llm.py` + test), giữ `Pillow==13.0.0` của local.
+  - `CHANGELOG.md`, `HANDOFF.md`: giữ mục của cả hai phía.
+- Lý do nâng Pillow: `scripts/audit_dependencies.py` (bước CI Linux/3.11) fail với `Pillow==12.3.0` — 38 advisory, bản sửa duy nhất 13.0.0 (PyPI 2026-10-16, `requires_python >=3.11`). `eacad9e` chưa xử lý bước này.
+- `build_mitre_kb.py` đóng kết nối sqlite bằng `contextlib.closing` (hết 2 `ResourceWarning`, KB output không đổi).
+- Verification (cây merge dựng lại trên clone sạch `eacad9e` + file local, venv mới chỉ cài `ai_module/requirements-dev.txt`, Python 3.13):
+  - `python -m pytest tests -q -p no:cacheprovider -W default` — 323 passed, 2 skipped, 0 warning.
+  - `python scripts/audit_dependencies.py --requirements ai_module/requirements-dev.txt --allowlist ai_module/pip-audit-allowlist.json` — passed (5 exception ChromaDB).
+  - `compileall`, `check_tracked_secrets.py` (worktree + `--staged`), `git diff --cached --check`, `node --check ai_module/web/app.js`, `bash -n` script attack + pre-commit — PASS.
+  - Chưa chạy trên Windows runner / Python 3.11–3.12 (CI kiểm).
+- Trùng chức năng cần thống nhất: `research/rag/build_rag_corpus.py` (ATT&CK v20, PR #8) và `ai_module/build_mitre_kb.py` (`mitre.db` Wazuh) cùng dựng KB MITRE.
+- `pylock.toml` chưa sinh lại cho Pillow 13 / psutil.
 
 ## Quyết định hướng nghiên cứu: RAG lai + nhánh so sánh QLoRA (2026-10-27)
 
@@ -85,6 +88,39 @@ Ngày cập nhật: 2026-10-27
   - `eval/samples/kb1–kb5.json`, `benign*.json` chưa track: chứa hostname/IP agent live chưa sanitize, kb2/kb5 ~4–5 MB; chờ quyết định có push không.
   - Shell trên máy host qua desktop bridge lỗi; lệnh git/python chạy tay trên PowerShell.
 - Next action: bước 3 — `config.yaml` đặt `rag.data_dir: rag_data`, `ollama.model: qwen2.5:7b`; chạy `python ai_module/main.py --demo` re-index (~5080 doc) và kiểm tra `[REFERENCE source=wazuh_rule ...]`.
+
+## Ổn định G0 CI/CD & Xử lý lỗi kỹ thuật Hardware Pacing (2026-10-27)
+
+- Trạng thái: HOÀN TẤT.
+- File thay đổi:
+  - ai_module/requirements.txt: Bổ sung khai báo psutil==7.0.0.
+  - ai_module/llm.py:
+    - detect_system_hardware(): Bổ sung fallback thư viện chuẩn (/proc/meminfo trên Linux, ctypes trên Windows) an toàn khi thiếu psutil; không làm gián đoạn /api/status.
+    - adaptive_pacing_options(): Dùng os.cpu_count() fallback khi không có psutil.
+    - normalize_llm_parameters(): Cho phép và validate các tham số điều tiết phần cứng (low_vram, num_thread, num_batch, num_ctx, pacing), triệt tiêu lỗi ném ngoại lệ khi chạy trên máy CPU hoặc GPU < 6GB.
+    - ollama_options(): Ánh xạ đúng low_vram, num_thread, num_batch và sửa logic pacing mặc định.
+    - Xóa các trailing whitespace gây lỗi git diff --check.
+  - tests/test_ai_pipeline.py: Bổ sung unit test test_hardware_detection_and_pacing_options kiểm thử trọn vẹn cả ca có và không có psutil, chuẩn hóa pacing CPU/GPU.
+- Verification:
+  - python -m pytest tests -q -p no:cacheprovider: 315 passed, 2 skipped in 16.8s.
+  - Test mô phỏng môi trường thiếu psutil (sys.modules['psutil'] = None): 315 passed, 2 skipped (100% pass, triệt tiêu hoàn toàn 13 ca lỗi gãy CI trước đó).
+  - python -m compileall -q ai_module eval tests: PASS.
+  - python scripts/check_tracked_secrets.py: PASS.
+  - git diff --check: PASS (0 lỗi whitespace).
+  - node --check ai_module/web/app.js: PASS.
+- Blockers / Giới hạn: Không có.
+- Next action: Sẵn sàng tiến hành giai đoạn G1 theo roadmap docs/hybrid-ai-gateway-roadmap.md.
+
+
+## Hybrid AI Model Gateway roadmap (2026-10-23) — PLANNED ONLY
+
+- Status: Roadmap created as documentation only. No implementation, deployment or credential changes.
+- New document: `docs/hybrid-ai-gateway-roadmap.md` (G0–G6; architecture, compatibility, admin UI, security and testing gates).
+- Documentation sync: README.md, docs/product-roadmap.md, CHANGELOG.md and HANDOFF.md.
+- Baseline: main `baa7913cf78118220c6b107b400e6fe8dec810cb`; GitHub Actions run `39628600799` FAILED on all four matrix jobs due to missing `psutil` import and resulting /api/status/analysis failures.
+- Blockers: fix G0 CI before merging runtime changes; verify hardware policy behavior for CPU and low VRAM; perform explicit owner approval for cloud egress and provider API keys.
+- Verification: documentation/GitHub tree and PR diff review only; **no pytest or live cloud/lab benchmark has been run** for this planning change.
+- Next action: execute G0 stabilization in a separate PR; then implement G1 registry/migration before API key and cloud feature work.
 
 ## Nhan dien phan cung va dieu tiet tai nguyen RTX 5070 Ti 16GB (2026-10-21)
 
