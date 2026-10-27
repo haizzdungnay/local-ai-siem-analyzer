@@ -2,14 +2,14 @@
 
 Ngày cập nhật: 2026-10-27
 
-## Merge `origin/main@eacad9e` + Pillow 13 cho pip-audit (2026-10-27)
+## Merge `origin/main` (`eacad9e`, `855accb`) vào main local (2026-10-27)
 
 - Trạng thái: HOÀN TẤT local; CHỜ GitHub Actions xác nhận sau push.
 - Merge `main` local (3 commit: KB đầy đủ + gỡ credential, KB Tầng 1–2, ledger) với `origin/main@eacad9e` (14 commit: PR #7 Gateway roadmap, PR #8 `research/`, `eacad9e` G0 psutil).
 - Conflict đã gộp:
-  - `ai_module/requirements.txt`: lấy `psutil==7.0.0` của `eacad9e` (có fallback stdlib trong `llm.py` + test), giữ `Pillow==13.0.0` của local.
+  - `ai_module/requirements.txt`: lấy `psutil==7.0.0` của `eacad9e` (có fallback stdlib trong `llm.py` + test); `Pillow==13.0.0` trùng với `855accb` (cùng sửa pip-audit) nên tự gộp.
   - `CHANGELOG.md`, `HANDOFF.md`: giữ mục của cả hai phía.
-- Lý do nâng Pillow: `scripts/audit_dependencies.py` (bước CI Linux/3.11) fail với `Pillow==12.3.0` — 38 advisory, bản sửa duy nhất 13.0.0 (PyPI 2026-10-16, `requires_python >=3.11`). `eacad9e` chưa xử lý bước này.
+- Pillow 13.0.0: xem mục "Nâng cấp Pillow 13.0.0" (`855accb`); local đã kiểm độc lập cùng kết luận (38 advisory, bản sửa duy nhất 13.0.0).
 - `build_mitre_kb.py` đóng kết nối sqlite bằng `contextlib.closing` (hết 2 `ResourceWarning`, KB output không đổi).
 - Verification (cây merge dựng lại trên clone sạch `eacad9e` + file local, venv mới chỉ cài `ai_module/requirements-dev.txt`, Python 3.13):
   - `python -m pytest tests -q -p no:cacheprovider -W default` — 323 passed, 2 skipped, 0 warning.
