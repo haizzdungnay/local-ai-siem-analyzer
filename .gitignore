@@ -29,6 +29,8 @@ wz_rules.tar.gz
 # Playbook trích từ Elastic detection-rules (Elastic License 2.0) — sinh lại bằng build_playbook_kb.py, không phân phối trên repo public
 ai_module/rag_data/elastic_playbooks.json
 ai_module/rag_data/chroma/
+# Index Chroma của corpus benchmark: sinh lại từ rag_data_full/*.json; bị ghi đè mỗi lần chạy eval/rag_benchmark.py
+ai_module/rag_data_full/chroma_full/
 /rag_data/chroma/
 
 # Ollama models (quá to cho git)
@@ -69,3 +71,6 @@ research/datasets/private/
 research/training/checkpoints/
 research/training/outputs/
 *.safetensors
+
+# Export OpenSearch thô của kịch bản lab (kb1–kb5, benign*): hostname/IP live chưa sanitize, nhiều MB; tập test khóa bằng SHA-256, không push lên repo public
+eval/raw_exports/

@@ -2,6 +2,18 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Track 0 — dọn P0: export lab, index Chroma tracked, phát hiện ngưỡng RAG (2026-10-28)
+
+- Trạng thái: ĐANG LÀM (file đã sửa; chờ người dùng chạy lệnh git trên host).
+- Đã xong:
+  1. `.gitignore`: thêm `eval/raw_exports/` và `ai_module/rag_data_full/chroma_full/`.
+  2. Nguyên nhân index bị ghi đè: `tests/test_rag_benchmark.py::test_rag_benchmark_script_runs` gọi `eval/rag_benchmark.py` khi `127.0.0.1:11434` phản hồi → `RuleRAG` mở PersistentClient trên `rag_data_full/chroma_full` (đang tracked) và ghi lại SQLite/HNSW. CI không có Ollama nên test skip, chỉ máy dev bị bẩn.
+- Phát hiện cho nghiên cứu (chưa sửa — thuộc P1):
+  - `eval/rag_benchmark.py` đã có sẵn Hit Rate@k, Recall@k, MRR trên 33 case và ablation ngưỡng khoảng cách 200–500 (L2² của `nomic-embed-text`). Production `rag.DEFAULT_RELEVANCE_THRESHOLD = 1.0` thấp hơn dải đó 2–3 bậc → gần như mọi kết quả bị lọc, chỉ văn bản gần trùng khớp mới qua (khớp quan sát demo: 5712 → 0 kết quả, 550 → 1). Cần chạy lại benchmark với KB 5080 doc để có số liệu cho đóng góp ①; tên "Corpus 19 đoạn" / "56 đoạn" trong script đã lỗi thời.
+- Việc người dùng chạy trên host: dời 7 file export, `git rm -r --cached ai_module/rag_data_full/chroma_full`, commit, push, xem CI.
+- Blocker: shell desktop bridge không chạy (hypervisor tắt: bật ảo hóa trong BIOS/UEFI hoặc Virtual Machine Platform rồi khởi động lại); CI status cần xem trên GitHub Actions.
+- Next action: A4 smoke test lab → tag `v2.0.0`; P1 chạy `eval/rag_benchmark.py` với KB mới.
+
 ## Merge `origin/main` (`eacad9e`, `855accb`) vào main local (2026-10-27)
 
 - Trạng thái: HOÀN TẤT local; CHỜ GitHub Actions xác nhận sau push.
@@ -29,7 +41,7 @@ Ngày cập nhật: 2026-10-27
   - Mỗi cấu hình chạy cả `qwen2.5:3b` và `qwen2.5:7b` khi khả thi.
 - Ràng buộc bắt buộc (không vi phạm, nếu không kết quả không bảo vệ được):
   1. RAG lai phải chạy đúng (đo recall retrieval) TRƯỚC khi so với QLoRA — so QLoRA với RAG đang trả 0 kết quả (5712) là so với đối thủ hỏng.
-  2. Tập test khóa + SHA-256 TRƯỚC khi train. Đề xuất: `eval/samples/kb1–kb5` + `benign*` (đã thu, chưa ai train trên đó) = test; dữ liệu train SFT lấy từ kịch bản lab MỚI (biến thể / Atomic Red Team), chia theo `scenario_id`, không chia ngẫu nhiên từng log.
+  2. Tập test khóa + SHA-256 TRƯỚC khi train. Đề xuất: `eval/raw_exports/kb1–kb5` + `benign*` (đã thu, chưa ai train trên đó) = test; dữ liệu train SFT lấy từ kịch bản lab MỚI (biến thể / Atomic Red Team), chia theo `scenario_id`, không chia ngẫu nhiên từng log.
   3. Playbook Tầng 3 viết từ ngữ nghĩa rule, không từ `kb*.json` hay đáp án `eval/build_dataset.py`.
   4. Output tham chiếu SFT nếu sinh bằng model lớn hơn → khai báo là distillation, có người review mẫu.
   5. Báo cáo cả prediction thô và sau `apply_severity_floor()`.
@@ -65,7 +77,7 @@ Ngày cập nhật: 2026-10-27
 - Blocker/giới hạn:
   - Map Elastic theo technique ID là gần đúng: T1059.004 có 110 playbook → khi nối vào pipeline phải chọn lọc (ưu tiên khớp tên/tag, giới hạn số mục), không nhét hết.
   - Bước Elastic viết cho telemetry Elastic (ECS); đã lọc công cụ Elastic nhưng vẫn có thể còn bước không áp dụng được cho Wazuh.
-  - Playbook ngoài không được lấy từ đáp án `eval/build_dataset.py` (tránh leakage); Tầng 3 phải viết từ ngữ nghĩa rule, không từ `eval/samples/kb*.json`.
+  - Playbook ngoài không được lấy từ đáp án `eval/build_dataset.py` (tránh leakage); Tầng 3 phải viết từ ngữ nghĩa rule, không từ `eval/raw_exports/kb*.json`.
 - Next action: Tầng 3 — khung `playbooks.json` theo rule.id (`verify → if_success → if_failed → fp_conditions → sources`) cho ~10–15 rule lab; sau đó P1 nối exact lookup vào `analyze_alert()` (thêm block `PLAYBOOK`).
 
 ## P0 v2.0.0 — bước 1–2: gỡ credential, KB RAG đầy đủ (2026-10-27)
