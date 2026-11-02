@@ -2,6 +2,18 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Playbook Tầng 3 — bắt đầu 5712 (2026-11-02)
+
+- Trạng thái: ĐANG LÀM (draft).
+- File: `ai_module/rag_data/playbooks.yaml` (YAML để viết tay tiếng Việt; `pyyaml` đã có). Chưa có code đọc file này.
+- 5712: đã có `trigger` (đọc từ `0095-sshd_rules.xml`: `if_matched_sid 5710`, `frequency=8`, `timeframe=120`, `same_source_ip`, `ignore=60` → số 5712 ≠ số lần thử), `facts`, 4 câu `verify` (5715 cùng srcip; 5760/5763/5503 cùng srcip; đếm 5710/5760; srcip nội bộ/công cộng). Chưa có `branches`, `fp_conditions`, `do_not`, `sources` đầy đủ.
+- Review cần áp dụng: đưa câu "đã đăng nhập thành công chưa" lên đầu; câu user thật thêm 5760/5503 (5763 cần 8 lần/120 s); khoảng thời gian từ 5710 đầu tiên đến hiện tại và đọc kèm câu srcip admin; thêm `agent.id` vào `facts`.
+- 5902: khung + gợi ý; chưa viết.
+- Quyết định: KHÔNG viết playbook theo kịch bản kb1–kb5 (tập test). Phạm vi rule cần phủ có thể chọn theo tần suất rule ID trong tập test (chỉ đếm ID, không đọc log) — ghi rõ trong chương đánh giá.
+- Phát hiện phụ: mitigation ATT&CK T1136 trong `mitre.db` hướng domain controller (M1026/M1028/M1030); `build_playbook_kb.py` còn để lọt placeholder `$osquery_N` (bộ lọc mới chặn `!{`).
+- Chưa làm tối nay: chạy `eval/rag_benchmark.py` + `eval/rag_retrieval_eval.py` (chưa có `eval/rag-benchmark-results.json`; `rag-retrieval-metrics.csv` vẫn bản 2026-08).
+- Next action: chạy 2 benchmark; hoàn thiện 5712 (`branches`/`fp_conditions`/`do_not`/`sources`) → 5902 → chọn danh sách rule cần phủ.
+
 ## P0 bước 4 — smoke test lab end-to-end (2026-11-02)
 
 - Trạng thái: HOÀN TẤT (pipeline chạy; chất lượng diễn giải ghi nhận làm baseline "trước", chưa sửa).

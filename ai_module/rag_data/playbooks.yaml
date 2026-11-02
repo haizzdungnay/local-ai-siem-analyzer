@@ -1,0 +1,85 @@
+# Playbook Tầng 3 — hướng dẫn điều tra có điều kiện theo Wazuh rule.id
+#
+# Mục đích: cho LLM căn cứ để đề xuất next_steps "xác minh trước, hành động sau",
+# tham chiếu đúng thực thể trong alert (srcip, dstuser, agent) thay vì lời khuyên chung.
+#
+# QUY TẮC VIẾT (chống leakage khi đánh giá):
+#   - Viết từ NGỮ NGHĨA của rule (mô tả rule, if_sid/frequency trong ruleset Wazuh,
+#     ATT&CK, Elastic, kinh nghiệm SOC chung).
+#   - KHÔNG mở eval/raw_exports/kb*.json, eval/raw_exports/smoke/*, eval/expected/*
+#     hay dict next_steps trong eval/build_dataset.py khi viết.
+#   - Mỗi bước chỉ dùng field có thật trong alert Wazuh hoặc truy vấn Indexer làm được.
+#   - Bước containment (block, cô lập, khóa tài khoản) luôn nằm SAU bước xác minh.
+#
+# Trường:
+#   rule_id, title, mitre      : khóa tra cứu chính xác (exact lookup)
+#   status                     : draft | reviewed
+#   facts                      : field cần đọc từ alert để điền vào next_steps
+#   verify                     : câu hỏi phải trả lời trước, kèm cách kiểm (field / truy vấn)
+#   branches                   : hành động theo kết quả xác minh
+#   fp_conditions              : khi nào alert này là hoạt động hợp lệ
+#   do_not                     : việc không được làm trước khi xác minh
+#   sources                    : căn cứ của từng ý (ghi ngắn)
+
+version: 1
+playbooks:
+
+  - rule_id: "5712"
+    title: "SSH brute force với user không tồn tại"
+    mitre: ["T1110"]                     # Brute Force
+    status: draft
+    trigger:                             # điều kiện rule nổ (từ 0095-sshd_rules.xml)
+      - "Rule 5710 (thử user không tồn tại) lặp ít nhất 8 lần (frequency=8)"
+      - "Trong vòng 120 giây (timeframe=120)"
+      - "Cùng một IP nguồn (same_source_ip)"
+      - "Sau khi nổ im lặng 60 giây (ignore=60) → số 5712 không bằng số lần thử"
+    facts:                               # field cần đọc từ alert
+      - data.srcip                       # IP tấn công
+      - agent.name, agent.ip             # máy bị nhắm
+      - rule.firedtimes
+    verify:
+      - question: "Kẻ tấn công có thử cả user CÓ THẬT không?"
+        how: "Tìm kiếm trên Wazuh Dashboard với query: `agent.id: \"<agent_id>\" AND data.srcip: \"<srcip>\" AND rule.id: \"5763\"`. Nếu có kết quả, chứng tỏ kẻ tấn công đã chuyển sang brute force tài khoản có thật (hoặc ngược lại)."
+
+      - question: "Đã có đăng nhập thành công chưa?"
+        how: "Tìm kiếm trên Wazuh Dashboard với query: `agent.id: \"<agent_id>\" AND data.srcip: \"<srcip>\" AND rule.id: \"5715\"`. Nếu có log, đây là sự cố Nghiêm trọng (Compromised) vì kẻ tấn công đã vào được hệ thống."
+
+      - question: "Quy mô thật bao nhiêu lần thử?"
+        how: "Do rule 5712 bị cấu hình ignore=60 nên không phản ánh đúng số lần. Cần đếm tổng số log gốc bằng cách query: `agent.id: \"<agent_id>\" AND data.srcip: \"<srcip>\" AND rule.id: (\"5710\" OR \"5760\")` trong khung thời gian xảy ra sự cố."
+
+      - question: "srcip là nội bộ hay bên ngoài, có được phép không?"
+        how: "Kiểm tra `data.srcip`. Nếu là IP công cộng (Public IP): Đối chiếu với danh sách IP Whitelist của công ty hoặc Threat Intelligence. Nếu là IP nội bộ (Private IP): Kiểm tra máy có IP đó xem có bị nhiễm mã độc tự động quét mạng hoặc do quét lỗ hổng (Scan) từ phòng IT không."
+
+  - rule_id: "5902"
+    title: "Tạo user mới trên hệ thống"
+    mitre: ["T1136", "T1136.001"]
+    status: draft
+    # Ngữ nghĩa rule: level 8; nổ khi syslog ghi "new user" (useradd/adduser).
+    # Nổ Y HỆT nhau khi admin tạo user hợp lệ và khi kẻ tấn công tạo backdoor
+    # => phân biệt bằng NGỮ CẢNH, không bằng rule ID.
+    # Thường đi kèm: 5901 (new group), 5402 (sudo), FIM 550/553/554 trên /etc/passwd,
+    # /etc/shadow, /etc/group và file .lock — các alert FIM đó là HỆ QUẢ của useradd,
+    # không phải hành vi riêng (không phải T1485/T1070.004).
+    facts:
+      - agent.name, agent.ip
+      - data.dstuser          # user mới (nếu decoder trích được)
+      - full_log              # dòng "new user: name=..., UID=..., GID=..., home=..., shell=..."
+    verify:
+      # TODO(Nguyên): gợi ý câu hỏi:
+      #   - AI tạo user này? (5402 sudo ngay trước đó: user nào chạy sudo, từ phiên nào?)
+      #   - Phiên đó bắt đầu từ đâu? (5715/5501 trước đó: srcip có thuộc dải admin không?
+      #     có chuỗi 5710/5712/5503 từ cùng srcip trước đó không?)
+      #   - User mới có đặc quyền không? (UID 0? thêm vào sudo/wheel? 5555/thay đổi /etc/group?)
+      #   - Có change ticket / yêu cầu tạo user không?
+      - question: ""
+        how: ""
+    branches:
+      if_suspicious: []   # có dấu hiệu backdoor (phiên từ IP lạ sau brute force, UID 0, thêm sudo, ngoài giờ, không ticket)
+      if_legitimate: []   # xác nhận được là thao tác quản trị
+      if_unknown: []
+    fp_conditions: []
+    do_not: []
+    sources:
+      - "Wazuh ruleset: 5902 'New user added to the system' level 8, group adduser"
+      - "ATT&CK T1136: mitigations trong mitre.db hướng domain controller (M1026/M1028/M1030) — ít áp dụng cho Linux đơn lẻ"
+      - "Elastic 'Linux User Account Creation' / 'Potential Linux Backdoor User Account Creation': xác minh user tạo thành công, có đăng nhập không, có được thêm nhóm đặc quyền không, ai thực hiện"
