@@ -41,6 +41,8 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
+- `eval/rag_benchmark.py`: nhãn bảng lấy theo số tài liệu thực tế của mỗi kho (thay "Corpus 19 đoạn"/"56 đoạn" viết cứng); thêm ngưỡng production `1.0` và 50/100/150 vào bảng ngưỡng, in cả tỷ lệ truy vấn còn ≥ 1 đoạn; thay mục 3 (kết luận viết cứng không phụ thuộc số liệu) bằng tóm tắt số liệu; ghi `eval/rag-benchmark-results.json`.
+- `.gitattributes`: `*.sh text eol=lf` — `scripts/attacks/ssh-bruteforce.sh` chép từ working tree Windows (CRLF) sang Kali lỗi `set: pipefail: invalid option name`.
 - Ngừng track `ai_module/rag_data_full/chroma_full/` (gitignore): `tests/test_rag_benchmark.py::test_rag_benchmark_script_runs` chạy `eval/rag_benchmark.py` khi Ollama local sẵn sàng, `RuleRAG(..., persist_subdir="chroma_full")` mở PersistentClient và ghi lại `chroma.sqlite3`/`*.bin` đã commit → working tree bẩn sau mỗi lần pytest trên máy dev (CI không có Ollama nên không thấy). Index sinh lại từ `rag_data_full/*.json` bằng `ensure_indexed()`.
 - `eval/raw_exports/` (gitignored) thay cho `eval/samples/` cho 7 file export OpenSearch (`kb1–kb5.json`, `benign.json`, `benign2.json`): `reader.load_sample_alerts()` coi mỗi file trong `eval/samples/` là một alert nên `main.py --demo` phân tích 7 "alert" rỗng.
 - CI/CD: Nâng cấp phụ thuộc Pillow từ 12.3.0 lên 13.0.0 trong ai_module/requirements.txt để giải quyết loạt 38 cảnh báo CVE mới từ pip-audit (GHSA-78g4-xqwv-q3g8, PYSEC-2026-4327, PYSEC-2026-4328).

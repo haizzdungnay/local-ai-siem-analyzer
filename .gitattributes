@@ -1,0 +1,2 @@
+# Script shell chạy trên Linux (Kali/Victim): luôn LF kể cả khi checkout trên Windows
+*.sh text eol=lf

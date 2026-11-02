@@ -12,7 +12,8 @@ Do luong chat luong truy xuat RAG (Information Retrieval Metrics):
    - Mean Reciprocal Rank (MRR)
    - Ty le doan vuot nguong khoang cach (Pass Rate vs Threshold)
 4. Ablation Study:
-   - So sanh Corpus 19 doan (cu) vs Kho tri thuc mo rong 56 doan (moi)
+   - So sanh kho production (ai_module/rag_data) vs kho benchmark (ai_module/rag_data_full);
+     nhan bang in theo so tai lieu thuc te trong moi kho
    - Ablation theo k: k in [1, 2, 3, 5, 10]
    - Ablation theo nguong khoang cach (Distance Threshold)
 """
@@ -167,10 +168,13 @@ def main():
     rag_full.ensure_indexed()
     
     k_list = [1, 2, 3, 5, 10]
-    thresh_list = [200, 250, 300, 350, 400, 500]
+    # 1.0 = DEFAULT_RELEVANCE_THRESHOLD dang dung trong production (rag.py)
+    thresh_list = [1.0, 50, 100, 150, 200, 250, 300, 350, 400, 500]
     
-    metrics_19, thresh_19, _ = evaluate_retrieval(rag_19, cases, k_list, thresh_list)
+    metrics_19, thresh_19, results_19 = evaluate_retrieval(rag_19, cases, k_list, thresh_list)
     metrics_full, thresh_full, results_full = evaluate_retrieval(rag_full, cases, k_list, thresh_list)
+    label_19 = f"Production rag_data ({rag_19.collection.count()} doc)"
+    label_full = f"Benchmark rag_data_full ({rag_full.collection.count()} doc)"
     
     print("\n" + "=" * 85)
     print("1. BANG SO SANH CHAT LUONG TRUY XUAT THEO QUY MO KHO VA ABLATION TOP-K")
@@ -180,35 +184,54 @@ def main():
     
     for k in k_list:
         m19 = metrics_19[k]
-        print(f"{'Corpus goc (19 doan)':<32}{k:>7}{m19['hit_rate']*100:>13.1f}%{m19['recall']*100:>13.1f}%{m19['mrr']:>12.4f}")
+        print(f"{label_19:<32}{k:>7}{m19['hit_rate']*100:>13.1f}%{m19['recall']*100:>13.1f}%{m19['mrr']:>12.4f}")
         
     print("-" * 85)
     for k in k_list:
         mfull = metrics_full[k]
-        print(f"{'Kho tri thuc mo rong (56 doan)':<32}{k:>7}{mfull['hit_rate']*100:>13.1f}%{mfull['recall']*100:>13.1f}%{mfull['mrr']:>12.4f}")
+        print(f"{label_full:<32}{k:>7}{mfull['hit_rate']*100:>13.1f}%{mfull['recall']*100:>13.1f}%{mfull['mrr']:>12.4f}")
         
     print("\n" + "=" * 85)
     print("2. ABLATION STUDY: TY LE DOAN VUOT NGUONG KHOANG CACH (THRESHOLD PASS RATE @ TOP-3)")
     print("=" * 85)
-    print(f"{'Nguong khoang cach (L2^2)':<30}{'Ty le doan lot qua (19)':>25}{'Ty le doan lot qua (56)':>25}")
+    print(f"{'Nguong khoang cach (L2^2)':<30}{'Lot qua (production)':>25}{'Lot qua (benchmark)':>25}")
     print("-" * 85)
     for thresh in thresh_list:
         p19 = thresh_19[thresh]["chunk_pass_rate"] * 100
         pfull = thresh_full[thresh]["chunk_pass_rate"] * 100
-        print(f"Threshold <= {thresh:<20}{p19:>24.1f}%{pfull:>24.1f}%")
+        q19 = thresh_19[thresh]["query_pass_rate"] * 100
+        qfull = thresh_full[thresh]["query_pass_rate"] * 100
+        print(f"Threshold <= {thresh:<20}{p19:>16.1f}% (q {q19:5.1f}%){pfull:>10.1f}% (q {qfull:5.1f}%)")
         
     print("\n" + "=" * 85)
-    print("3. PHAN TICH DINH LUONG: NGUYEN NHAN RAG ANH HUONG TOI DIEM ANH XA MITRE")
+    print("3. TOM TAT (so lieu, khong dien giai)")
     print("=" * 85)
-    print("Doi chieu chi tiet 33 case thuc nghiem:")
-    print("  a) Do phu quy tac Wazuh trong Corpus 19 doan:")
-    print(f"     - Hit Rate@1 cua Corpus 19 doan chi dat {metrics_19[1]['hit_rate']*100:.1f}%, Recall@3 chi dat {metrics_19[3]['recall']*100:.1f}%.")
-    print("     - Do thieu luat trong kho, RAG tra ve cac doan khong lien quan (Dist > 300) gay nhieu context (Context Distraction).")
-    print(f"  b) Cai thien khi mo rong kho tri thuc (56 doan):")
-    print(f"     - Hit Rate@3 tang tu {metrics_19[3]['hit_rate']*100:.1f}% -> {metrics_full[3]['hit_rate']*100:.1f}%.")
-    print(f"     - Recall@3 tang tu {metrics_19[3]['recall']*100:.1f}% -> {metrics_full[3]['recall']*100:.1f}%.")
-    print(f"     - MRR tang tu {metrics_19[3]['mrr']:.4f} -> {metrics_full[3]['mrr']:.4f}.")
-    print()
+    for label, m, t in ((label_19, metrics_19, thresh_19), (label_full, metrics_full, thresh_full)):
+        print(f"  {label}: Hit@1 {m[1]['hit_rate']*100:.1f}% | Hit@3 {m[3]['hit_rate']*100:.1f}% | "
+              f"Recall@3 {m[3]['recall']*100:.1f}% | MRR@10 {m[10]['mrr']:.4f} | "
+              f"truy van con >=1 doan o nguong 1.0: {t[1.0]['query_pass_rate']*100:.1f}%")
+
+    out_path = os.path.join(EVAL_DIR, "rag-benchmark-results.json")
+    report = {
+        "cases": len(cases),
+        "k_list": k_list,
+        "thresholds": thresh_list,
+        "production_threshold": 1.0,
+        "configs": {
+            label_19: {"k": metrics_19, "threshold": thresh_19},
+            label_full: {"k": metrics_full, "threshold": thresh_full},
+        },
+        "per_case_production": [
+            {"case_id": it["case"]["case_id"], "rule_id": it["case"]["rule_id"],
+             "targets": sorted(it["case"]["target_docs"]),
+             "top10": it["retrieved_ids"], "distances": it["distances"]}
+            for it in results_19
+        ],
+    }
+    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2, default=str)
+        f.write("\n")
+    print(f"\nDa ghi: {out_path}")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,23 @@
 
 Ngày cập nhật: 2026-10-27
 
+## P0 bước 4 — smoke test lab end-to-end (2026-11-02)
+
+- Trạng thái: HOÀN TẤT (pipeline chạy; chất lượng diễn giải ghi nhận làm baseline "trước", chưa sửa).
+- Môi trường: lab bật lại sau 6 ngày; agent `.20` disconnected sau boot (agentd treo khi bật trước Manager) → `systemctl restart wazuh-agent` → active. Preflight: Indexer green, Manager API OK, Ollama thiếu `qwen2.5:3b` (cần cho ablation 3b/7b).
+- Export (gitignored, IP live): `eval/raw_exports/smoke/jobA-bruteforce.json` (#267), `jobA-bucket-268.json` (#268), `jobB-useradd.json` (#269). Cả 3 `qwen2.5:7b`, `soc-contract-v2`, `succeeded`, coverage 100%, không truncate.
+- Job A #267 — `ssh-bruteforce.sh 192.168.100.20 khongtontai01 x 20` từ Kali, cửa sổ 19:10:15–19:15:15:
+  - 200 alert / 4 nhóm, tất cả `srcip 192.168.100.30`: 5712 ×2 (lv10), 5551 ×5 (lv10), 5710 ×158, 5503 ×35. Latency 53,7 s.
+  - AI: `medium`, T1110 + T1021.004, nhận đúng brute force từ `.30`.
+  - Lỗi: gọi "Nhóm 1–4" thay rule ID; `limitations` ghi "không có thông tin về IP nguồn" mâu thuẫn với chính output; `next_steps` chung chung, không kiểm tra 5715/5501 cùng srcip (thành công hay chưa), không nhánh block/cô lập có điều kiện.
+- Job #268 — bucket 5 s (20 alert: 5710 ×16, 5503 ×4): `medium`, T1110.001; next_steps chung chung.
+- Job B #269 — FP-trap `sudo useradd -m` hợp lệ trên `.20`, cửa sổ 19:28:51–19:33:51:
+  - 32 alert / 27 nhóm: 5902 ×2, 5901 ×2, 5402 ×2, 5501/5502 ×2, 22 nhóm FIM (550 trên `/etc/passwd|shadow|group|gshadow|subuid|subgid` và bản `-`; 553/554 trên `*.lock`).
+  - AI: `medium`, "có thể có hoạt động không mong muốn", confidence 85; KHÔNG kết luận backdoor/xâm nhập.
+  - Lỗi: không nhắc 5902 "New user added" (sự kiện cốt lõi); MITRE bỏ T1136 nhưng giữ T1485 Data Destruction + T1070.004 (tag rule 553 khi `useradd` xoá file `.lock` của chính nó); nhầm hostname agent là username.
+- Nguyên nhân gốc (giả thuyết cho P1, chưa kiểm chứng): (1) khóa nhóm gồm `syscheck_path` → một lệnh `useradd` tách thành 22 nhóm FIM, át 2 nhóm 5902; (2) model chép MITRE tag Wazuh không đối chiếu ngữ cảnh; (3) không có playbook → next_steps chung chung; (4) prompt window không yêu cầu trích rule ID.
+- Next action: commit + tag `v2.0.0`; chạy `eval/rag_benchmark.py` + `eval/rag_retrieval_eval.py` với KB 5080 doc; playbook Tầng 3 cho 5712 và 5902.
+
 ## Track 0 — dọn P0: export lab, index Chroma tracked, phát hiện ngưỡng RAG (2026-10-28)
 
 - Trạng thái: ĐANG LÀM (file đã sửa; chờ người dùng chạy lệnh git trên host).
