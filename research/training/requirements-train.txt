@@ -7,5 +7,7 @@ peft>=0.20        # adapter HRB25/qwen35-9b-pentest-v5 lưu bằng peft 0.20.0
 accelerate
 bitsandbytes
 pyyaml
+hf_xet            # tải file lưu trên Xet (adapter HRB25, model Qwen3.5)
+numpy
 # Bước 3 — khóa phiên bản thực tế để tái lập:
 #   pip freeze > research/training/requirements-train.lock.txt

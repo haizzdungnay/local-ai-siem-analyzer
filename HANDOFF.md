@@ -12,7 +12,19 @@ Ngày cập nhật: 2026-10-27
 - Đã xác minh từ repo HF (commit `b888232`, người dùng xem 2026-11-05): repo công bố ADAPTER LoRA `adapter/adapter_model.safetensors` (116 MB) + GGUF đã gộp; `adapter_config.json`: `base_model_name_or_path: Qwen/Qwen3.5-9B` (model tree: Qwen3.5-9B-Base → Qwen3.5-9B), r=32, alpha=64, dropout 0.05, target q/k/v/o_proj + gate/up/down_proj, peft 0.20.0. Model card: NF4 QLoRA, 1 epoch, seq 4096, batch hiệu dụng 16, lr 1e-4, L40S; dữ liệu train của tác giả công khai: dataset `HRB25/qwen35-pentest-elite-real-30k-v5` → kiểm tra được trùng lặp với tập test.
 - Cách train: nạp `Qwen/Qwen3.5-9B` 4-bit + adapter pentest `is_trainable=True` (khối `init_adapter` trong config, khóa revision `b888232`), train TIẾP bằng dữ liệu SOC; lr 5e-5 (= ½ tác giả) để giảm quên. `train_qlora.py` hỗ trợ `init_adapter`. `requirements-train.txt`: `peft>=0.20`.
 - Chưa xác minh: license của Qwen3.5-9B, adapter và dataset tác giả; `transformers` trên Windows nạp kiến trúc qwen3.5 (lai attention tuyến tính) ở 4-bit; merge fp16 trên CPU cần ~20 GB RAM.
-- Next action: `--list-modules` → `--smoke` (config 9B); đọc license; quét dataset tác giả so với tập test; dữ liệu train dùng chung pipeline `sft-v1`.
+- Kết quả trên host (2026-11-05, RTX 5070 Ti, Windows native, torch 2.11.0+cu128, transformers 5.22.1, peft 0.21.2, bitsandbytes 0.50.2):
+  - `--list-modules`: `qwen3_5_text`; lớp Linear `q/k/v/o_proj`, `gate/up/down_proj` (attention thường + MLP — adapter tác giả gắn ở đây), `in_proj_qkv`, `in_proj_z`, `in_proj_a`, `in_proj_b`, `out_proj` (attention tuyến tính Gated DeltaNet — adapter KHÔNG gắn), `lm_head`. VRAM sau nạp 4-bit 7,1 GB.
+  - Chat template mode `template`: prompt kết thúc `<|im_start|>assistant\n<think>\n\n</think>\n\n`, trả lời kết thúc `<|im_end|>\n`.
+  - `--smoke` (8 mẫu giả ~150 token, 5 step, adapter pentest `is_trainable=True`): trainable 58.195.968 / 9.011.999.232 (0,65%); loss 2,51 → 0,43; 30,7 s (~6,1 s/step); **VRAM đỉnh 13,5 GB**.
+  - Kernel tối ưu thiếu: `causal_conv1d`, `flash-linear-attention` → transformers dùng bản PyTorch tham chiếu ("correct but much slower"); hai gói này cần Triton/CUDA build, khó trên Windows.
+  - Lỗi đã gặp + sửa: thiếu `hf_xet` (adapter lưu trên Xet); PEFT `subfolder`+`revision` dò nhầm → nạp qua `snapshot_download`; transformers 5.x bỏ `warmup_ratio`.
+- Rủi ro chưa đo: mẫu thật ~2.000–2.500 token có thể OOM (13,5 GB ở ~150 token) và chậm (vài chục s/step). Cần `--smoke --smoke-len 1800` trước khi làm dữ liệu.
+- Phương án nếu chậm/OOM: (a) bật ảo hóa BIOS → WSL2 Linux + Triton + `flash-linear-attention` + `causal-conv1d`; (b) giảm `max_seq_len`/gom ít nhóm hơn mỗi cửa sổ; (c) dùng Qwen2.5-7B (attention chuẩn) cho B3 chính, giữ 9B là mở rộng.
+- **Smoke độ dài thật** `--smoke --smoke-len 1800` (2026-11-05 20:19–20:31): 8 mẫu × 1.778 token, 5 step: **135,5 s/step, ~13 token/s, VRAM đỉnh 18,9 GB (> 16 GB card)**, loss 2,56 → 0,39. Không OOM vì driver Windows bật Sysmem Fallback (tràn VRAM sang RAM qua PCIe) → chậm thêm. Nguyên nhân gộp: kernel PyTorch tham chiếu `chunk_gated_delta_rule`/`causal_conv1d` (chậm + tạo tensor trung gian lớn) và phần tràn RAM.
+- Ngoại suy: 300 mẫu × 3 epoch ≈ 900 step ≈ 34 giờ; 1.000 mẫu ≈ 112 giờ → **9B không train khả thi trên Windows native với cấu hình hiện tại**.
+- Quyết định đề xuất: (B) đo `qwen2.5-7b-qlora.yaml --smoke --smoke-len 1800` — attention chuẩn, đúng nhánh chính B3 cùng base B1; song song (A) bật ảo hóa BIOS → WSL2 + Triton + `flash-linear-attention` + `causal-conv1d` rồi đo lại 9B. (C) GPU cloud chỉ với dữ liệu không chứa IP lab. Đặt NVIDIA "CUDA - Sysmem Fallback Policy = Prefer No Sysmem Fallback" để tràn VRAM báo OOM thay vì chạy chậm âm thầm.
+- Ghi cho báo cáo (chi phí triển khai on-prem): kiến trúc lai Qwen3.5 phụ thuộc kernel Triton; thiếu kernel trên Windows → thông lượng train ~13 token/s và tràn VRAM ở seq 1.8k.
+- Next action: smoke 7B độ dài thật; đọc license; quét dataset tác giả so với tập test; dữ liệu train dùng chung pipeline `sft-v1`.
 
 ## Nhánh QLoRA (B3/B4) — khóa tập test + pipeline train (2026-11-05)
 

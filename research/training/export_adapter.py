@@ -34,7 +34,7 @@ def main() -> None:
         raise SystemExit(f"!! Không thấy adapter: {adapter}")
     # Gộp trên trọng số fp16 (không phải 4-bit) để model xuất ra không mang sai số lượng tử hoá kép.
     remote = bool(cfg.get("trust_remote_code", False))
-    base = AutoModelForCausalLM.from_pretrained(cfg["base_model"], torch_dtype=torch.float16,
+    base = AutoModelForCausalLM.from_pretrained(cfg["base_model"], dtype=torch.float16,
                                                 device_map="cpu", low_cpu_mem_usage=True,
                                                 trust_remote_code=remote)
     merged = PeftModel.from_pretrained(base, str(adapter)).merge_and_unload()

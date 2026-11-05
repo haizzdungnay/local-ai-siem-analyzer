@@ -63,30 +63,54 @@ def test_split_never_puts_one_group_in_both_sets(tmp_path, monkeypatch):
 
 
 class FakeTokenizer:
-    """Template giả: mỗi message -> [role_id, *content_chars]; generation prompt -> [99]."""
-    ROLE = {"system": 1, "user": 2, "assistant": 3}
+    """Template giả: "<|R|>content<|end|>"; gen prompt "<|assistant|>"; token = ký tự."""
+    eos_token = "<|end|>"
 
-    def __init__(self):
-        self.kwargs = []
+    def __init__(self, think_mismatch=False):
+        self.kwargs, self.think_mismatch = [], think_mismatch
 
-    def apply_chat_template(self, messages, tokenize=True, add_generation_prompt=False, **kw):
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False, **kw):
         self.kwargs.append(kw)
-        ids = []
-        for m in messages:
-            ids += [self.ROLE[m["role"]]] + [ord(c) % 50 + 100 for c in m["content"]]
+        text = "".join(f"<|{m['role']}|>{m['content']}<|end|>" for m in messages
+                       if not (self.think_mismatch and m["role"] == "assistant"))
+        if self.think_mismatch and messages[-1]["role"] == "assistant":
+            text += "<|assistant|>" + messages[-1]["content"] + "<|end|>"  # render khác gen prompt
         if add_generation_prompt:
-            ids += [3]
-        return ids
+            text += "<|assistant|><think></think>" if self.think_mismatch else "<|assistant|>"
+        return text
+
+    def __call__(self, text, add_special_tokens=False):
+        return {"input_ids": [ord(c) for c in text]}
+
+
+MSGS = [{"role": "system", "content": "sys"}, {"role": "user", "content": "u"},
+        {"role": "assistant", "content": "{}"}]
 
 
 def test_tokenize_masks_prompt_and_drops_too_long():
-    msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "u"},
-            {"role": "assistant", "content": "ok"}]
-    enc = train_qlora.tokenize_example(msgs, FakeTokenizer(), max_len=100)
-    n_prompt = len(FakeTokenizer().apply_chat_template(msgs[:-1], add_generation_prompt=True))
-    assert enc["labels"][:n_prompt] == [-100] * n_prompt
-    assert enc["labels"][n_prompt:] == enc["input_ids"][n_prompt:] and len(enc["labels"][n_prompt:]) == 2
-    assert train_qlora.tokenize_example(msgs, FakeTokenizer(), max_len=5) is None
+    tok = FakeTokenizer()
+    enc = train_qlora.tokenize_example(MSGS, tok, max_len=500)
+    prompt = tok.apply_chat_template(MSGS[:-1], add_generation_prompt=True)
+    assert enc["labels"][:len(prompt)] == [-100] * len(prompt)
+    assert "".join(map(chr, enc["labels"][len(prompt):])) == "{}<|end|>"
+    assert train_qlora.tokenize_example(MSGS, tok, max_len=5) is None
+
+
+def test_tokenize_falls_back_when_template_renders_assistant_differently():
+    tok = FakeTokenizer(think_mismatch=True)
+    debug = {}
+    enc = train_qlora.tokenize_example(MSGS, tok, max_len=500, debug=debug)
+    assert debug["mode"] == "generation_prompt+suffix"
+    text = "".join(map(chr, enc["input_ids"]))
+    assert text.endswith("<|assistant|><think></think>{}<|end|>")
+    n_label = sum(1 for x in enc["labels"] if x != -100)
+    assert n_label == len("{}<|end|>")
+
+
+def test_tokenize_passes_template_kwargs():
+    tok = FakeTokenizer()
+    train_qlora.tokenize_example(MSGS, tok, max_len=500, template_kwargs={"enable_thinking": False})
+    assert tok.kwargs == [{"enable_thinking": False}] * 2
 
 
 def test_configs_parse():
@@ -96,18 +120,33 @@ def test_configs_parse():
         assert cfg["base_model"].startswith("Qwen/Qwen2.5-") and cfg["lora"]["r"] == 16
 
 
-def test_tokenize_passes_template_kwargs():
-    tok = FakeTokenizer()
-    msgs = [{"role": "user", "content": "u"}, {"role": "assistant", "content": "ok"}]
-    train_qlora.tokenize_example(msgs, tok, max_len=100, template_kwargs={"enable_thinking": False})
-    assert tok.kwargs == [{"enable_thinking": False}] * 2
-
-
 def test_pentest_config_is_marked_extension():
     import yaml
     path = ROOT / "research" / "training" / "configs" / "qwen35-9b-pentest-qlora.yaml"
     cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert cfg["chat_template_kwargs"] == {"enable_thinking": False}
     assert cfg["init_adapter"] == {"repo": "HRB25/qwen35-9b-pentest-v5", "subfolder": "adapter",
-                                   "revision": "b888232"}
+                                   "revision": "b88823267b895cc9d80b8e6dab6122b504f0af90"}
     assert "external comparator" in path.read_text(encoding="utf-8")
+
+
+def test_resolve_adapter_uses_local_snapshot(tmp_path, monkeypatch):
+    import types
+    snap = tmp_path / "snap"
+    (snap / "adapter").mkdir(parents=True)
+    (snap / "adapter" / "adapter_config.json").write_text("{}", encoding="utf-8")
+    (snap / "adapter" / "adapter_model.safetensors").write_bytes(b"x")
+    calls = {}
+
+    def fake_snapshot_download(**kw):
+        calls.update(kw)
+        return str(snap)
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub",
+                        types.SimpleNamespace(snapshot_download=fake_snapshot_download))
+    path = train_qlora.resolve_adapter({"repo": "r/m", "subfolder": "adapter", "revision": "abc"})
+    assert path == snap / "adapter"
+    assert calls == {"repo_id": "r/m", "revision": "abc", "allow_patterns": ["adapter/*"]}
+    (snap / "adapter" / "adapter_model.safetensors").unlink()
+    with pytest.raises(SystemExit):
+        train_qlora.resolve_adapter({"repo": "r/m", "subfolder": "adapter", "revision": "abc"})
