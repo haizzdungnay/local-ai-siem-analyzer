@@ -1,0 +1,204 @@
+{
+  "purpose": "Tập test/held-out KHÓA trước mọi bước fine-tune (QLoRA) và trước khi viết đáp án tham chiếu mới. Không dùng các file này để train, chọn hyperparameter, viết playbook hay sinh dữ liệu SFT.",
+  "locked_at": "2026-11-05",
+  "locked_by": "Nguyen Trung Nguyen (N22DCAT039)",
+  "raw_exports_location": "local only, gitignored (eval/raw_exports/) — chứa hostname/IP lab chưa sanitize",
+  "files": [
+    {
+      "path": "eval/raw_exports/benign.json",
+      "kind": "opensearch_export",
+      "bytes": 81685,
+      "sha256": "ca46e9093bd7273b53ec72ebf3e8ef63b96229332096ef1059123b736c7abda4",
+      "alerts": 53,
+      "rule_id_counts": {
+        "550": 13,
+        "5501": 7,
+        "554": 7,
+        "5502": 6,
+        "553": 6,
+        "5402": 5,
+        "19011": 4,
+        "19012": 1,
+        "5715": 1,
+        "5901": 1,
+        "5902": 1,
+        "5555": 1
+      }
+    },
+    {
+      "path": "eval/raw_exports/benign2.json",
+      "kind": "opensearch_export",
+      "bytes": 17922,
+      "sha256": "3bfa550e0fc81dee3afb15806bd9d663d67bd494c9f420e90c62850bdd0742cd",
+      "alerts": 16,
+      "rule_id_counts": {
+        "5501": 3,
+        "5502": 3,
+        "31101": 3,
+        "5503": 2,
+        "5760": 2,
+        "5715": 2,
+        "5402": 1
+      }
+    },
+    {
+      "path": "eval/raw_exports/kb1.json",
+      "kind": "opensearch_export",
+      "bytes": 103579,
+      "sha256": "27f6bb8bb46952daffaa66fcc13ce61d967efa21273e48d85e22155d995ffaee",
+      "alerts": 71,
+      "rule_id_counts": {
+        "550": 16,
+        "5501": 10,
+        "5760": 9,
+        "5503": 7,
+        "554": 5,
+        "553": 5,
+        "5502": 4,
+        "40112": 2,
+        "5715": 2,
+        "5402": 2,
+        "5403": 2,
+        "5901": 2,
+        "5902": 2,
+        "5551": 1,
+        "5763": 1,
+        "2833": 1
+      }
+    },
+    {
+      "path": "eval/raw_exports/kb2.json",
+      "kind": "opensearch_export",
+      "bytes": 4017581,
+      "sha256": "8393238ced8e37495ac67392af769c27db839b62ac4c586990d367714309861a",
+      "alerts": 3399,
+      "rule_id_counts": {
+        "31101": 2771,
+        "31151": 212,
+        "31105": 171,
+        "31104": 70,
+        "31166": 59,
+        "31106": 22,
+        "31171": 20,
+        "31154": 18,
+        "31122": 13,
+        "31153": 7,
+        "31103": 7,
+        "31516": 6,
+        "31121": 6,
+        "5402": 4,
+        "5502": 4,
+        "5501": 4,
+        "31168": 2,
+        "554": 2,
+        "11": 1
+      }
+    },
+    {
+      "path": "eval/raw_exports/kb3.json",
+      "kind": "opensearch_export",
+      "bytes": 118175,
+      "sha256": "2b59381d9659cf1cf7880737661ad809735740493472f26b6ce531beb58831cd",
+      "alerts": 73,
+      "rule_id_counts": {
+        "550": 30,
+        "554": 11,
+        "553": 10,
+        "5501": 5,
+        "5402": 3,
+        "5502": 3,
+        "510": 2,
+        "5901": 2,
+        "5902": 2,
+        "5406": 2,
+        "591": 1,
+        "5555": 1,
+        "5715": 1
+      }
+    },
+    {
+      "path": "eval/raw_exports/kb4.json",
+      "kind": "opensearch_export",
+      "bytes": 287194,
+      "sha256": "01ab0e7c037da5863b1b197d773aea4b567c8ea4c6ec15fd47eb32aa3d6e21de",
+      "alerts": 145,
+      "rule_id_counts": {
+        "80792": 93,
+        "5402": 14,
+        "5502": 14,
+        "5501": 14,
+        "80705": 7,
+        "550": 3
+      }
+    },
+    {
+      "path": "eval/raw_exports/kb5.json",
+      "kind": "opensearch_export",
+      "bytes": 5037660,
+      "sha256": "3f617259dda88e8aaf96e71de954f8ae384ac4c86831f90f386082ae093a3172",
+      "alerts": 2259,
+      "rule_id_counts": {
+        "80792": 2234,
+        "5502": 7,
+        "5501": 6,
+        "5402": 5,
+        "510": 2,
+        "5715": 1,
+        "592": 1,
+        "506": 1,
+        "503": 1,
+        "11": 1
+      }
+    },
+    {
+      "path": "eval/raw_exports/smoke/jobA-bruteforce.json",
+      "kind": "dashboard_job_export",
+      "bytes": 98737,
+      "sha256": "76ae81d2216cdd8c51f517d870f45f58b2432bfb662e9a96f960da986c6c0ae9",
+      "alerts": 200,
+      "rule_id_counts": {
+        "5710": 158,
+        "5503": 35,
+        "5551": 5,
+        "5712": 2
+      }
+    },
+    {
+      "path": "eval/raw_exports/smoke/jobA-bucket-268.json",
+      "kind": "dashboard_job_export",
+      "bytes": 16177,
+      "sha256": "8071448d12f024d83218772183748ade9221a4d9241c62f022fbe99d0b83e718",
+      "alerts": 20,
+      "rule_id_counts": {
+        "5710": 16,
+        "5503": 4
+      }
+    },
+    {
+      "path": "eval/raw_exports/smoke/jobB-useradd.json",
+      "kind": "dashboard_job_export",
+      "bytes": 37675,
+      "sha256": "61027d6c082c865f2c944f616761e0bd290601352b14443b949a2130b1804d73",
+      "alerts": 32,
+      "rule_id_counts": {
+        "550": 12,
+        "553": 5,
+        "554": 5,
+        "5902": 2,
+        "5901": 2,
+        "5402": 2,
+        "5501": 2,
+        "5502": 2
+      }
+    }
+  ],
+  "tracked_eval_sets": {
+    "repo_commit": "bb0e817e4993f15d0955534183408cdce86a989e",
+    "git_tree": {
+      "eval/cases": "14965724703673c52bba7d00b39a608d8e7e01ec",
+      "eval/expected": "a5287e7bd45bda174bfeacf41facd7827d15dcd7",
+      "eval/stratified_370": "3b15743416dad24d57aff95397840c160d71db87"
+    }
+  },
+  "verify": "python eval/verify_test_lock.py"
+}

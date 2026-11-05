@@ -1,0 +1,11 @@
+# Môi trường train RIÊNG (không cài vào môi trường ai_module). Xem README.md trong thư mục này.
+# Bước 1 (RTX 50xx / Blackwell cần CUDA 12.8+):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+# Bước 2:
+transformers
+peft>=0.20        # adapter HRB25/qwen35-9b-pentest-v5 lưu bằng peft 0.20.0
+accelerate
+bitsandbytes
+pyyaml
+# Bước 3 — khóa phiên bản thực tế để tái lập:
+#   pip freeze > research/training/requirements-train.lock.txt

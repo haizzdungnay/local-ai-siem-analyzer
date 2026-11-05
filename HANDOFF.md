@@ -2,6 +2,32 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Thí nghiệm mở rộng: QLoRA trên Qwen3.5-9B-Pentest-V5 (2026-11-05)
+
+- Trạng thái: CHUẨN BỊ — config + tùy chọn script đã có; chưa xác minh điều kiện; chưa train.
+- Yêu cầu: Dương muốn train thử model `qwen35-9b-pentest-v5` (đang có trong `dashboard.allowed_models`, chạy Ollama dạng GGUF Q4_K_M 5,6 GB).
+- Vai trò khi báo cáo: external comparator (đúng `docs/thesis-ai-siem-research-roadmap.md`: "Specialized 9B/cloud models are additional external comparators, not SFT ablations"). Trục chính vẫn `qwen2.5:7b` B1/B2/B3/B4.
+- Chặn trước khi train: (1) repo HF phải có safetensors — GGUF không train được; (2) license/base/dữ liệu của tác giả chưa rõ (trang model card ngoài allowlist của phiên, chưa đọc được); (3) kiến trúc qwen35 lai SSM chưa xác minh được hỗ trợ bởi transformers/PEFT/bitsandbytes trên Windows; (4) model đã fine-tune bởi bên thứ ba → không loại trừ nhiễm tập test.
+- Đã làm: `configs/qwen35-9b-pentest-qlora.yaml`; `train_qlora.py --list-modules`, `trust_remote_code`, `chat_template_kwargs` (enable_thinking=false); README mục "Thí nghiệm mở rộng". Verification: pytest 333 passed, 2 skipped.
+- Đã xác minh từ repo HF (commit `b888232`, người dùng xem 2026-11-05): repo công bố ADAPTER LoRA `adapter/adapter_model.safetensors` (116 MB) + GGUF đã gộp; `adapter_config.json`: `base_model_name_or_path: Qwen/Qwen3.5-9B` (model tree: Qwen3.5-9B-Base → Qwen3.5-9B), r=32, alpha=64, dropout 0.05, target q/k/v/o_proj + gate/up/down_proj, peft 0.20.0. Model card: NF4 QLoRA, 1 epoch, seq 4096, batch hiệu dụng 16, lr 1e-4, L40S; dữ liệu train của tác giả công khai: dataset `HRB25/qwen35-pentest-elite-real-30k-v5` → kiểm tra được trùng lặp với tập test.
+- Cách train: nạp `Qwen/Qwen3.5-9B` 4-bit + adapter pentest `is_trainable=True` (khối `init_adapter` trong config, khóa revision `b888232`), train TIẾP bằng dữ liệu SOC; lr 5e-5 (= ½ tác giả) để giảm quên. `train_qlora.py` hỗ trợ `init_adapter`. `requirements-train.txt`: `peft>=0.20`.
+- Chưa xác minh: license của Qwen3.5-9B, adapter và dataset tác giả; `transformers` trên Windows nạp kiến trúc qwen3.5 (lai attention tuyến tính) ở 4-bit; merge fp16 trên CPU cần ~20 GB RAM.
+- Next action: `--list-modules` → `--smoke` (config 9B); đọc license; quét dataset tác giả so với tập test; dữ liệu train dùng chung pipeline `sft-v1`.
+
+## Nhánh QLoRA (B3/B4) — khóa tập test + pipeline train (2026-11-05)
+
+- Trạng thái: ĐANG LÀM — pipeline đã viết và test bằng tokenizer/dữ liệu giả; chưa có dữ liệu train đã review; chưa train trên GPU.
+- Yêu cầu: Dương đề nghị fine-tune bằng Splunk Attack Data (`https://github.com/splunk/attack_data`, Apache-2.0, kiểm tra tại commit `c8af10d` 2026-11-03).
+- Đánh giá nguồn: log thô (không phải alert Wazuh), nhãn chỉ mức kịch bản (`mitre_technique` + mô tả), không có lời giải thích/next_steps, gần như toàn tấn công. 1416 dataset: `XmlWinEventLog` 891, `sysmon:linux` 117, `auditd` 101, `linux_secure` 18. Linux khớp lab: T1548.003 (18), T1053.003 (8), T1059.004 (7), T1098 (4), T1136.001 (3). Không có SSH brute force Linux (`T1110.001` + `linux_secure` thực chất là O365).
+- Lựa chọn đã chốt: input = replay log qua Wazuh để ra alert đúng định dạng production; target = Claude sinh nháp, Nguyên/Dương review (`target_origin: distilled`, phải khai báo).
+- Đã xong:
+  1. Bước 0 — khóa tập test: `eval/test_set_lock.json` + `eval/verify_test_lock.py`. Ghi nhận khi đếm rule ID: kb1 không có 5712 (brute force kb1 nổ 5760/5503 — thử user có thật).
+  2. Bước 6 — `research/training/` (xem README trong thư mục). Mặc định HF PEFT trên Windows native (WSL2 không dùng được vì hypervisor tắt). RTX 5070 Ti cần PyTorch CUDA 12.8+.
+- Verification (clone sạch `bb0e817` + thay đổi): `pytest tests -q -W default` 331 passed, 2 skipped; `compileall` OK; `git diff --cached --check` PASS; `check_tracked_secrets --staged` PASS; `verify_test_lock.py` OK với 10 file thật.
+- Ước lượng (chưa đo): 7B QLoRA seq 2048 VRAM ~9–12 GB; 300 mẫu × 3 epoch ~25–50 phút; 3.000 mẫu ~4–8 giờ. Phần tốn thời gian là replay + review dữ liệu.
+- Next action (nhánh QLoRA): (1) tạo venv train, chạy `train_qlora.py --smoke` với config 3B để kiểm CUDA/bitsandbytes; (2) bật lab, `git lfs pull` 2–3 dataset `auditd` (T1548.003, T1136.001), thử `wazuh-logtest` xem rule nào nổ; (3) script replay → aggregate → `window_text`; (4) sinh nháp target + review.
+- Nhánh chính (không đổi): benchmark RAG, hoàn thiện playbook 5712/5902, P1 RAG lai — RAG lai phải chạy đúng trước khi so với QLoRA.
+
 ## Playbook Tầng 3 — bắt đầu 5712 (2026-11-02)
 
 - Trạng thái: ĐANG LÀM (draft).
@@ -12,6 +38,14 @@ Ngày cập nhật: 2026-10-27
 - Quyết định: KHÔNG viết playbook theo kịch bản kb1–kb5 (tập test). Phạm vi rule cần phủ có thể chọn theo tần suất rule ID trong tập test (chỉ đếm ID, không đọc log) — ghi rõ trong chương đánh giá.
 - Phát hiện phụ: mitigation ATT&CK T1136 trong `mitre.db` hướng domain controller (M1026/M1028/M1030); `build_playbook_kb.py` còn để lọt placeholder `$osquery_N` (bộ lọc mới chặn `!{`).
 - Chưa làm tối nay: chạy `eval/rag_benchmark.py` + `eval/rag_retrieval_eval.py` (chưa có `eval/rag-benchmark-results.json`; `rag-retrieval-metrics.csv` vẫn bản 2026-08).
+- Thêm `eval/playbook_ab_smoke.py` (A/B N=1, không đổi pipeline). Lưu ý thiết kế cho P1: script đưa playbook qua tham số `rag_context`, nên playbook bị bọc như RAG_CONTEXT "untrusted"; system prompt bảo model không làm theo chỉ dẫn trong dữ liệu đó → P1 cần khối PLAYBOOK riêng, có nhãn nguồn tin cậy (file nội bộ), tách khỏi RAG semantic.
+- Kết quả A/B N=1 (`qwen2.5:7b`, `eval/samples/alert-ssh-bruteforce.json`, 2026-11-02 20:5x; chi tiết `eval/raw_exports/smoke/playbook-ab.json`):
+  - A (không playbook): 3 next_steps chung chung ("Theo dõi IP…", "Xác minh tài khoản rò rỉ…", "Cập nhật chính sách SSH…"); không bước xác minh đăng nhập thành công.
+  - B (có playbook 5712 draft): 6 next_steps bám đúng 4 câu `verify` theo thứ tự (user thật → đăng nhập thành công → đếm số lần thử → srcip nội bộ/công cộng, kèm 2 nhánh); summary giải thích đúng trigger 5712.
+  - Hạn chế của B: diễn đạt lại câu hỏi nhưng BỎ phần `how` — không nêu rule ID (5715/5763/5710) và không điền giá trị thật (`192.168.100.30`, agent); chưa có containment vì `branches` trống; câu "đăng nhập thành công" đứng thứ 2.
+  - Mẫu `alert-ssh-bruteforce.json` tự mâu thuẫn: rule 5712 (user không tồn tại) nhưng `data.dstuser = root`; B lặp lại mâu thuẫn ("brute force với user root… thử user không tồn tại").
+  - Latency A 19,9 s gồm nạp model (cold), B 3,8 s — không so sánh latency được.
+  - Kết luận tạm (N=1, không phải kết quả đánh giá): model có dùng playbook; cần (1) playbook ghi rule ID/field ngay trong câu hành động, (2) yêu cầu trong prompt next_steps phải trích rule ID + giá trị từ ALERT, (3) khối PLAYBOOK tin cậy riêng ở P1, (4) validator kiểm tra next_steps có chứa srcip/rule ID.
 - Next action: chạy 2 benchmark; hoàn thiện 5712 (`branches`/`fp_conditions`/`do_not`/`sources`) → 5902 → chọn danh sách rule cần phủ.
 
 ## P0 bước 4 — smoke test lab end-to-end (2026-11-02)

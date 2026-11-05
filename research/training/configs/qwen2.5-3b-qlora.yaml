@@ -1,0 +1,16 @@
+# QLoRA SFT — thử pipeline (3B). Giá trị khởi đầu, chưa tối ưu; ghi mọi thay đổi vào HANDOFF.
+run_name: qwen2.5-3b-soc-qlora-v1
+base_model: Qwen/Qwen2.5-3B-Instruct    # thử pipeline trước 7B
+data_dir: research/training/outputs/sft-v1   # sinh bởi build_sft_jsonl.py (gitignored)
+max_seq_len: 2048
+seed: 42
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+train:
+  epochs: 3
+  lr: 2.0e-4
+  grad_accum: 16
+  warmup_ratio: 0.05
