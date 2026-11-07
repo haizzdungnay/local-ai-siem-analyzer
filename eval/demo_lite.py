@@ -23,6 +23,8 @@ DEFAULT_AB = ROOT / "eval" / "raw_exports" / "smoke" / "playbook-ab.json"
 DEFAULT_OUT = ROOT / "eval" / "raw_exports" / "demo" / "demo-lite.html"
 
 IPV4 = re.compile(r"\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b")
+VERIFY = re.compile(r"^\s*(kiểm tra|xác minh|xác định|đếm|tra cứu|truy vấn|tìm|check|verify|confirm)", re.I)
+BRANCH = re.compile(r"^\s*(nếu|if)\b", re.I)
 RULE_ID = re.compile(r"\b(?:rule\s*)?(5\d{3}|40\d{3}|31\d{3}|55[0-4]|50[0-9]|510)\b", re.I)
 
 
@@ -43,7 +45,8 @@ class Masker:
 
 def evidence(step: str, masked: str) -> dict:
     """Bước có bám bằng chứng không: có rule ID / có giá trị cụ thể (IP, user, agent) từ alert."""
-    return {"rule": bool(RULE_ID.search(step)), "value": "IP-" in masked or "agent" in step.lower()}
+    return {"verify": bool(VERIFY.search(step)), "branch": bool(BRANCH.search(step)),
+            "rule": bool(RULE_ID.search(step)), "value": "IP-" in masked or "agent" in step.lower()}
 
 
 def esc(s: str) -> str:
@@ -53,26 +56,32 @@ def esc(s: str) -> str:
 def column(label: str, tag: str, res: dict, mask: Masker) -> tuple[str, dict]:
     an = res.get("analysis") or {}
     steps = an.get("next_steps") or []
-    rows, n_rule, n_val = [], 0, 0
+    rows, n = [], {"verify": 0, "branch": 0, "rule": 0, "value": 0}
     for s in steps:
         m = mask(s)
         ev = evidence(s, m)
-        n_rule += ev["rule"]
-        n_val += ev["value"]
-        badges = "".join(f'<span class="tag {"ok" if ok else "no"}">{name}</span>'
-                         for name, ok in (("rule ID", ev["rule"]), ("giá trị alert", ev["value"])))
+        for k in n:
+            n[k] += ev[k]
+        # 2 nhãn đầu: cấu trúc điều tra (playbook cải thiện); 2 nhãn sau: bám bằng chứng (việc tiếp theo)
+        badges = "".join(f'<span class="tag {cls}">{name}</span>'
+                         for name, cls in (("bước xác minh", "ok" if ev["verify"] else "off"),
+                                           ("nhánh điều kiện", "ok" if ev["branch"] else "off"),
+                                           ("rule ID", "ok" if ev["rule"] else "no"),
+                                           ("giá trị alert", "ok" if ev["value"] else "no")))
         rows.append(f"<li><div>{esc(m)}</div><div class='badges'>{badges}</div></li>")
-    mitre = ", ".join(an.get("mitre") or []) or "—"
-    stats = {"steps": len(steps), "rule": n_rule, "value": n_val}
+    mitre = an.get("mitre") or "—"
+    if isinstance(mitre, list):  # analyze_alert trả chuỗi, analyze_window trả list
+        mitre = ", ".join(mitre) or "—"
+    stats = {"steps": len(steps), **n}
     body = f"""
     <section class="col {tag}">
       <header><span class="pill">{esc(label)}</span>
-        <span class="meta">severity <b>{esc(str(an.get('severity', '—')))}</b> · MITRE {esc(mitre)}
-        · confidence {esc(str(an.get('confidence', '—')))}</span></header>
+        <span class="meta">severity <b>{esc(str(an.get('severity', '—')))}</b> · MITRE {esc(mitre)}</span></header>
       <p class="summary">{esc(mask(an.get('summary', '')))}</p>
       <h4>next_steps ({len(steps)})</h4>
       <ol>{''.join(rows) or '<li><i>không có</i></li>'}</ol>
-      <p class="foot">{n_rule}/{len(steps)} bước có rule ID · {n_val}/{len(steps)} bước có giá trị từ alert</p>
+      <p class="foot">{n['verify']}/{len(steps)} bước xác minh · {n['branch']} nhánh điều kiện ·
+      {n['rule']}/{len(steps)} có rule ID · {n['value']}/{len(steps)} có giá trị từ alert</p>
     </section>"""
     return body, stats
 
@@ -99,6 +108,7 @@ font-size:12.5px;margin:0}
 ol{padding-left:20px;margin:0}li{margin:0 0 10px}.badges{margin-top:3px}
 .tag{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:999px;margin-right:4px}
 .tag.ok{background:var(--okbg);color:var(--ok)}.tag.no{background:var(--nobg);color:var(--no)}
+.tag.off{background:transparent;color:var(--mut);border:1px dashed var(--line)}
 .foot{color:var(--mut);font-size:13px;border-top:1px solid var(--line);padding-top:8px;margin:8px 0 0}
 details{margin-top:12px}summary{cursor:pointer;color:var(--mut)}
 .note{color:var(--mut);font-size:13.5px;margin:12px 0 0}
@@ -122,9 +132,11 @@ def build(ab: dict) -> str:
 cùng alert, cùng prompt, chỉ khác có/không playbook · minh họa N=1, chưa phải kết quả đánh giá</p>
 <section class="card"><h2>Cùng một alert, hai câu trả lời</h2>
 <div class="ab">{col_a}{col_b}</div>
-<p class="note">A: {st_a['rule']}/{st_a['steps']} bước có rule ID, {st_a['value']}/{st_a['steps']} có giá trị alert ·
-B: {st_b['rule']}/{st_b['steps']} và {st_b['value']}/{st_b['steps']}. Nhãn đỏ là việc tiếp theo:
-khối PLAYBOOK tin cậy riêng + bắt buộc trích rule ID và giá trị từ alert.</p>
+<p class="note">Playbook cải thiện <b>cấu trúc điều tra</b>: A có {st_a['verify']}/{st_a['steps']} bước xác minh,
+{st_a['branch']} nhánh điều kiện → B có {st_b['verify']}/{st_b['steps']} bước xác minh, {st_b['branch']} nhánh điều kiện.
+Chưa đạt <b>bám bằng chứng</b> (nhãn đỏ): B có {st_b['rule']}/{st_b['steps']} bước nêu rule ID,
+{st_b['value']}/{st_b['steps']} bước nêu giá trị từ alert → việc tiếp theo: khối PLAYBOOK tin cậy riêng
++ bắt buộc trích rule ID và giá trị từ alert.</p>
 <details><summary>Alert đầu vào</summary><pre>{esc(alert_txt) or 'không tìm thấy file alert'}</pre></details>
 <details><summary>Playbook đưa vào context (rule {esc(str(ab.get('rule_id', '')))})</summary>
 <pre>{esc(mask(ab.get('playbook_context', '')))}</pre></details>

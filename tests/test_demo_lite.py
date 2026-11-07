@@ -12,4 +12,5 @@ def test_demo_masks_ips_and_counts_evidence(tmp_path):
           "B_playbook": {"analysis": {"next_steps": ["Tìm 5715 cùng srcip 10.1.2.3", "Hỏi admin"]}}}
     page = demo_lite.build(ab)
     assert "10.1.2.3" not in page and "IP-1" in page
-    assert "1/2 bước có rule ID" in page and "0/1 bước có rule ID" in page
+    assert "1/2 có rule ID" in page and "0/1 có rule ID" in page
+    assert "1/2 bước xác minh" in page
