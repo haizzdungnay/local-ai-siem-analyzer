@@ -8,6 +8,7 @@ Ngày cập nhật: 2026-10-27
 - LoRA để model suy luận an ninh mạng tốt hơn (kể cả 9B-pentest do Dương đề xuất): **không lạc đề**, là phần làm thêm, được ghi nhận điểm nếu làm tốt.
 - Demo buổi này: `python -W ignore eval/playbook_ab_smoke.py` (A/B N=1, chỉ cần Ollama); kết quả 2026-11-07 18:02: A 4 bước (1 bước xác minh, có "đổi mật khẩu root" trước khi xác minh), B 5 bước (4 bước xác minh, chưa có nhánh điều kiện, chưa nêu rule ID).
 - Hệ quả ưu tiên: (1) hoàn thiện yêu cầu bắt buộc trong đề cương trước; (2) playbook + Hybrid RAG + đánh giá trên tập test khóa; (3) LoRA là phần cộng điểm, không để chặn (1)–(2).
+- Quyết định thiết kế (Nguyên, 2026-11-07): nếu làm agent (Qwen3.5 của Dương) thì **chỉ đọc**. Agent chỉ chạy truy vấn Indexer định nghĩa sẵn (allowlist, tham số kiểm bằng code, giới hạn số lần gọi, log mọi lần gọi); KHÔNG block IP, cô lập máy, khóa tài khoản, gọi Manager API hay shell. Hành động thay đổi hệ thống chỉ ở dạng đề xuất cho người duyệt. Lý do: alert chứa chuỗi do kẻ tấn công kiểm soát (username, User-Agent, URL, tên file) → prompt injection. Thứ tự: playbook → LoRA → agent read-only (không kịp thì đưa vào hướng phát triển).
 - Next action: đối chiếu từng tiêu chí trong đề cương với trạng thái repo, ghi phần còn thiếu.
 
 ## Demo lite cho buổi báo cáo (2026-11-07)
