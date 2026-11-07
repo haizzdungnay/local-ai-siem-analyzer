@@ -4,9 +4,8 @@ Ngày cập nhật: 2026-10-27
 
 ## Demo lite cho buổi báo cáo (2026-11-07)
 
-- Trạng thái: XONG phần code; chưa chạy với dữ liệu thật (file A/B và run_manifest chỉ có trên máy host).
-- `eval/demo_lite.py` đọc `eval/raw_exports/smoke/playbook-ab.json` + `research/training/outputs/qwen35-9b-pentest-soc-qlora-v1-smoke/run_manifest.json` → `eval/raw_exports/demo/demo-lite.html` (mở offline, không cần Wazuh/VM; che IPv4 thành `IP-n`).
-- Lưu ý: run_manifest smoke 9B bị ghi đè bởi lần `--smoke-len 1800` (cùng thư mục) → trang hiển thị lần đo 1.778 token.
+- Trạng thái: XONG phần code; chưa chạy với dữ liệu thật (file A/B chỉ có trên máy host). Chỉ demo next_steps của playbook; phần 9B-pentest do Dương trình bày, không nằm trong trang.
+- `eval/demo_lite.py` đọc `eval/raw_exports/smoke/playbook-ab.json` → `eval/raw_exports/demo/demo-lite.html` (mở offline, không cần Wazuh/VM; che IPv4 thành `IP-n`).
 - Verification: render bằng dữ liệu giả + chụp màn hình Playwright (layout 2 cột OK); pytest 336 passed, 2 skipped.
 - Next action: trên host chạy `python eval/demo_lite.py`, mở file HTML kiểm tra trước buổi báo cáo.
 
