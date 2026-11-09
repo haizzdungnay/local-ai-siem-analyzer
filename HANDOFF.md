@@ -2,6 +2,18 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Dữ liệu train: đánh giá Splunk attack_data auditd (2026-11-09)
+
+- Trạng thái: ĐÁNH GIÁ XONG — **không dùng log Splunk auditd làm input replay**; đổi sang dùng làm "kịch bản lệnh" để chạy lại trên lab.
+- Đã tải (ngoài repo, `C:\Users\Tplab\attack_data`, sparse + LFS): `T1548.003/**`, `T1136.001/**` (35 file, 137 MB).
+- Phát hiện (đọc 10 file nhỏ):
+  - File auditd là **mảnh đã lọc cho detection Splunk**, không phải audit.log thô: `linux_auditd_sudo_su.log` 108/108 dòng `type=PROCTITLE`; `linux_auditd_add_user.log` 68/68 `PROCTITLE`; thiếu `SYSCALL`/`EXECVE`/`USER_*` cùng serial; thứ tự thời gian đảo ngược; một số file định dạng `ausearch -i` (`audit(06/05/2025 09:49:33...)`), không phải epoch.
+  - Hệ quả (suy luận, chưa chạy `wazuh-logtest`): decoder auditd của Wazuh đọc được, nhưng rule audit (`0365-auditd_rules.xml`) dựa trên SYSCALL/EXECVE + audit key; PROCTITLE đơn lẻ nhiều khả năng chỉ ra rule nền level 0–3 → không ra alert giống production (5402/5902/550).
+  - `sysmon_linux.log` (7–33 MB) là XML Sysmon for Linux — lab chưa có Sysmon Linux/decoder → loại.
+  - Nội dung lệnh vẫn có giá trị (giải hex PROCTITLE): `sudo setcap cap_setuid+ep ./priv_esc`, `sudo chmod u+s vuln`, `useradd malware_user`, `echo malware_user ALL=(ALL) NOPASSWD: ALL`; xen lệnh quản trị hợp lệ (`sudo systemctl status ...`).
+- Quyết định đề xuất: chạy lại các lệnh này (và bản benign tương ứng) trên victim `.20` → Wazuh sinh alert thật (auth.log 5402/5403, 5902/5901, FIM 550 `/etc/sudoers*`) → export cửa sổ → target Claude nháp + review. Ghi nguồn kịch bản: Splunk attack_data (Apache-2.0) commit `c8af10d`.
+- Next action: viết danh sách kịch bản (tấn công + benign đối xứng), cần lab bật; chờ output smoke 7B `--smoke-len 1800`.
+
 ## Góp ý của GVHD sau buổi báo cáo (2026-11-07)
 
 - Hướng hiện tại (Hybrid RAG + playbook IR cải thiện next_steps) **đúng đề tài**; điều kiện bắt buộc là đáp ứng các tiêu chí đã nêu trong đề cương.
