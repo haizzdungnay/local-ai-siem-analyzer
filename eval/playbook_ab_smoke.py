@@ -39,7 +39,7 @@ def load_playbook(rule_id: str, path: Path = PLAYBOOK_PATH) -> dict | None:
 
 def playbook_context(entry: dict) -> str:
     """Khối PLAYBOOK đưa vào context: chỉ các trường dùng cho điều tra, bỏ trường quản trị."""
-    keep = {k: entry[k] for k in ("rule_id", "title", "mitre", "trigger", "facts", "verify",
+    keep = {k: entry[k] for k in ("rule_id", "title", "mitre", "trigger", "facts", "window", "verify",
                                   "branches", "fp_conditions", "do_not") if entry.get(k)}
     body = yaml.safe_dump(keep, allow_unicode=True, sort_keys=False, width=1000)
     return (

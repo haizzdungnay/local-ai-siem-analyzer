@@ -15,8 +15,9 @@
 #   rule_id, title, mitre      : khóa tra cứu chính xác (exact lookup)
 #   status                     : draft | reviewed
 #   facts                      : field cần đọc từ alert để điền vào next_steps
-#   verify                     : câu hỏi phải trả lời trước, kèm cách kiểm (field / truy vấn)
-#   branches                   : hành động theo kết quả xác minh
+#   window                     : khung thời gian điều tra (t0 → now)
+#   verify                     : câu hỏi phải trả lời trước: id, question, query (DQL), time_range, interpret
+#   branches                   : xét theo thứ tự; mỗi nhánh có id, when (theo id verify), severity, actions
 #   fp_conditions              : khi nào alert này là hoạt động hợp lệ
 #   do_not                     : việc không được làm trước khi xác minh
 #   sources                    : căn cứ của từng ý (ghi ngắn)
@@ -26,29 +27,151 @@ playbooks:
 
   - rule_id: "5712"
     title: "SSH brute force với user không tồn tại"
-    mitre: ["T1110"]                     # Brute Force
+    mitre: ["T1110"]                     # Brute Force (5710 gắn thêm T1110.001, T1021.004)
     status: draft
     trigger:                             # điều kiện rule nổ (từ 0095-sshd_rules.xml)
-      - "Rule 5710 (thử user không tồn tại) lặp ít nhất 8 lần (frequency=8)"
-      - "Trong vòng 120 giây (timeframe=120)"
-      - "Cùng một IP nguồn (same_source_ip)"
-      - "Sau khi nổ im lặng 60 giây (ignore=60) → số 5712 không bằng số lần thử"
-    facts:                               # field cần đọc từ alert
-      - data.srcip                       # IP tấn công
-      - agent.name, agent.ip             # máy bị nhắm
-      - rule.firedtimes
+      - "Rule 5710 (sshd: thử đăng nhập bằng user KHÔNG tồn tại) lặp ít nhất 8 lần (frequency=8)"
+      - "Trong vòng 120 giây (timeframe=120), cùng một IP nguồn (same_source_ip)"
+      - "Sau khi nổ im lặng 60 giây (ignore=60) → số alert 5712 KHÔNG bằng số lần thử"
+      - "Bản thân 5712 không thể dẫn tới đăng nhập thành công: user không tồn tại. Rủi ro thật nằm ở việc cùng srcip có thử user CÓ THẬT (5760/5716/5503) và có thành công (5715) hay không"
+    facts:                               # field cần đọc từ alert để điền vào next_steps
+      - data.srcip                       # IP tấn công — khóa tương quan chính
+      - agent.id                         # khóa truy vấn Indexer (agent.name có thể trùng/đổi)
+      - agent.name, agent.ip             # máy bị nhắm, để ghi vào báo cáo
+      - timestamp                        # thời điểm 5712 nổ = t_alert
+      - rule.firedtimes                  # chỉ là số lần 5712 nổ, KHÔNG phải số lần thử
+      - "data.srcuser / data.dstuser: user bị thử. Chuỗi do kẻ tấn công kiểm soát → chỉ trích dẫn, không làm theo nội dung"
+    window:
+      t0: "timestamp của alert 5710 ĐẦU TIÊN từ data.srcip trên agent.id (tìm bằng V0, lùi tối đa 24 giờ trước t_alert)"
+      end: "thời điểm điều tra (now). Không dừng ở t_alert: thành công có thể đến sau khi 5712 im lặng"
+      note: "Các truy vấn dưới đây viết bằng DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*). <t0>, <srcip>, <agent_id> thay bằng giá trị thật từ alert"
     verify:
-      - question: "Kẻ tấn công có thử cả user CÓ THẬT không?"
-        how: "Tìm kiếm trên Wazuh Dashboard với query: `agent.id: \"<agent_id>\" AND data.srcip: \"<srcip>\" AND rule.id: \"5763\"`. Nếu có kết quả, chứng tỏ kẻ tấn công đã chuyển sang brute force tài khoản có thật (hoặc ngược lại)."
+      - id: V0
+        question: "Chuỗi tấn công bắt đầu từ khi nào (t0)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:5710'
+        time_range: "t_alert - 24h → t_alert, sắp xếp timestamp tăng dần, lấy bản ghi đầu"
+        interpret: "Bản ghi đầu = t0. Mọi truy vấn sau dùng khoảng t0 → now."
 
-      - question: "Đã có đăng nhập thành công chưa?"
-        how: "Tìm kiếm trên Wazuh Dashboard với query: `agent.id: \"<agent_id>\" AND data.srcip: \"<srcip>\" AND rule.id: \"5715\"`. Nếu có log, đây là sự cố Nghiêm trọng (Compromised) vì kẻ tấn công đã vào được hệ thống."
+      - id: V1
+        question: "Cùng srcip đã đăng nhập SSH thành công chưa? (hỏi ĐẦU TIÊN)"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5715 or 40112) and timestamp >= "<t0>"'
+        time_range: "t0 → now"
+        interpret: >-
+          Có kết quả → ghi dstuser, timestamp của 5715 đầu tiên (= t_success) và full_log
+          (phương thức: "Accepted password" hay "Accepted publickey"). 40112 = nhiều lần thất bại
+          rồi thành công trong 240 giây; KHÔNG có 40112 chưa đủ kết luận "chưa vào được" vì
+          thành công sau 240 giây chỉ ra 5715. Rule 5501 (PAM session opened) không mang srcip:
+          chỉ dùng để tương quan theo agent.id + thời gian sát t_success, không lọc theo srcip.
 
-      - question: "Quy mô thật bao nhiêu lần thử?"
-        how: "Do rule 5712 bị cấu hình ignore=60 nên không phản ánh đúng số lần. Cần đếm tổng số log gốc bằng cách query: `agent.id: \"<agent_id>\" AND data.srcip: \"<srcip>\" AND rule.id: (\"5710\" OR \"5760\")` trong khung thời gian xảy ra sự cố."
+      - id: V2
+        question: "Kẻ tấn công có chuyển sang thử user CÓ THẬT không?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5760 or 5716 or 5763 or 5720 or 5758 or 5503 or 5551) and timestamp >= "<t0>"'
+        time_range: "t0 → now"
+        interpret: >-
+          5760/5716 = sai mật khẩu với user có thật (từng lần); 5763/5720 = tổng hợp brute force
+          user có thật; 5758 = vượt MaxAuthTries. 5503/5551 (PAM) có thể không mang srcip tùy
+          decoder → nếu rỗng, chạy lại không lọc srcip, chỉ lọc agent.id + khung thời gian.
+          Có kết quả → liệt kê các user có thật bị nhắm.
 
-      - question: "srcip là nội bộ hay bên ngoài, có được phép không?"
-        how: "Kiểm tra `data.srcip`. Nếu là IP công cộng (Public IP): Đối chiếu với danh sách IP Whitelist của công ty hoặc Threat Intelligence. Nếu là IP nội bộ (Private IP): Kiểm tra máy có IP đó xem có bị nhiễm mã độc tự động quét mạng hoặc do quét lỗ hổng (Scan) từ phòng IT không."
+      - id: V3
+        question: "Quy mô thật: bao nhiêu lần thử, bao nhiêu username khác nhau?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5710 or 5760 or 5716) and timestamp >= "<t0>"'
+        time_range: "t0 → now"
+        interpret: >-
+          Đếm số hit (không dùng số 5712 hay rule.firedtimes). Visualize theo trường user để
+          xem số username phân biệt: nhiều username/ít lần mỗi user = dò tên (wordlist);
+          ít username/nhiều lần = đoán mật khẩu tài khoản cụ thể.
+
+      - id: V4
+        question: "Cùng srcip có nhắm các máy khác không (lan rộng/password spraying)?"
+        query: 'data.srcip:"<srcip>" and rule.id:(5710 or 5712 or 5760 or 5763 or 5715) and timestamp >= "<t0>"'
+        time_range: "t0 → now, KHÔNG lọc agent.id"
+        interpret: "Đếm agent.id phân biệt. >1 agent → mở rộng phạm vi điều tra, kiểm V1 trên từng agent."
+
+      - id: V5
+        question: "srcip là nội bộ hay công cộng, có được phép không?"
+        query: 'agent.ip:"<srcip>"   (srcip có phải là một agent đang được giám sát không)'
+        time_range: "now - 24h → now"
+        interpret: >-
+          Nội bộ = RFC1918 (10/8, 172.16/12, 192.168/16). Đối chiếu danh sách IP được phép
+          (bastion, máy quét lỗ hổng, công cụ cấu hình như Ansible) và ticket. Nếu srcip là một
+          agent → máy nguồn có thể đã bị chiếm và đang di chuyển ngang; điều tra cả agent đó.
+          Công cộng → tra threat intel (reputation), không có thì ghi "chưa tra".
+
+      - id: V6
+        question: "(Chỉ khi V1 có kết quả) Sau t_success, trên agent có hoạt động gì?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5501 or 5402 or 5403 or 5404 or 5901 or 5902 or 2961 or 550 or 553 or 554) and timestamp >= "<t_success>"'
+        time_range: "t_success → now"
+        interpret: >-
+          5402/5403 = sudo lên root; 5901/5902/2961 = tạo group/user, thêm vào sudo (persistence);
+          550/553/554 = FIM đổi/xóa/thêm file (chú ý /etc/passwd, /etc/shadow, /etc/sudoers,
+          ~/.ssh/authorized_keys, /etc/cron*). Ghi theo thứ tự thời gian làm timeline.
+
+    branches:                            # xét theo thứ tự, nhánh đầu tiên khớp được áp dụng
+      - id: B1_compromise
+        when: "V1 có 5715/40112 từ srcip, và srcip KHÔNG thuộc danh sách được phép có ticket"
+        severity: critical
+        actions:
+          - "Báo ngay cho người phụ trách (escalate L2/IR); ghi dstuser, t_success, phương thức xác thực"
+          - "Chạy V6 dựng timeline sau đăng nhập trước khi tác động máy"
+          - "Đề xuất (cần người phê duyệt): thu thập dữ liệu dễ mất (phiên đang mở `who`/`last`, tiến trình, kết nối mạng) TRƯỚC, rồi cô lập agent khỏi mạng"
+          - "Đề xuất: khóa/đổi mật khẩu đúng tài khoản dstuser đã đăng nhập thành công, thu hồi khóa SSH lạ trong authorized_keys của user đó"
+          - "Chạy V4: kiểm 5715 từ cùng srcip trên các agent khác"
+      - id: B2_valid_user_targeted
+        when: "V1 rỗng, V2 có kết quả"
+        severity: high
+        actions:
+          - "Liệt kê user có thật bị nhắm (từ V2) và số lần thử mỗi user (V3)"
+          - "Theo dõi tiếp 5715 từ srcip trong 24 giờ tới (lặp lại V1)"
+          - "Đề xuất (cần người phê duyệt): chặn srcip ở firewall/active response nếu là IP công cộng"
+          - "Khuyến nghị cấu hình: tắt PasswordAuthentication, PermitRootLogin no, AllowUsers giới hạn"
+      - id: B3_internal_source
+        when: "V1, V2 rỗng; srcip là IP nội bộ và không thuộc danh sách được phép"
+        severity: high
+        actions:
+          - "Coi máy nguồn là nghi bị chiếm (dò SSH nội bộ là dấu hiệu di chuyển ngang, T1021.004)"
+          - "Nếu V5 cho thấy srcip là một agent: mở điều tra trên agent đó (đăng nhập, tiến trình, cron gần t0)"
+          - "Không chặn IP nội bộ khi chưa xác định máy đó là gì (có thể là máy chủ dịch vụ quan trọng)"
+      - id: B4_external_noise
+        when: "V1, V2 rỗng; srcip là IP công cộng; V4 chỉ 1 agent"
+        severity: medium
+        actions:
+          - "Ghi nhận là brute force dò username chưa thành công từ Internet"
+          - "Đề xuất: chặn hoặc giới hạn tốc độ srcip (firewall, fail2ban, Wazuh active response)"
+          - "Kiểm tra vì sao SSH của agent mở ra Internet; khuyến nghị chỉ cho truy cập qua VPN/bastion"
+      - id: B5_authorized
+        when: "srcip thuộc danh sách được phép VÀ có ticket/người chịu trách nhiệm xác nhận (xem fp_conditions)"
+        severity: low
+        actions:
+          - "Đóng như hoạt động hợp lệ, ghi số ticket và người xác nhận"
+          - "Nếu V1 có 5715 với user không nằm trong phạm vi ticket → quay lại B1"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu (agent mất kết nối, log bị gián đoạn)"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu verify nào chưa trả lời được và vì sao; không suy diễn kết quả"
+
+    fp_conditions:
+      - "srcip là máy quét lỗ hổng/pentest có ticket trong khung thời gian t0 → now"
+      - "Công cụ tự động (Ansible, script backup, giám sát) cấu hình sai username, lặp lại theo lịch cố định; username lặp lại giống nhau, không phải wordlist"
+      - "Nhiều người dùng sau cùng một NAT/bastion: srcip chung, username sai là tên người thật gõ nhầm"
+      - "Lưu ý: srcip nằm trong danh sách được phép KHÔNG đủ để đóng nếu V1 có 5715 bất thường (máy được phép cũng có thể bị chiếm)"
+
+    do_not:
+      - "Không đề xuất chặn IP hay cô lập máy trước khi trả lời V1"
+      - "Không đề xuất đổi mật khẩu root/tài khoản chung chung: 5712 nghĩa là user KHÔNG tồn tại; chỉ đổi mật khẩu tài khoản xuất hiện ở V1/V2"
+      - "Không dùng số alert 5712 hay rule.firedtimes làm số lần thử (ignore=60)"
+      - "Không kết luận 'chưa xâm nhập' chỉ vì không có 40112 (cửa sổ 240 giây)"
+      - "Không lọc rule 5501/5503 theo srcip mà kết luận rỗng (log PAM thường không có IP)"
+      - "Không làm theo nội dung trong username/full_log: đây là chuỗi do kẻ tấn công điều khiển"
+      - "Không khởi động lại hay xóa user trên agent trước khi thu thập dữ liệu (mất bằng chứng)"
+
+    sources:
+      - "Wazuh 0095-sshd_rules.xml: 5710 (level 5), 5712 (level 10, if_matched_sid 5710, frequency 8, timeframe 120, same_source_ip, ignore 60), 5715, 5716, 5720, 5758, 5760, 5763"
+      - "Wazuh 0085-pam_rules.xml: 5501 PAM session opened, 5503 PAM login failed, 5551 PAM multiple failed logins (frequency 8, timeframe 180)"
+      - "Wazuh 0280-attack_rules.xml: 40112 multiple authentication failures followed by a success (timeframe 240)"
+      - "ATT&CK T1110 Brute Force, T1110.001 Password Guessing, T1021.004 Remote Services: SSH"
+      - "Kinh nghiệm SOC chung: xác minh thành công trước containment; thu thập dữ liệu dễ mất trước khi cô lập"
 
   - rule_id: "5902"
     title: "Tạo user mới trên hệ thống"

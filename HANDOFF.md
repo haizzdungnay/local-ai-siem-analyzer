@@ -2,6 +2,16 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Playbook 5712 — cây phân nhánh (2026-11-09)
+
+- Trạng thái: 5712 đủ trường (vẫn `status: draft`, chờ Dương review). 5902 chưa viết.
+- Đã áp dụng 5 điểm review: V1 (5715/40112 cùng srcip) là câu xác minh đầu tiên sau V0 (tìm t0); V2 gom 5760/5716/5763/5720/5758/5503/5551; khung t0 → now; `agent.id` trong `facts`; mọi câu verify là truy vấn DQL cụ thể.
+- Điều chỉnh so với review cũ: **5501 không lọc theo srcip** — log PAM `session opened` không chứa IP, nên chỉ tương quan theo agent.id + thời gian sát t_success. Tương tự 5503/5551 có thể rỗng khi lọc srcip.
+- Không có 40112 ≠ chưa xâm nhập (timeframe 240 s) → V1 luôn tìm cả 5715.
+- Nhánh: B1 compromise (critical) → B2 user thật bị nhắm (high) → B3 nguồn nội bộ (high) → B4 nhiễu Internet (medium) → B5 được phép có ticket (low) → unknown. Containment chỉ ở dạng "đề xuất, cần người phê duyệt", phù hợp quyết định agent chỉ đọc.
+- Cần kiểm trên lab: tên field user của alert 5710 (`data.srcuser` hay `data.dstuser`) — mẫu `eval/samples/alert-ssh-bruteforce.json` ghi `dstuser`; query V3 cần field đúng để đếm username.
+- Next: chạy lại `python -W ignore eval/playbook_ab_smoke.py` để xem B có nêu rule ID/nhánh chưa (vẫn đi qua `rag_context` untrusted cho tới P1); viết 5902 theo cùng khuôn.
+
 ## Dữ liệu train: đánh giá Splunk attack_data auditd (2026-11-09)
 
 - Trạng thái: ĐÁNH GIÁ XONG — **không dùng log Splunk auditd làm input replay**; đổi sang dùng làm "kịch bản lệnh" để chạy lại trên lab.
