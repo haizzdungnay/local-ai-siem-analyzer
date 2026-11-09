@@ -2,6 +2,27 @@
 
 Ngày cập nhật: 2026-10-27
 
+## A/B/C 5712 lần 2 + sửa xung đột chỉ dẫn (2026-11-09)
+
+- Kết quả 18:34 (sau khi thêm rule ID vào `question`, N=1):
+  - A: y hệt (tất định).
+  - B (untrusted): đổi hẳn, **bỏ luôn V1** (đăng nhập thành công), chuyển sang "theo dõi 24 giờ" + chặn IP; severity medium; rule ID 0/4 → vị trí untrusted không ổn định.
+  - C (trusted): 7 bước đúng V0→V6, đủ IP thật, V6 có điều kiện → cấu trúc tốt nhất từ trước tới nay; nhưng rule ID **0/7**, model thay rule ID bằng nhãn "(V1)".
+- Kết luận: thêm rule ID vào `question` KHÔNG đủ; model chủ động gỡ số ra. Nguyên nhân nghi vấn chính: **xung đột chỉ dẫn do mình viết** — luật 2 cũ ghi "không bịa giá trị không có trong ALERT" cùng contract "không tự tạo sự kiện"; 5715 không có trong ALERT nên model coi rule ID là giá trị bịa và bỏ, dùng nhãn V thay thế.
+- Sửa (`playbook-block-v2`): nói rõ rule ID là tên truy vấn, không phải sự kiện; chỉ giá trị lấy từ ALERT; cấm nhãn V; một câu mẫu có placeholder. Chỉ ảnh hưởng nhánh C.
+- Next: chạy lại A/B/C. Nếu C ≥ 3 bước có rule ID → giữ v2, nối production. Nếu vẫn 0 → thử bỏ "Short" trong mô tả schema (tăng `SOC_PROMPT_VERSION`).
+
+## A/B/C 5712 lần 1 + thí nghiệm rule ID trong câu hỏi (2026-11-09)
+
+- Kết quả A/B/C 18:22 (`qwen2.5:7b`, `alert-ssh-bruteforce.json`, N=1):
+  - A: giống hệt lần 18:10 (vẫn "cập nhật mật khẩu root"); rule ID 0/4.
+  - B (untrusted): giống hệt lần 18:10; V1→V4→V5→B3; severity high; rule ID 0/4.
+  - C (trusted): V1→**V2**→V4→V5→B4 có điều kiện; **severity medium** (đúng luật "severity nhánh chỉ áp dụng khi alert có bằng chứng", alert chỉ có 5712 level 10); rule ID **0/5**.
+- Phát hiện phương pháp: `temperature=0, seed=42` → chạy lại cùng alert cho output y hệt. Lặp 3 lần không tăng N; muốn N lớn phải đổi alert (alert 5712 từ lab, không từ tập test khóa).
+- Nguyên nhân rule ID = 0 cả ở C: model chép gần nguyên văn `question` (C bước 1–2 ≈ V1–V2) và bỏ `query`; `question` không chứa rule ID. Phụ: schema mô tả next_steps là "Short ... actions"; khối playbook dài, nằm cuối system prompt.
+- Thí nghiệm (đổi đúng một biến): thêm rule ID vào `question` V0–V6 của 5712. Chưa chạy.
+- Next: `python -W ignore eval/playbook_ab_smoke.py && python eval/demo_lite.py`; nếu C ≥ 3/5 bước có rule ID → xác nhận nguyên nhân, nối production, viết playbook các rule khác theo khuôn (question nêu rule ID). Nếu vẫn thấp → thử bỏ chữ "Short" trong mô tả schema (đổi prompt → tăng `SOC_PROMPT_VERSION`).
+
 ## P1 bản nhỏ — khối TRUSTED_PLAYBOOK tách khỏi RAG (2026-11-09)
 
 - Trạng thái: CODE XONG, chưa chạy với Ollama. Full test 345 passed, 2 skipped (Linux clone).

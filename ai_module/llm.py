@@ -13,7 +13,9 @@ from pathlib import Path
 
 import ollama as ollama_sdk
 
-from playbooks import build_trusted_playbook_block, check_next_steps, playbook_sha256
+from playbooks import (
+    PLAYBOOK_PROMPT_VERSION, build_trusted_playbook_block, check_next_steps, playbook_sha256,
+)
 from reader import validate_ollama_base_url
 
 
@@ -894,6 +896,7 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
         provenance["playbook"] = {
             "rule_id": str(playbook.get("rule_id", "")),
             "status": str(playbook.get("status", "draft")),
+            "block_version": PLAYBOOK_PROMPT_VERSION,
             "sha256": playbook_sha256(playbook),
             "check": check_next_steps(result.get("next_steps"), playbook),
         }
