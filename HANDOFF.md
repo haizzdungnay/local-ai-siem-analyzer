@@ -2,6 +2,14 @@
 
 Ngày cập nhật: 2026-10-27
 
+## P1 bản nhỏ — khối TRUSTED_PLAYBOOK tách khỏi RAG (2026-11-09)
+
+- Trạng thái: CODE XONG, chưa chạy với Ollama. Full test 345 passed, 2 skipped (Linux clone).
+- Lý do: A/B 18:10 (5712 mới, `qwen2.5:7b`, N=1) — B (playbook qua `rag_context`) đi đúng thứ tự V1→V4→V5→B3, `severity=high`, không còn "đổi mật khẩu root" (A vẫn còn), nhưng 0 bước nêu rule ID và bỏ V2. Nguyên nhân: playbook bị bọc `UNTRUSTED_RAG_CONTEXT` nên model chỉ lấy ý câu hỏi, bỏ `query`.
+- Thay đổi: `ai_module/playbooks.py` (lookup, khối trusted, `check_next_steps`); `analyze_alert(playbook=...)` nối khối vào system prompt, provenance có `playbook.check`; A/B thêm nhánh C.
+- Giới hạn: (1) nhãn trusted chỉ làm model nghiêng về phía đúng, không phải ranh giới cứng như prepared statement → `check_next_steps` là lớp kiểm bằng code; (2) `verify_cited` thô: 5710 có ở V0 và V3, 5715 ở V1 và V4 → nêu 1 ID có thể đánh dấu 2 câu; (3) chưa kiểm `do_not` tự động; (4) production chưa nối (`main.py`, `analysis_service.py` vẫn chỉ dùng `rag_context`); (5) khối 5712 khoảng 8.100 ký tự, `num_ctx` mặc định 8192 vẫn đủ nhưng theo dõi `context_near_limit`.
+- Next: chạy `python -W ignore eval/playbook_ab_smoke.py` 3 lần, so `bước có rule ID` của B và C; nếu C tốt hơn rõ thì nối `get_playbook(rule.id)` vào `main.py`/`analysis_service.py` (fallback RAG ngữ nghĩa khi không có playbook) và viết 5902.
+
 ## Playbook 5712 — cây phân nhánh (2026-11-09)
 
 - Trạng thái: 5712 đủ trường (vẫn `status: draft`, chờ Dương review). 5902 chưa viết.

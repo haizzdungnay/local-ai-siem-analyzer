@@ -1,10 +1,12 @@
 """
 eval/playbook_ab_smoke.py — phép thử A/B nhanh cho playbook Tầng 3 (chưa phải đánh giá).
 
-Cùng một alert mẫu, gọi LLM hai lần với cấu hình giống hệt nhau:
+Cùng một alert mẫu, gọi LLM ba lần với cấu hình giống hệt nhau:
   A: không có playbook (giống pipeline hiện tại khi RAG không trả về gì)
-  B: thêm playbook của rule.id vào khối context (exact lookup theo rule.id)
-rồi in next_steps cạnh nhau. N=1, chỉ để kiểm tra playbook có được model dùng hay không;
+  B: playbook đi qua rag_context → bị bọc UNTRUSTED_RAG_CONTEXT (cách cũ)
+  C: playbook là khối TRUSTED_PLAYBOOK trong system prompt (P1, tham số playbook=)
+Cả B và C dùng cùng playbook tra chính xác theo rule.id; khác nhau chỉ ở chỗ đặt và nhãn
+tin cậy. In next_steps cạnh nhau kèm số bước có rule ID (check_next_steps). N=1, chỉ để kiểm tra playbook có được model dùng hay không;
 kết luận định lượng phải chờ ablation trên tập test khóa.
 
 Chạy từ thư mục gốc repo (cần Ollama):
@@ -20,40 +22,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ai_module"))
 
-import yaml  # noqa: E402
-
 from extractor import extract_fields, format_for_llm  # noqa: E402
 from llm import analyze_alert  # noqa: E402
+from playbooks import PLAYBOOK_PATH, check_next_steps, get_playbook, playbook_body  # noqa: E402
 from reader import load_config, resolve_config_paths  # noqa: E402
 
-PLAYBOOK_PATH = ROOT / "ai_module" / "rag_data" / "playbooks.yaml"
-
-
-def load_playbook(rule_id: str, path: Path = PLAYBOOK_PATH) -> dict | None:
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    for entry in data.get("playbooks") or []:
-        if str(entry.get("rule_id")) == str(rule_id):
-            return entry
-    return None
-
-
 def playbook_context(entry: dict) -> str:
-    """Khối PLAYBOOK đưa vào context: chỉ các trường dùng cho điều tra, bỏ trường quản trị."""
-    keep = {k: entry[k] for k in ("rule_id", "title", "mitre", "trigger", "facts", "window", "verify",
-                                  "branches", "fp_conditions", "do_not") if entry.get(k)}
-    body = yaml.safe_dump(keep, allow_unicode=True, sort_keys=False, width=1000)
+    """Cách B (cũ): playbook dạng văn bản đưa qua rag_context."""
     return (
         f"[PLAYBOOK rule={entry.get('rule_id')} status={entry.get('status', 'draft')}]\n"
         "Hướng dẫn điều tra cho rule này. Dùng để viết next_steps: bước xác minh trước, "
         "containment sau; điền giá trị thật từ ALERT (srcip, agent, user); "
-        "không dùng giá trị không có trong ALERT.\n" + body
+        "không dùng giá trị không có trong ALERT.\n" + playbook_body(entry)
     )
 
 
-def run(alert_text: str, context: str, cfg: dict, model: str, language: str) -> dict:
+def run(alert_text: str, context: str, cfg: dict, model: str, language: str,
+        playbook: dict | None = None) -> dict:
     analysis, provenance = analyze_alert(
         alert_text=alert_text,
         rag_context=context,
+        playbook=playbook,
         model=model,
         base_url=cfg["ollama"]["base_url"],
         timeout=cfg["ollama"].get("timeout", 120),
@@ -81,19 +70,27 @@ def main() -> None:
     alert_text = format_for_llm(extracted)
     rule_id = str(extracted.get("rule.id", ""))
 
-    entry = load_playbook(rule_id)
+    entry = get_playbook(rule_id)
     if entry is None:
         sys.exit(f"!! Không có playbook cho rule {rule_id} trong {PLAYBOOK_PATH}")
     context_b = playbook_context(entry)
 
     print(f"Alert: {args.alert} | rule {rule_id} | model {model}")
-    a = run(alert_text, "", cfg, model, args.language)
-    b = run(alert_text, context_b, cfg, model, args.language)
-
-    for label, res in (("A — KHÔNG playbook", a), ("B — CÓ playbook", b)):
+    arms = {
+        "A_no_playbook": ("A — KHÔNG playbook", run(alert_text, "", cfg, model, args.language)),
+        "B_playbook": ("B — playbook qua rag_context (UNTRUSTED)",
+                       run(alert_text, context_b, cfg, model, args.language)),
+        "C_trusted_playbook": ("C — TRUSTED_PLAYBOOK trong system prompt",
+                               run(alert_text, "", cfg, model, args.language, playbook=entry)),
+    }
+    for key, (label, res) in arms.items():
         an = res["analysis"]
+        res["check"] = check_next_steps(an.get("next_steps"), entry)
+        chk = res["check"]
         print("\n" + "=" * 78)
         print(f"{label}   (severity={an.get('severity')}, origin={res['output_origin']}, {res['latency_s']:.1f}s)")
+        print(f"  bước có rule ID: {chk['steps_with_rule_id']}/{chk['steps_total']} | "
+              f"verify được nêu: {','.join(chk['verify_cited']) or '-'} / {chk['verify_total']}")
         print("=" * 78)
         for i, step in enumerate(an.get("next_steps") or [], 1):
             print(f"  {i}. {step}")
@@ -101,7 +98,8 @@ def main() -> None:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"alert": args.alert, "rule_id": rule_id, "model": model,
-                               "playbook_context": context_b, "A_no_playbook": a, "B_playbook": b},
+                               "playbook_context": context_b,
+                               **{key: res for key, (_, res) in arms.items()}},
                               ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"\nĐã ghi: {os.path.relpath(out, ROOT)}")
 

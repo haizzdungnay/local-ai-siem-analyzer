@@ -13,6 +13,7 @@ from pathlib import Path
 
 import ollama as ollama_sdk
 
+from playbooks import build_trusted_playbook_block, check_next_steps, playbook_sha256
 from reader import validate_ollama_base_url
 
 
@@ -843,14 +844,21 @@ def _trusted_wazuh_evidence_reminder(value, language: str) -> tuple[str, dict | 
 def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:3b",
                   base_url: str = "http://localhost:11434", timeout: float = 120,
                   language: str = "vi", include_provenance: bool = False,
-                  allow_remote: bool = False, llm_parameters=None):
-    """Analyze one alert. Default return preserves the historical dict contract."""
+                  allow_remote: bool = False, llm_parameters=None, playbook: dict | None = None):
+    """Analyze one alert. Default return preserves the historical dict contract.
+
+    playbook: entry from playbooks.get_playbook(rule_id). It comes from an internal file,
+    so it is appended to the system prompt as trusted guidance, never mixed into the
+    untrusted RAG_CONTEXT block.
+    """
     _assert_language(language)
     validate_ollama_base_url(base_url, allow_remote=allow_remote)
     parameters = normalize_llm_parameters(llm_parameters) if llm_parameters is not None else None
     prompt = build_effective_system_prompt(
         "alert", language, "" if parameters is None else parameters["system_prompt"]
     )
+    if playbook:
+        prompt += "\n\n" + build_trusted_playbook_block(playbook, language)
     options = ollama_options(parameters)
     request_data = _untrusted_message("ALERT", alert_text)
     if rag_context:
@@ -882,6 +890,13 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
     )
     if include_provenance and elevated_from is not None:
         provenance["severity_floor_applied"] = elevated_from
+    if playbook:
+        provenance["playbook"] = {
+            "rule_id": str(playbook.get("rule_id", "")),
+            "status": str(playbook.get("status", "draft")),
+            "sha256": playbook_sha256(playbook),
+            "check": check_next_steps(result.get("next_steps"), playbook),
+        }
     # Alert/eval consumers have a fixed five-field schema. The expanded public
     # trace is used by the dashboard aggregate contract, never by alert evals.
     legacy_result = {key: result[key] for key in OUTPUT_SCHEMA["required"]}
