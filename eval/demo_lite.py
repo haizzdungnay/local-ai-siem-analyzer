@@ -87,10 +87,10 @@ def column(label: str, tag: str, res: dict, mask: Masker) -> tuple[str, dict]:
 
 
 CSS = """
-:root{--bg:#f7f7f5;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--line:#e3e2dd;--a:#b4532a;--b:#2a6f5b;
+:root{--bg:#f7f7f5;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--line:#e3e2dd;--a:#b4532a;--b:#7a6a2a;--c:#2a6f5b;
 --ok:#2a6f5b;--no:#a33;--okbg:#e4f1ec;--nobg:#f7e3e3}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#171716;--fg:#ecebe6;--mut:#a3a29c;
---card:#21211f;--line:#34332f;--a:#e08a5f;--b:#6cc2a6;--ok:#6cc2a6;--no:#e88;--okbg:#1d332c;--nobg:#3a2222}}
+--card:#21211f;--line:#34332f;--a:#e08a5f;--b:#d4bc6a;--c:#6cc2a6;--ok:#6cc2a6;--no:#e88;--okbg:#1d332c;--nobg:#3a2222}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
 font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:1180px;margin:0 auto;padding:28px 16px 48px}
@@ -100,10 +100,10 @@ text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
 border-radius:10px;padding:18px;margin-bottom:18px}
 pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;
 font-size:12.5px;margin:0}
-.ab{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:820px){.ab{grid-template-columns:1fr}}
+.ab{display:grid;grid-template-columns:repeat(var(--n),1fr);gap:14px}@media(max-width:900px){.ab{grid-template-columns:1fr}}
 .col{border:1px solid var(--line);border-radius:10px;padding:14px;border-top:4px solid var(--a)}
-.col.b{border-top-color:var(--b)}.col header{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.pill{font-weight:700}.col.a .pill{color:var(--a)}.col.b .pill{color:var(--b)}
+.col.b{border-top-color:var(--b)}.col.c{border-top-color:var(--c)}.col header{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{font-weight:700}.col.a .pill{color:var(--a)}.col.b .pill{color:var(--b)}.col.c .pill{color:var(--c)}
 .meta{color:var(--mut);font-size:13px}.summary{margin:10px 0 0}
 ol{padding-left:20px;margin:0}li{margin:0 0 10px}.badges{margin-top:3px}
 .tag{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:999px;margin-right:4px}
@@ -122,21 +122,30 @@ def build(ab: dict) -> str:
     if ab.get("alert") and alert_path.is_file():
         alert_txt = mask(json.dumps(json.loads(alert_path.read_text(encoding="utf-8")),
                                     ensure_ascii=False, indent=2))
-    col_a, st_a = column("A — KHÔNG playbook", "a", ab.get("A_no_playbook") or {}, mask)
-    col_b, st_b = column("B — CÓ playbook", "b", ab.get("B_playbook") or {}, mask)
+    arms = [("A_no_playbook", "A — KHÔNG playbook", "a"),
+            ("B_playbook", "B — playbook qua RAG (untrusted)", "b"),
+            ("C_trusted_playbook", "C — playbook TRUSTED", "c")]
+    cols, stats = [], []
+    for key, label, tag in arms:
+        if key in ab:
+            body, st = column(label, tag, ab[key] or {}, mask)
+            cols.append(body)
+            stats.append((label.split(" ")[0], st))
+
+    def line(field: str) -> str:
+        return " → ".join(f"{name} {st[field]}/{st['steps']}" for name, st in stats)
+
     return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Demo playbook IR</title>
 <style>{CSS}</style></head><body><main>
 <h1>Playbook IR: next_steps trước và sau</h1>
 <p class="sub">Model {esc(ab.get('model', '—'))} · rule {esc(str(ab.get('rule_id', '—')))} ·
-cùng alert, cùng prompt, chỉ khác có/không playbook · minh họa N=1, chưa phải kết quả đánh giá</p>
-<section class="card"><h2>Cùng một alert, hai câu trả lời</h2>
-<div class="ab">{col_a}{col_b}</div>
-<p class="note">Playbook cải thiện <b>cấu trúc điều tra</b>: A có {st_a['verify']}/{st_a['steps']} bước xác minh,
-{st_a['branch']} nhánh điều kiện → B có {st_b['verify']}/{st_b['steps']} bước xác minh, {st_b['branch']} nhánh điều kiện.
-Chưa đạt <b>bám bằng chứng</b> (nhãn đỏ): B có {st_b['rule']}/{st_b['steps']} bước nêu rule ID,
-{st_b['value']}/{st_b['steps']} bước nêu giá trị từ alert → việc tiếp theo: khối PLAYBOOK tin cậy riêng
-+ bắt buộc trích rule ID và giá trị từ alert.</p>
+cùng alert, cùng prompt; B và C cùng playbook, chỉ khác chỗ đặt và nhãn tin cậy · minh họa N=1, chưa phải kết quả đánh giá</p>
+<section class="card"><h2>Cùng một alert, {len(cols)} câu trả lời</h2>
+<div class="ab" style="--n:{len(cols)}">{''.join(cols)}</div>
+<p class="note"><b>Cấu trúc điều tra</b> (bước xác minh): {line('verify')}.
+<b>Bám bằng chứng</b> (bước có rule ID): {line('rule')}; bước có giá trị từ alert: {line('value')}.
+Nhãn đỏ là phần chưa đạt.</p>
 <details><summary>Alert đầu vào</summary><pre>{esc(alert_txt) or 'không tìm thấy file alert'}</pre></details>
 <details><summary>Playbook đưa vào context (rule {esc(str(ab.get('rule_id', '')))})</summary>
 <pre>{esc(mask(ab.get('playbook_context', '')))}</pre></details>

@@ -48,3 +48,13 @@ def test_5712_success_check_comes_first():
     assert order[:2] == ["V0", "V1"]  # V0 chỉ tìm t0; câu xác minh đầu tiên là V1
     assert "5715" in pb["verify"][1]["query"]
     assert "agent.id" in pb["facts"]
+
+
+def test_verify_questions_name_their_rule_ids():
+    # Model 7B chép gần nguyên văn trường question và bỏ query (A/B 2026-11-09),
+    # nên question phải tự nêu rule ID thì next_steps mới có rule ID.
+    for pb in filter(_complete, _load()):
+        for v in pb["verify"]:
+            ids = re.findall(r"\d+", " ".join(re.findall(r"rule\.id:\(?([\d\sor]+)\)?", v["query"])))
+            if ids:
+                assert any(re.search(rf"(?<!\d){i}(?!\d)", v["question"]) for i in ids), (pb["rule_id"], v["id"])

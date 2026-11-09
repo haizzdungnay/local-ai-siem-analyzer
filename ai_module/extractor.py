@@ -57,6 +57,9 @@ _LABELS = {
     "rule.mitre.technique": "MITRE Technique",
     "agent.name": "Agent",
     "agent.ip": "Agent IP",
+    "agent.id": "Agent ID (agent.id)",
+    "data.srcuser": "Source user (data.srcuser)",
+    "data.dstuser": "Target user (data.dstuser)",
     "data.srcip": "Source IP",
     "full_log": "Log",
 }
@@ -69,6 +72,7 @@ def format_for_llm(extracted: dict) -> str:
         Rule: 5712 (level 10) — SSHD brute-force
         MITRE: T1110 / Credential Access
         Agent: victim-ubuntu (192.168.100.20)
+        Agent ID (agent.id): 001
         Source IP: 192.168.100.30
         Log: Failed password for root from 192.168.100.30 port 22 ssh2
     """
@@ -108,10 +112,18 @@ def format_for_llm(extracted: dict) -> str:
         if agent_ip:
             agent_line += f" ({agent_ip})"
         lines.append(agent_line)
+    # agent.id là khóa truy vấn Indexer; ghi kèm tên field để model không lấy nhầm agent.name.
+    agent_id = extracted.get("agent.id")
+    if agent_id not in (None, ""):
+        lines.append(f"{_LABELS['agent.id']}: {agent_id}")
 
     srcip = extracted.get("data.srcip")
     if srcip:
         lines.append(f"Source IP: {srcip}")
+    for user_field in ("data.srcuser", "data.dstuser"):  # chuỗi do kẻ tấn công kiểm soát
+        user = extracted.get(user_field)
+        if user not in (None, ""):
+            lines.append(f"{_LABELS[user_field]}: {str(user).replace(chr(0), '')[:200]}")
 
     full_log = extracted.get("full_log")
     if full_log:
@@ -122,7 +134,8 @@ def format_for_llm(extracted: dict) -> str:
     # nếu config.yaml sau này thêm field mới mà chưa cập nhật hàm này.
     handled = {"rule.id", "rule.level", "rule.description",
                "rule.mitre.id", "rule.mitre.tactic", "rule.mitre.technique",
-               "agent.name", "agent.ip", "data.srcip", "full_log"}
+               "agent.name", "agent.ip", "agent.id", "data.srcip", "data.srcuser",
+               "data.dstuser", "full_log"}
     for key, val in extracted.items():
         if key not in handled:
             clean_val = str(val).replace("\x00", "")

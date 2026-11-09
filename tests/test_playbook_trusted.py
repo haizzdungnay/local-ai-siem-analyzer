@@ -76,3 +76,29 @@ def test_check_next_steps_does_not_match_inside_longer_numbers():
     entry = playbooks.get_playbook("5712")
     chk = playbooks.check_next_steps(["port 57150", "id 15715"], entry)
     assert chk["steps_with_rule_id"] == 0
+
+
+def test_extractor_exposes_agent_id_and_users_with_field_names():
+    import extractor
+    alert = {"rule": {"id": "5712"}, "agent": {"id": "001", "name": "victim", "ip": "10.0.0.2"},
+             "data": {"srcip": "10.0.0.9", "srcuser": "admin", "dstuser": "root"}}
+    fields = ["rule.id", "agent.name", "agent.ip", "agent.id", "data.srcip",
+              "data.srcuser", "data.dstuser"]
+    text = extractor.format_for_llm(extractor.extract_fields(alert, fields))
+    assert "Agent ID (agent.id): 001" in text
+    assert "Source user (data.srcuser): admin" in text and "Target user (data.dstuser): root" in text
+    assert text.count("001") == 1  # không lặp ở dòng fallback
+
+
+def test_config_example_lists_playbook_fields_and_flag():
+    import yaml
+    from pathlib import Path
+    cfg = yaml.safe_load((Path(playbooks.__file__).parent / "config.example.yaml").read_text(encoding="utf-8"))
+    assert {"agent.id", "data.srcuser", "data.dstuser"} <= set(cfg["extractor"]["fields"])
+    assert cfg["playbooks"]["enabled"] is True
+
+
+def test_playbook_for_config_defaults_off():
+    assert playbooks.playbook_for_config({}, "5712") is None
+    assert playbooks.playbook_for_config({"playbooks": {"enabled": False}}, "5712") is None
+    assert playbooks.playbook_for_config({"playbooks": {"enabled": True}}, "5712")["rule_id"] == "5712"

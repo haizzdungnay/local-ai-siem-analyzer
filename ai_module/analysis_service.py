@@ -6,6 +6,7 @@ from collections import Counter
 from threading import Lock
 
 from extractor import _get_nested, extract_fields, format_for_llm
+from playbooks import playbook_for_config
 from reader import resolve_config_paths
 from llm import (
     analyze_alert,
@@ -528,6 +529,7 @@ class AnalysisService:
             include_provenance=True,
             allow_remote=self.cfg["ollama"].get("allow_remote", False),
             llm_parameters=llm_parameters,
+            playbook=playbook_for_config(self.cfg, extracted.get("rule.id", "")),
         )
         return {
             "analysis": result,

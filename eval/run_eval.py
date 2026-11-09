@@ -10,6 +10,7 @@ sys.path.insert(0, str(AI_MODULE_DIR))
 
 from extractor import extract_fields, format_for_llm
 from llm import OUTPUT_KEYS, OUTPUT_SEVERITIES, SOC_PROMPT_VERSION, analyze_alert
+from playbooks import get_playbook
 from rag import RuleRAG
 from reader import load_config
 
@@ -35,6 +36,8 @@ def parse_args():
     parser.add_argument("--config", default=str(AI_MODULE_DIR / "config.yaml"))
     parser.add_argument("--model", default=None)
     parser.add_argument("--no-rag", action="store_true")
+    parser.add_argument("--playbooks", action="store_true",
+                        help="Thêm khối TRUSTED_PLAYBOOK theo rule.id (mặc định tắt để giữ baseline)")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
         "--language", choices=("vi", "en"), default="vi",
@@ -99,7 +102,7 @@ def main():
     model = args.model or cfg["ollama"]["model"]
     timeout = cfg["ollama"].get("timeout", 120)
     results_path = args.results or str(
-        EVAL_DIR / f"results-{SOC_PROMPT_VERSION}-{args.language}.csv"
+        EVAL_DIR / f"results-{SOC_PROMPT_VERSION}{'-playbook' if args.playbooks else ''}-{args.language}.csv"
     )
     rag_enabled = bool(cfg.get("rag", {}).get("enabled")) and not args.no_rag
     rule_rag = None
@@ -142,6 +145,7 @@ def main():
                     language=args.language,
                     include_provenance=True,
                     allow_remote=cfg["ollama"].get("allow_remote", False),
+                    playbook=get_playbook(extracted.get("rule.id", "")) if args.playbooks else None,
                 )
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"

@@ -11,6 +11,7 @@ import json
 import sys
 
 from extractor import extract_fields, format_for_llm
+from playbooks import playbook_for_config
 from llm import analyze_alert
 from rag import RuleRAG
 from reader import MODULE_DIR, fetch_alerts_api, load_config, load_sample_alerts, resolve_config_paths
@@ -207,6 +208,7 @@ def main():
                 language=language,
                 include_provenance=True,
                 allow_remote=cfg["ollama"].get("allow_remote", False),
+                playbook=playbook_for_config(cfg, extracted.get("rule.id", "")),
             )
             safe_provenance = dict(provenance) if isinstance(provenance, dict) else {}
             safe_provenance["rag"] = alert_rag_provenance

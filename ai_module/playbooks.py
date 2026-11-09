@@ -80,6 +80,13 @@ def get_playbook(rule_id, path: Path = PLAYBOOK_PATH) -> dict | None:
     return entry
 
 
+def playbook_for_config(cfg: dict, rule_id) -> dict | None:
+    """Playbook cho rule_id nếu config bật `playbooks.enabled`; mặc định tắt khi thiếu khóa."""
+    if not (cfg.get("playbooks") or {}).get("enabled", False):
+        return None
+    return get_playbook(rule_id)
+
+
 def playbook_body(entry: dict) -> str:
     keep = {key: entry[key] for key in PROMPT_FIELDS if entry.get(key)}
     return yaml.safe_dump(keep, allow_unicode=True, sort_keys=False, width=1000)

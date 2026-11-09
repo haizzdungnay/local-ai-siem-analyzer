@@ -2,6 +2,16 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Playbook vào production + extractor thêm agent.id (2026-11-09)
+
+- A/B/C 18:39 (`playbook-block-v2`): C đạt **5/6 bước có rule ID**, 6/6 câu verify được nêu → xác nhận nguyên nhân là xung đột chỉ dẫn (rule ID bị coi là "giá trị bịa"). A, B không đổi (tất định).
+- Lỗi mới: C ghi `agent.id victim-ubuntu` (là agent.name; agent.id thật là `001`). Nguyên nhân gốc: `extractor.fields` không có `agent.id` → model chưa từng thấy giá trị. Validator chỉ đếm rule ID nên không bắt được.
+- Quyết định (Nguyên, chọn cách 1 để so sánh công bằng): thêm `agent.id`, `data.srcuser`, `data.dstuser` vào extractor cho MỌI đường (A, C, eval, production).
+- Hệ quả: **mọi kết quả eval trước thay đổi này dùng input cũ** (`results-soc-contract-v2-*.csv`, confusion matrix, injection benchmark) → phải chạy lại baseline no-playbook trước khi so với `--playbooks`. Ghi rõ trong chương đánh giá.
+- Production: `main.py`, `AnalysisService.analyze_one` gắn playbook khi `playbooks.enabled: true`. `config.yaml` local đã thêm 3 field + `playbooks.enabled: true` (file gitignored).
+- Chưa làm: validator kiểm giá trị (vd. agent.id trong next_steps phải khớp alert); `analyze_window` chưa dùng playbook; `demo_lite` và dashboard chưa hiện `provenance.playbook.check`.
+- Next: chạy lại `eval/playbook_ab_smoke.py` xác nhận C ghi `agent.id 001`; commit; viết playbook theo họ rule (5710/5715/5716/5760/5763/5503/40112 trước, cùng khuôn: question nêu rule ID, query DQL, branches có severity).
+
 ## A/B/C 5712 lần 2 + sửa xung đột chỉ dẫn (2026-11-09)
 
 - Kết quả 18:34 (sau khi thêm rule ID vào `question`, N=1):

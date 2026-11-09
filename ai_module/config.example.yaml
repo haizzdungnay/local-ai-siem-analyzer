@@ -48,8 +48,16 @@ extractor:
     - "rule.mitre.technique"
     - "agent.name"
     - "agent.ip"
+    - "agent.id"                       # khóa truy vấn Indexer cho playbook (từ 2026-11-09)
     - "data.srcip"
+    - "data.srcuser"                   # user do kẻ tấn công nhập: chỉ trích dẫn
+    - "data.dstuser"
     - "full_log"
+
+# Playbook Tầng 3 (rag_data/playbooks.yaml): tra chính xác theo rule.id, đưa vào system prompt
+# như chỉ dẫn tin cậy. Tắt để chạy baseline không playbook.
+playbooks:
+  enabled: true
 
 # RAG
 rag:

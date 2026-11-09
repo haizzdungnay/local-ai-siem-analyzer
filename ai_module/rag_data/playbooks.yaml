@@ -47,13 +47,13 @@ playbooks:
       note: "Các truy vấn dưới đây viết bằng DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*). <t0>, <srcip>, <agent_id> thay bằng giá trị thật từ alert"
     verify:
       - id: V0
-        question: "Chuỗi tấn công bắt đầu từ khi nào (t0)?"
+        question: "Chuỗi tấn công bắt đầu từ khi nào (t0 = alert 5710 đầu tiên)?"
         query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:5710'
         time_range: "t_alert - 24h → t_alert, sắp xếp timestamp tăng dần, lấy bản ghi đầu"
         interpret: "Bản ghi đầu = t0. Mọi truy vấn sau dùng khoảng t0 → now."
 
       - id: V1
-        question: "Cùng srcip đã đăng nhập SSH thành công chưa? (hỏi ĐẦU TIÊN)"
+        question: "Cùng srcip đã đăng nhập SSH thành công chưa (tìm 5715, 40112)? Hỏi ĐẦU TIÊN"
         query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5715 or 40112) and timestamp >= "<t0>"'
         time_range: "t0 → now"
         interpret: >-
@@ -64,7 +64,7 @@ playbooks:
           chỉ dùng để tương quan theo agent.id + thời gian sát t_success, không lọc theo srcip.
 
       - id: V2
-        question: "Kẻ tấn công có chuyển sang thử user CÓ THẬT không?"
+        question: "Kẻ tấn công có chuyển sang thử user CÓ THẬT không (tìm 5760, 5716, 5763, 5503)?"
         query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5760 or 5716 or 5763 or 5720 or 5758 or 5503 or 5551) and timestamp >= "<t0>"'
         time_range: "t0 → now"
         interpret: >-
@@ -74,7 +74,7 @@ playbooks:
           Có kết quả → liệt kê các user có thật bị nhắm.
 
       - id: V3
-        question: "Quy mô thật: bao nhiêu lần thử, bao nhiêu username khác nhau?"
+        question: "Quy mô thật: bao nhiêu lần thử, bao nhiêu username khác nhau (đếm 5710, 5760)?"
         query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5710 or 5760 or 5716) and timestamp >= "<t0>"'
         time_range: "t0 → now"
         interpret: >-
@@ -83,13 +83,13 @@ playbooks:
           ít username/nhiều lần = đoán mật khẩu tài khoản cụ thể.
 
       - id: V4
-        question: "Cùng srcip có nhắm các máy khác không (lan rộng/password spraying)?"
+        question: "Cùng srcip có nhắm các agent khác không (tìm 5710, 5712, 5715 trên mọi agent.id)?"
         query: 'data.srcip:"<srcip>" and rule.id:(5710 or 5712 or 5760 or 5763 or 5715) and timestamp >= "<t0>"'
         time_range: "t0 → now, KHÔNG lọc agent.id"
         interpret: "Đếm agent.id phân biệt. >1 agent → mở rộng phạm vi điều tra, kiểm V1 trên từng agent."
 
       - id: V5
-        question: "srcip là nội bộ hay công cộng, có được phép không?"
+        question: "srcip là nội bộ (RFC1918) hay công cộng, có thuộc danh sách được phép, có phải là một agent không (agent.ip)?"
         query: 'agent.ip:"<srcip>"   (srcip có phải là một agent đang được giám sát không)'
         time_range: "now - 24h → now"
         interpret: >-
@@ -99,7 +99,7 @@ playbooks:
           Công cộng → tra threat intel (reputation), không có thì ghi "chưa tra".
 
       - id: V6
-        question: "(Chỉ khi V1 có kết quả) Sau t_success, trên agent có hoạt động gì?"
+        question: "Chỉ khi V1 có kết quả: sau t_success, agent có sudo (5402), tạo user (5902, 2961) hay đổi file (550, 554) không?"
         query: 'agent.id:"<agent_id>" and rule.id:(5501 or 5402 or 5403 or 5404 or 5901 or 5902 or 2961 or 550 or 553 or 554) and timestamp >= "<t_success>"'
         time_range: "t_success → now"
         interpret: >-
