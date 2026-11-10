@@ -2,6 +2,15 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Template dựng bước tra cứu bằng code (2026-11-10 11:4x)
+
+- Bước 1 của hướng mới: `render_verify_steps` trong `ai_module/playbooks.py` (xem CHANGELOG). Chạy thử 40112 và 5715: mọi bước đúng agent.id `001`, đúng srcip/user, rule ID đầy đủ, V5 không bịa rule, khung thời gian nguyên văn — đúng tuyệt đối những gì LLM sai suốt 2 ngày.
+- Chưa nối vào LLM. Còn lại (phiên sau):
+  1. Đổi `analyze_alert` khi có playbook: `next_steps` = `render_verify_steps(...)` (code) + hành động nhánh do LLM; LLM trả thêm `branch_id` (hoặc chọn từ danh sách id nhánh) để code kiểm được id có tồn tại.
+  2. Thu gọn chỉ dẫn trong khối TRUSTED: bỏ luật viết bước tra cứu; chỉ yêu cầu chọn nhánh + severity + lý do từ ALERT.
+  3. Đo: nhánh/severity đúng không trên 3 mẫu (5712 → B3/B4 medium-high, 40112 → B2/B3 tùy, 5715 postgres → B2 medium).
+- Nhỏ: nội dung playbook còn nhắc nhãn V trong text (vd. 5715 V4 "Chỉ khi V1, V2 hoặc V3…", 40112 time_range "nếu V2 là publickey") trong khi bước hiển thị đánh số 1..n → nên đổi chữ thành tên câu hỏi hoặc in nhãn V cạnh mỗi bước.
+
 ## Block v4 thất bại → rút về v3; đổi hướng kiến trúc (2026-11-10 11:3x)
 
 - v4 (5712): C bước 1 = "Tra [query] trong [time_range]: [question]." (chép nguyên khuôn); bước 4 lẫn tiếng Trung + JSON hỏng. Không chạy 40112/5715. Đã rút `playbooks.py` + test về v3 (`PLAYBOOK_PROMPT_VERSION = playbook-block-v3`).

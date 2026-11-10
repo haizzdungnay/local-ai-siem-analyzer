@@ -120,3 +120,32 @@ def test_extractor_puts_full_timestamp_first():
     text = extractor.format_for_llm(extractor.extract_fields(alert, ["timestamp", "rule.id", "full_log"]))
     assert text.splitlines()[0] == "Alert time (timestamp): 2026-07-06T02:41:07.000+0700"
     assert text.count("2026-07-06") == 1
+
+
+ALERT_40112 = {"timestamp": "2026-07-06T10:19:42.000+0700", "agent.id": "001",
+               "data.srcip": "203.0.113.7", "data.dstuser": "devops"}
+
+
+def test_render_verify_steps_fills_values_and_keeps_unknown_placeholders():
+    steps = playbooks.render_verify_steps(playbooks.get_playbook("40112"), ALERT_40112)
+    assert len(steps) == 6  # V0–V5, mỗi câu verify đúng một bước
+    v1 = steps[1]
+    assert 'agent.id:"001"' in v1 and 'data.srcip:"203.0.113.7"' in v1
+    assert 'data.dstuser:"devops"' in v1 and "rule.id:(5760 or 5716)" in v1
+    assert "t0 → t_success" in v1  # khung thời gian chép nguyên văn, không tự tính
+    assert not any(token in "".join(steps) for token in ("<srcip>", "<agent_id>", "<user>"))
+    v5 = steps[5]
+    assert v5.count("rule.id") == 0  # V5 không có rule ID: không bịa thêm
+
+
+def test_render_keeps_placeholder_when_alert_lacks_value():
+    steps = playbooks.render_verify_steps(playbooks.get_playbook("40112"), {"data.srcip": "203.0.113.7"})
+    assert '<agent_id>' in steps[0] and 'data.srcip:"203.0.113.7"' in steps[0]
+
+
+def test_render_escapes_attacker_controlled_username():
+    evil = 'x" or rule.id:* or "\n'
+    steps = playbooks.render_verify_steps(playbooks.get_playbook("40112"), {**ALERT_40112, "data.dstuser": evil})
+    v1 = steps[1]
+    assert 'data.dstuser:"x\\" or rule.id:* or \\""' in v1  # nháy bị escape, không thoát khỏi chuỗi
+    assert "\n" not in v1

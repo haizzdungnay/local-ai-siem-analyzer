@@ -143,3 +143,77 @@ def check_next_steps(next_steps, entry: dict) -> dict:
         "verify_cited": [vid for vid, ids in verify_ids.items() if ids and all_cited.intersection(ids)],
         "verify_total": sum(1 for ids in verify_ids.values() if ids),
     }
+
+
+# ---------------------------------------------------------------------------
+# Template: dựng bước tra cứu bằng code (tất định), không nhờ LLM.
+# Placeholder trong query được điền từ field đã trích của alert. Giá trị alert là
+# chuỗi không tin cậy (username do kẻ tấn công gõ) nên được làm sạch và escape dấu
+# nháy trước khi đặt vào chuỗi DQL. Placeholder không có giá trị (vd. <t0>, phải chạy
+# câu verify trước mới biết) được giữ nguyên để analyst tự điền.
+# ---------------------------------------------------------------------------
+_PLACEHOLDER_RE = re.compile(r"<([a-z_]+)>")
+_PLACEHOLDER_SOURCES = {
+    "srcip": ("data.srcip",),
+    "agent_id": ("agent.id",),
+    "user": ("data.dstuser", "data.srcuser"),
+    "t_success": ("timestamp",),
+}
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+_STEP_LABELS = {
+    "vi": ("Tra", "Khung thời gian"),
+    "en": ("Query", "Time range"),
+}
+
+
+def _dql_value(value) -> str:
+    """Làm sạch giá trị alert để đặt trong chuỗi DQL có nháy kép."""
+    text = _CONTROL_RE.sub("", str(value))[:200]
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def placeholder_values(extracted: dict) -> dict[str, str]:
+    values = {}
+    for name, fields in _PLACEHOLDER_SOURCES.items():
+        for field in fields:
+            value = extracted.get(field)
+            if value not in (None, ""):
+                values[name] = _dql_value(value)
+                break
+    return values
+
+
+def render_query(query: str, values: dict[str, str]) -> str:
+    return _PLACEHOLDER_RE.sub(lambda m: values.get(m.group(1), m.group(0)), query)
+
+
+def render_verify_steps(entry: dict, extracted: dict, language: str = "vi") -> list[str]:
+    """Mỗi câu verify → một bước: câu hỏi, truy vấn đã điền giá trị, khung thời gian."""
+    query_label, time_label = _STEP_LABELS[language]
+    values = placeholder_values(extracted)
+    steps = []
+    for item in entry.get("verify") or []:
+        if not item.get("question") or not item.get("query"):
+            continue
+        steps.append(
+            f"{item['question']} {query_label}: {render_query(str(item['query']), values)}"
+            f" | {time_label}: {item.get('time_range', '')}".rstrip(" |")
+        )
+    return steps
+
+
+if __name__ == "__main__":  # xem nhanh: python ai_module/playbooks.py eval/samples/alert-ssh-40112.json
+    import json
+    import sys
+
+    from extractor import extract_fields
+
+    alert = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    fields = ["timestamp", "rule.id", "agent.id", "data.srcip", "data.srcuser", "data.dstuser"]
+    extracted = extract_fields(alert, fields)
+    playbook = get_playbook(extracted.get("rule.id", ""))
+    if playbook is None:
+        sys.exit(f"Không có playbook cho rule {extracted.get('rule.id')}")
+    sys.stdout.reconfigure(encoding="utf-8")
+    for number, step in enumerate(render_verify_steps(playbook, extracted), 1):
+        print(f"{number}. {step}\n")
