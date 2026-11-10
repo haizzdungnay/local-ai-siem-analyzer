@@ -2,6 +2,75 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Block v4 thất bại → rút về v3; đổi hướng kiến trúc (2026-11-10 11:3x)
+
+- v4 (5712): C bước 1 = "Tra [query] trong [time_range]: [question]." (chép nguyên khuôn); bước 4 lẫn tiếng Trung + JSON hỏng. Không chạy 40112/5715. Đã rút `playbooks.py` + test về v3 (`PLAYBOOK_PROMPT_VERSION = playbook-block-v3`).
+- Kết luận sau 3 lần (v2 câu ví dụ → chép sang rule khác; v3 khuôn có ô → điền bừa; v4 khuôn ngoặc vuông → chép khuôn): **với qwen2.5:7b, mọi mẫu/khuôn trong chỉ dẫn đều bị chép**. Ngừng sửa câu chữ prompt.
+- **Hướng mới (phiên sau):** tách việc tất định khỏi LLM.
+  - Code tự dựng bước tra cứu từ playbook (query + time_range + question) và điền giá trị từ extracted fields (srcip, agent.id, user, timestamp) SAU khi gọi LLM — chính xác, không bịa. Cần escape dấu nháy trong user (chuỗi do kẻ tấn công kiểm soát → tránh làm hỏng/tiêm DQL).
+  - LLM chỉ làm phần phán đoán: chọn nhánh, severity, trả lời câu verify đọc được từ ALERT, summary. Có thể đổi schema output (vd. `branch_id`) để code kiểm được.
+  - `next_steps` = bước tra cứu (code) + hành động nhánh (LLM). Đo riêng độ đúng phần LLM (nhánh/severity) thay cho đếm rule ID (đã bị Goodhart).
+  - Trả lời luôn câu hội đồng "phần nào cần LLM".
+- Chia việc (Nguyên chốt): **Dương lo tiếng Anh** (giao diện dashboard + playbook với `--language en`; thầy muốn có lựa chọn ngôn ngữ — ô "AI trả lời: vi/en" đã có sẵn ở 4 chỗ, giao diện chưa có i18n). **Nguyên + Claude lo chất lượng câu trả lời của model.**
+- Lưu ý cho Dương: dashboard dùng `analyze_aggregate` → `analyze_window`, **chưa có playbook**; playbook hiện chỉ ở `analyze_alert` (CLI `main.py`, `run_eval.py`, A/B/C).
+
+## Kết quả sau timestamp + block v4 (2026-11-10 11:2x)
+
+- A/B/C sau khi thêm timestamp (block v3):
+  - 5715: ngày đúng 2026 (xác nhận nguyên nhân năm bịa); V1 đủ 8 rule (có 5760); V2 mất lọc user; bước 4 dùng nhãn "V1, V2, V3"; severity vẫn low.
+  - 5712: 7/7, giữ question, time_range chép đúng `t0 → now` (hết "120 giây" — có thể nhờ timestamp, N=1 chưa chắc); còn: mất agent.id ở bước 1–5, V5 bịa rule ID cho query `agent.ip`, V6 thêm srcip vào sudo/FIM.
+  - 40112: **V1 xuất hiện lần đầu**, hết hoán vị thời gian tương lai; còn: tự tính giờ sai (V1 "10:19:42 - 10:19:42", V2 ±5 giây thay vì ±5 phút), V5 "Tra rule 0.0.0.0/8, 10.0.0.0/8…" (dải IP nhét vào ô rule ID), thiếu agent.id bước 1–3, bước 7 cô lập agent chỉ với điều kiện srcip.
+- Nguyên nhân gốc chung: model VIẾT LẠI query theo khuôn có ô thay vì chép query → ô luôn bị điền (rule bịa / dải IP), điều kiện không có ô thì bị bỏ/thêm tùy ý; tự làm toán thời gian.
+- Sửa block v4 (xem CHANGELOG): chép nguyên văn query + time_range; placeholder `{x}` thống nhất giữa chỉ dẫn và nội dung.
+- Next: A/B/C 3 mẫu với v4. Kỳ vọng: mọi bước có agent.id theo query, V5 không có rule ID, không còn giờ tự tính. Nếu đạt → bước (c) validator theo tập rule ID; rồi (d) trả lời câu verify đọc được từ ALERT.
+
+## Extractor thêm timestamp (2026-11-10 11:2x)
+
+- Bước (a) trong kế hoạch: `timestamp` thành dòng đầu prompt (`Alert time (timestamp): …`), `config.example.yaml` + `config.yaml` local thêm field. Chỉ đổi biến này; block vẫn v3.
+- Phụ: `main.py` `_CONSOLE_METADATA_FIELDS` thêm `agent.id`, `timestamp` (không phải chuỗi do kẻ tấn công kiểm soát); `srcuser/dstuser` vẫn ẩn trên console.
+- Input đổi lần 2 → baseline phải chạy lại sau cả hai thay đổi.
+- Next: A/B/C 3 mẫu; kỳ vọng hết năm bịa; nếu 40112 vẫn hoán vị thời gian → bước (b) block v4.
+
+## A/B/C với block v3 — sửa được chép mẫu, lộ lỗi mới (2026-11-10 11:11)
+
+- 5712: C 6/7 rule ID nhưng tệ hơn v2 về nội dung: V0 dùng "120 giây" (lấy nhầm timeframe trong trigger, đúng là 24 giờ), mất agent.id ở 6/7 bước, mất câu hỏi (chỉ còn "để xác minh…"), bước sau đăng nhập lọc thêm srcip (sudo/FIM không có srcip → rỗng).
+- 40112: C **10/10 rule ID nhưng là output tệ nhất**: bước 4–10 là hoán vị máy móc 5715/40112 × (±5 phút, ±24 giờ, ±240 giây), có cả "timestamp >= … + 24 giờ" (tương lai). Vẫn thiếu V1 (5760/5716 với devops). → Khuôn câu có ô `{time_range}` khiến model điền ô và tự làm toán thời gian.
+- 5715: C 4/4, lần đầu **dùng đúng playbook của Nguyên** (V1–V4) → lỗi chép mẫu đã hết. Còn: V1 thiếu 5760; ngày "06/07/2023" bịa năm; V4 chạy không kèm lý do; severity vẫn low (chưa chọn B2).
+- Nguyên nhân gốc mới: **extractor không đưa `timestamp` vào prompt** (giống lỗi agent.id). Model chỉ có giờ trong full_log syslog ("Jul  6 02:41:07", không có năm) → tự đoán năm. Truy vấn có khung thời gian sai = truy vấn sai.
+- Bài học đo lường: "bước có rule ID" tăng (40112: 4/5 → 10/10) trong khi chất lượng giảm → thước đo bị "chơi" (Goodhart). Không dùng số này một mình trong báo cáo.
+- Đề xuất cho phiên sau (chưa làm, mỗi lần một biến):
+  1. Extractor thêm `timestamp` (đổi input → gom vào cùng lần chạy lại baseline).
+  2. Chỉ dẫn: chép nguyên văn time_range từ playbook, không tự tính giờ; số bước ≤ số câu verify (+ nhánh); giữ phần question cuối câu.
+  3. Validator: ghép mỗi bước với đúng một câu verify theo TẬP rule ID (không phải từng ID), báo bước trùng/thừa, đánh dấu câu verify bắt buộc (vd. V1 của 40112) và báo khi thiếu.
+
+## A/B/C 40112 + 5715 → lỗi câu mẫu rò rỉ, sửa block v3 (2026-11-10)
+
+- 40112 (mẫu tự tạo): A 0/3; B 1/5 (ghi cả nhãn "V3", "V4"); C 4/5 nhưng bước 2 "Tra 5715…: đã đăng nhập thành công chưa?" — sai bản chất (alert 40112 CHÍNH LÀ lần thành công, trái `do_not`), và bỏ V1 (tài khoản có bị thử sai trước không — câu quyết định).
+- 5715 (postgres, password, 02:41): A, B, C đều severity low; C chỉ 1 bước = **chép nguyên văn câu mẫu** trong chỉ dẫn v2 ("Tra rule 5715, 40112 với srcip … trên agent.id … từ t0 đến nay: IP này đã đăng nhập SSH thành công chưa?"), không câu nào thuộc playbook 5715.
+- Nguyên nhân gốc: câu mẫu thêm ở v2 là nội dung riêng của 5712; model 7B chép mẫu sang mọi rule. Đúng với 5712 nên lần trước không lộ.
+- Validator lộ giới hạn: 1 bước chép mẫu được tính "verify được nêu V1,V2,V3/4" vì 5715/40112 xuất hiện trong query của nhiều câu → `verify_cited` báo cao giả. Cần đổi cách đếm (vd. so cả cụm rule ID của từng câu) trước khi dùng số này trong báo cáo.
+- Sửa v3: khuôn câu cấu trúc, không có rule ID; test chặn chỉ dẫn chung chứa số ≥ 3 chữ số.
+- Chưa sửa (có chủ ý, một biến mỗi lần): 5715 postgres+password+02:41 nên là B2 medium (điều kiện có sẵn trong ALERT) nhưng model theo thang contract "level ≤ 6 → low". Nếu v3 vẫn low → thí nghiệm tiếp: chỉ dẫn "câu verify trả lời được ngay từ ALERT thì trả lời luôn và chọn nhánh".
+- Next: chạy lại A/B/C cho 5712, 40112, 5715 với v3.
+
+## Playbook 5715 (2026-11-10)
+
+- Nguyên viết nội dung (4 câu trả lời + YAML nháp), Claude review và chuyển schema. Test pass.
+- Sửa theo review: khung V1 15–30 phút → 24 giờ (low-and-slow giãn hàng giờ); một sự kiện chỉ ra một alert theo rule sâu nhất → 5715 và 40112 không cùng một lần đăng nhập; "baseline" phải là truy vấn (V2: 5715 cùng cặp IP–user 30 ngày); V3 cần query (test yêu cầu) → đọc full_log của chính 5715; placeholder `{x}` → `<x>`; `OR/AND` → `or/and` (regex test); trường `name/window/condition/action/summary` → `question/time_range/when/actions/trigger`.
+- Thêm so với nháp: nhánh B2 tài khoản nhạy cảm bất kể V2 (baseline bị đầu độc), B4 lần đầu nhưng bình thường (nháp thiếu, rơi vào không nhánh nào), B_unknown; do_not về baseline và PAM không có srcip; caveat retention Indexer < 30 ngày.
+- Nguyên trả lời đúng ý chính "dò chậm lách 40112"; chỉnh: thứ hết hạn là bộ đếm frequency của rule tổng hợp (5763: 8 lần/120 s, 40111: 12 lần/160 s), nên 40112 không có alert tổng hợp đứng trước để nổ.
+- Mẫu `eval/samples/alert-ssh-5715.json` (postgres, password, 02:41) để A/B/C.
+- Next: chạy A/B/C cho 40112 và 5715; tiếp họ SSH: 5710, 5716, 5760, 5763, 5503.
+
+## Playbook 40112 (2026-11-10)
+
+- Trạng thái: viết xong (draft), test cấu trúc pass. Chưa chạy A/B/C.
+- Viết từ `0280-attack_rules.xml` (file XML trong `wz_rules.tar.gz` local, không từ log tập test). 40112 có trong phân bố rule của tập test khóa → chỉ dùng định nghĩa rule, không đọc case.
+- Điểm định nghĩa quan trọng: 40112 cần alert TỔNG HỢP (group `authentication_failures`: 5712/5720/5733/5763/5551/40111) trước, không phải lần sai lẻ 5716/5760; rule tổng quát (mọi `authentication_success`, không riêng SSH); bản thân alert là lần THÀNH CÔNG.
+- Câu verify then chốt: V1 (tài khoản vào được có bị thử sai trước không) + V2 (password hay publickey) phân biệt "đoán trúng" với "người hợp lệ chung IP / khóa cài từ trước".
+- Mẫu `eval/samples/alert-ssh-40112.json` tự tạo, nhất quán (Accepted password for devops), khác mẫu 5712 tự mâu thuẫn.
+- Next: `python -W ignore eval/playbook_ab_smoke.py --alert eval/samples/alert-ssh-40112.json`; Nguyên viết 5715 theo khuôn.
+
 ## Playbook vào production + extractor thêm agent.id (2026-11-09)
 
 - A/B/C 18:39 (`playbook-block-v2`): C đạt **5/6 bước có rule ID**, 6/6 câu verify được nêu → xác nhận nguyên nhân là xung đột chỉ dẫn (rule ID bị coi là "giá trị bịa"). A, B không đổi (tất định).

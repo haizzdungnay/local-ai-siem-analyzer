@@ -173,6 +173,254 @@ playbooks:
       - "ATT&CK T1110 Brute Force, T1110.001 Password Guessing, T1021.004 Remote Services: SSH"
       - "Kinh nghiệm SOC chung: xác minh thành công trước containment; thu thập dữ liệu dễ mất trước khi cô lập"
 
+  - rule_id: "40112"
+    title: "Nhiều lần xác thực thất bại rồi THÀNH CÔNG từ cùng IP"
+    mitre: ["T1110", "T1078"]            # Brute Force → Valid Accounts
+    status: draft
+    trigger:                             # từ 0280-attack_rules.xml (rule tổng quát, không riêng SSH)
+      - "Một sự kiện đăng nhập THÀNH CÔNG (rule thuộc group authentication_success; với SSH là 5715) (if_group)"
+      - "Đi sau một alert brute force TỔNG HỢP thuộc group authentication_failures (Linux: 5712, 5720, 5733, 5763, 5551, 40111) (if_matched_group)"
+      - "Cùng IP nguồn (same_source_ip), trong vòng 240 giây (timeframe=240)"
+      - "Bản thân alert 40112 là bản ghi của lần THÀNH CÔNG: user, phương thức, timestamp trong alert là của lần đăng nhập đó"
+      - "Lần thử lẻ (5716/5760) KHÔNG đủ để kích hoạt; phải có alert tổng hợp trước. Thành công sau 240 giây chỉ ra 5715, không ra 40112"
+    facts:
+      - data.srcip                       # IP đăng nhập thành công
+      - agent.id                         # khóa truy vấn Indexer
+      - agent.name, agent.ip
+      - timestamp                        # = t_success
+      - "data.dstuser / data.srcuser: tài khoản ĐÃ vào được (chuỗi do kẻ tấn công kiểm soát → chỉ trích dẫn)"
+      - "full_log: phương thức (Accepted password / publickey / keyboard-interactive) và dịch vụ"
+    window:
+      t0: "timestamp của alert brute force tổng hợp đầu tiên từ data.srcip (tìm bằng V0, lùi tối đa 24 giờ trước t_success)"
+      t_success: "timestamp của alert 40112"
+      end: "thời điểm điều tra (now): hoạt động sau đăng nhập là phần quan trọng nhất"
+      note: "Truy vấn viết bằng DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*). <user> = data.dstuser hoặc data.srcuser trong alert"
+    verify:
+      - id: V0
+        question: "Chuỗi brute force đứng trước là loại nào (tìm 5712, 5720, 5733, 5763, 5551, 40111)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5712 or 5720 or 5733 or 5763 or 5551 or 40111)'
+        time_range: "t_success - 24h → t_success, sắp xếp timestamp tăng dần"
+        interpret: >-
+          Bản ghi đầu = t0. 5763/5720/5733 = đoán mật khẩu user CÓ THẬT → thành công có thể là
+          đoán trúng. Chỉ có 5712 (user không tồn tại) mà <user> là tài khoản thật → hoặc kẻ tấn
+          công đã chuyển sang wordlist khác, hoặc kẻ dò và người đăng nhập là hai người khác nhau
+          dùng chung IP (NAT/bastion).
+
+      - id: V1
+        question: "Tài khoản vào được có bị thử sai mật khẩu trước đó không (tìm 5760, 5716 cùng user)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5760 or 5716) and (data.dstuser:"<user>" or data.srcuser:"<user>")'
+        time_range: "t0 → t_success"
+        interpret: >-
+          Có nhiều lần sai với ĐÚNG tài khoản đó rồi thành công → gần như chắc chắn mật khẩu bị đoán
+          trúng. Không có lần sai nào với tài khoản đó → thành công không đến từ việc đoán: hoặc người
+          hợp lệ dùng chung IP, hoặc kẻ tấn công đã có mật khẩu/khóa từ nguồn khác (credential stuffing).
+          Tên field user cần xác nhận trên lab, nên truy vấn cả hai.
+
+      - id: V2
+        question: "Đăng nhập bằng mật khẩu hay bằng khóa (đọc full_log của 5715)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:5715'
+        time_range: "t_success - 5m → t_success + 5m"
+        interpret: >-
+          "Accepted password" → khớp kịch bản đoán mật khẩu. "Accepted publickey" → brute force mật
+          khẩu không tạo ra được khóa riêng: hoặc là người hợp lệ, hoặc khóa của kẻ tấn công đã được
+          cài vào authorized_keys TỪ TRƯỚC (kiểm V3 và FIM 550/554 trước t_success).
+
+      - id: V3
+        question: "Sau t_success, agent có sudo (5402, 5403), tạo user (5902, 2961) hay đổi file (550, 553, 554) không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 5404 or 5901 or 5902 or 2961 or 550 or 553 or 554 or 5501 or 5502) and timestamp >= "<t_success>"'
+        time_range: "t_success → now (thêm t0 → t_success cho FIM nếu V2 là publickey)"
+        interpret: >-
+          Dựng timeline. Chú ý file nhạy cảm trong syscheck.path: /etc/passwd, /etc/shadow,
+          /etc/sudoers*, ~/.ssh/authorized_keys, /etc/cron*. 5501/5502 (PAM session opened/closed)
+          không mang srcip: tương quan theo agent.id + user + thời gian; có 5501 mà chưa có 5502
+          tương ứng → phiên có thể vẫn đang mở.
+
+      - id: V4
+        question: "Cùng srcip có đăng nhập thành công vào agent khác không (tìm 5715, 40112 trên mọi agent.id)?"
+        query: 'data.srcip:"<srcip>" and rule.id:(5715 or 40112) and timestamp >= "<t0>"'
+        time_range: "t0 → now, KHÔNG lọc agent.id"
+        interpret: "Nhiều agent → cùng credential dùng lại trên nhiều máy (password reuse) hoặc di chuyển ngang; mở rộng phạm vi sự cố."
+
+      - id: V5
+        question: "srcip là nội bộ (RFC1918) hay công cộng, có thuộc danh sách được phép, có phải là một agent không (agent.ip)?"
+        query: 'agent.ip:"<srcip>"'
+        time_range: "now - 24h → now"
+        interpret: >-
+          Nội bộ = 10/8, 172.16/12, 192.168/16. Đối chiếu danh sách bastion/VPN/máy quét có ticket.
+          Nếu srcip là một agent → máy nguồn có thể đã bị chiếm trước đó; điều tra cả agent đó.
+
+    branches:                            # xét theo thứ tự, nhánh đầu tiên khớp được áp dụng
+      - id: B1_active_intrusion
+        when: "V3 có sudo/tạo user/đổi file nhạy cảm sau t_success, và srcip không thuộc danh sách được phép"
+        severity: critical
+        actions:
+          - "Escalate ngay (L2/IR); ghi tài khoản, t_success, chuỗi hành động từ V3"
+          - "Đề xuất (cần người phê duyệt): thu thập dữ liệu dễ mất (who/w, last, ss -tnp, ps) TRƯỚC, rồi cô lập agent"
+          - "Đề xuất: khóa đúng tài khoản trong alert, kết thúc phiên đang mở, gỡ khóa SSH/user/cron lạ tìm thấy ở V3"
+          - "Chạy V4 trên mọi agent: cùng credential có được dùng ở máy khác không"
+      - id: B2_password_guessed
+        when: "V1 có lần sai với đúng tài khoản đó, V2 là Accepted password, srcip không được phép"
+        severity: critical
+        actions:
+          - "Coi mật khẩu tài khoản đó là đã lộ dù V3 chưa thấy hành động (log có thể chưa kịp về hoặc kẻ tấn công chưa hành động)"
+          - "Đề xuất (cần người phê duyệt): đổi mật khẩu đúng tài khoản đó, kết thúc phiên, chặn srcip"
+          - "Theo dõi tiếp V3 trong 24 giờ; chạy V4"
+      - id: B3_key_or_unexplained
+        when: "V2 là Accepted publickey, hoặc V1 không có lần sai nào với tài khoản đó"
+        severity: high
+        actions:
+          - "Xác minh với chủ tài khoản: có đăng nhập vào t_success từ srcip đó không"
+          - "Nếu publickey: kiểm FIM 550/554 trên ~/.ssh/authorized_keys TRƯỚC t_success (khóa cài từ trước)"
+          - "Nếu chủ tài khoản không xác nhận → chuyển B2/B1"
+      - id: B4_authorized
+        when: "srcip thuộc danh sách được phép (bastion/VPN/máy quét có ticket) VÀ chủ tài khoản xác nhận đăng nhập"
+        severity: low
+        actions:
+          - "Đóng, ghi người xác nhận và nguồn của chuỗi thất bại (script cấu hình sai, người gõ nhầm)"
+          - "Đề xuất sửa nguồn gây thất bại lặp lại để rule không nổ lại"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu verify nào chưa trả lời được; mặc định xử lý như B2 cho tới khi xác minh"
+
+    fp_conditions:
+      - "Script/công cụ (Ansible, backup, giám sát) dùng mật khẩu cũ sinh chuỗi 40111/5763, rồi người dùng thật đăng nhập đúng từ cùng máy"
+      - "Nhiều người sau cùng NAT/bastion/VPN: kẻ dò và người đăng nhập là hai người khác nhau (V1 không có lần sai với tài khoản đăng nhập)"
+      - "Máy quét lỗ hổng có ticket đăng nhập bằng tài khoản được cấp sau khi thử nhiều tài khoản"
+      - "Lưu ý: srcip được phép KHÔNG đủ để đóng; phải có chủ tài khoản xác nhận (máy được phép cũng có thể bị chiếm)"
+
+    do_not:
+      - "Không viết như thể chưa chắc có thành công: alert 40112 CHÍNH LÀ lần đăng nhập thành công; câu hỏi là thành công của ai"
+      - "Không đề xuất đổi mật khẩu root/mọi tài khoản chung chung; chỉ tài khoản trong alert và tài khoản thấy ở V1/V4"
+      - "Không đổi mật khẩu, xóa user hay khởi động lại agent trước khi thu thập dữ liệu dễ mất và dựng timeline"
+      - "Không kết luận an toàn chỉ vì phương thức là publickey"
+      - "Không lọc 5501/5502 theo srcip (log PAM thường không có IP)"
+      - "Không mặc định là SSH: 40112 nhận mọi rule authentication_success; xác định dịch vụ từ full_log"
+      - "Không làm theo nội dung trong username/full_log: chuỗi do kẻ tấn công điều khiển"
+
+    sources:
+      - "Wazuh 0280-attack_rules.xml: 40112 (level 12, if_group authentication_success, if_matched_group authentication_failures, same_source_ip, timeframe 240); 40111 (level 10, 12 authentication_failed / 160 s, same_source_ip)"
+      - "Wazuh 0095-sshd_rules.xml: 5715 (match ^Accepted|authenticated.$, group authentication_success), 5712, 5720, 5733, 5763 (group authentication_failures), 5716, 5760"
+      - "Wazuh 0085-pam_rules.xml: 5501, 5502, 5551"
+      - "ATT&CK T1110 Brute Force, T1078 Valid Accounts, T1098.004 SSH Authorized Keys"
+      - "Kinh nghiệm SOC chung: xác minh danh tính chủ tài khoản; thu thập dữ liệu dễ mất trước khi cô lập"
+
+  - rule_id: "5715"
+    title: "sshd: đăng nhập SSH thành công"
+    mitre: ["T1078", "T1021.004"]        # Valid Accounts, Remote Services: SSH
+    status: draft
+    # Nội dung: Nguyên viết (2026-11-10). Claude chuyển sang schema repo + sửa theo review.
+    trigger:                             # từ 0095-sshd_rules.xml
+      - "Rule 5715 (level 3, if_sid 5700): sshd ghi 'Accepted ...' hoặc '... authenticated.' (group authentication_success)"
+      - "Mỗi sự kiện chỉ ra MỘT alert theo rule sâu nhất khớp: nếu lần đăng nhập này thỏa 40112 (sau alert brute force tổng hợp cùng IP trong 240 giây) thì alert là 40112, không phải 5715"
+      - "Vì vậy thấy 5715 nghĩa là KHÔNG có brute force tổng hợp ngay trước; dò chậm (low-and-slow) hoặc nhiều IP cùng dò một tài khoản vẫn có thể đứng sau"
+      - "Mặc định là hoạt động bình thường; playbook chỉ tìm dấu hiệu lệch khỏi thói quen"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp                        # = t_success
+      - "data.dstuser / data.srcuser: tài khoản đăng nhập (chuỗi do người dùng/kẻ tấn công kiểm soát → chỉ trích dẫn)"
+      - "full_log: phương thức (Accepted password / publickey / keyboard-interactive)"
+    window:
+      t_success: "timestamp của alert 5715"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*). <user> = data.dstuser hoặc data.srcuser trong alert"
+    verify:
+      - id: V1
+        question: "Trong 24 giờ trước có chuỗi thất bại từ cùng srcip hoặc nhắm cùng tài khoản không (tìm 5710, 5712, 5716, 5760, 5503, 5551, 40111, 40112)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5710 or 5712 or 5716 or 5760 or 5503 or 5551 or 40111 or 40112) and (data.srcip:"<srcip>" or data.dstuser:"<user>" or data.srcuser:"<user>")'
+        time_range: "t_success - 24h → t_success"
+        interpret: >-
+          Có → khả năng dò chậm lách ngưỡng (giãn các lần thử để 5763/5712/40111 không bao giờ đủ
+          số lần trong cửa sổ đếm, nên 40112 không có "nửa trước" để nổ), hoặc nhiều IP cùng dò
+          một tài khoản (vế lọc theo user). 40112 ở đây là các lần đăng nhập KHÁC trước đó, không
+          phải lần này. 5503 (PAM) thường không có srcip, chỉ khớp qua vế user.
+
+      - id: V2
+        question: "Cặp srcip và tài khoản này đã từng đăng nhập thành công (5715) trong 30 ngày qua chưa?"
+        query: 'agent.id:"<agent_id>" and rule.id:5715 and data.srcip:"<srcip>" and (data.dstuser:"<user>" or data.srcuser:"<user>")'
+        time_range: "t_success - 30d → t_success - 1m (bỏ chính lần này)"
+        interpret: >-
+          Rỗng → lần đầu cặp IP–user xuất hiện (tín hiệu bất thường đo được). Nhiều lần → thói quen.
+          Hai giới hạn: (1) nếu Indexer giữ alert ít hơn 30 ngày thì "rỗng" không có nghĩa;
+          (2) "quen" không có nghĩa là an toàn: kẻ đã vào được nhiều tuần cũng tự thành "thói quen"
+          (baseline bị đầu độc), nên với root/tài khoản dịch vụ không dùng V2 để đóng.
+
+      - id: V3
+        question: "Tài khoản và phương thức trong alert 5715 là gì: root hay tài khoản dịch vụ, password hay publickey, có ngoài giờ không?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:5715'
+        time_range: "t_success ± 1m (đọc full_log của chính lần đăng nhập)"
+        interpret: >-
+          Đáng nghi: root đăng nhập trực tiếp; tài khoản dịch vụ (www-data, postgres, nginx...) vốn
+          có shell nologin, đăng nhập được nghĩa là shell đã bị đổi; password trên máy quy định chỉ
+          dùng khóa; ngoài giờ không có change ticket. Kiểm thủ công: danh sách nhân sự (HR), lịch
+          bảo trì — Wazuh không biết các thông tin này.
+
+      - id: V4
+        question: "Chỉ khi V1, V2 hoặc V3 đáng nghi: sau t_success có sudo (5402, 5403), tạo user (5901, 5902, 2961) hay đổi file nhạy cảm (550, 553, 554) không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 5901 or 5902 or 2961 or 550 or 553 or 554 or 5501 or 5502) and timestamp >= "<t_success>"'
+        time_range: "t_success → now"
+        interpret: >-
+          Chú ý syscheck.path: ~/.ssh/authorized_keys, /etc/passwd, /etc/shadow, /etc/sudoers*,
+          /etc/cron*. 5501/5502 (PAM session) không có srcip: tương quan theo agent.id + user + thời gian.
+
+    branches:                            # xét theo thứ tự, nhánh đầu tiên khớp được áp dụng
+      - id: B1_slow_bruteforce
+        when: "V1 có chuỗi thất bại trước đó, hoặc V4 thấy sudo/tạo user/sửa file nhạy cảm"
+        severity: high
+        actions:
+          - "Xử lý như 40112: chạy V4 nếu chưa chạy; kiểm lan ngang (rule 5715, 40112 từ cùng srcip trên mọi agent.id)"
+          - "Xác minh khẩn với chủ tài khoản về phiên lúc t_success từ srcip"
+          - "Đề xuất (cần người phê duyệt): kết thúc phiên SSH, đổi mật khẩu đúng tài khoản đó, chặn srcip nếu chủ tài khoản không xác nhận"
+      - id: B2_sensitive_account
+        when: "V3 là root đăng nhập trực tiếp hoặc tài khoản dịch vụ, BẤT KỂ V2"
+        severity: medium
+        actions:
+          - "Chạy V4; với tài khoản dịch vụ kiểm shell trong /etc/passwd và FIM 550 trên /etc/passwd"
+          - "Xác minh với quản trị viên hệ thống; nếu không ai nhận → nâng B1"
+      - id: B3_first_seen_anomalous
+        when: "V1 sạch, V2 rỗng (lần đầu cặp IP–user), KÈM bất thường ở V3 (password thay vì khóa, ngoài giờ không có change ticket)"
+        severity: medium
+        actions:
+          - "Chạy V4; liên hệ chủ tài khoản về phiên lúc t_success từ srcip"
+      - id: B4_first_seen_normal
+        when: "V1 sạch, V2 rỗng, V3 bình thường (tài khoản cá nhân, publickey, trong giờ)"
+        severity: low
+        actions:
+          - "Ghi chú 'IP mới cho tài khoản này', không chạy V4, không liên hệ người dùng"
+          - "Nếu cùng IP mới xuất hiện cho nhiều tài khoản khác nhau trong ngày → chuyển B3"
+      - id: B5_routine
+        when: "V1 sạch, V2 có lịch sử quen thuộc, V3 đúng tài khoản/phương thức/khung giờ"
+        severity: low
+        actions:
+          - "Đóng như hoạt động hợp lệ, không chạy V4"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu (log gián đoạn, Indexer giữ dữ liệu quá ngắn cho V2)"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu verify nào chưa trả lời được; không suy diễn kết quả"
+
+    fp_conditions:
+      - "V1 không có chuỗi lỗi xác thực trong 24 giờ trước t_success"
+      - "V2 có nhiều lần 5715 của cùng cặp IP–user trong 30 ngày (thói quen làm việc hoặc tác vụ tự động định kỳ: Ansible, Jenkins, backup)"
+      - "V3: publickey từ dải quản trị/VPN chuẩn vào tài khoản cá nhân đang hoạt động, hoặc đúng lịch change ticket"
+
+    do_not:
+      - "Không chạy V4 cho mọi alert 5715 khi V1, V2, V3 đều bình thường (tốn thời gian analyst và ngân sách truy vấn của agent)"
+      - "Không khóa tài khoản hay chặn srcip chỉ dựa trên một alert 5715 level 3 khi chưa có bằng chứng từ V1 hoặc V4"
+      - "Không liên hệ người dùng khi cặp IP–user có lịch sử ổn định (V2) và không có chuỗi lỗi trước (V1)"
+      - "Không dùng lịch sử quen thuộc ở V2 để đóng alert của root hoặc tài khoản dịch vụ (baseline có thể đã bị đầu độc)"
+      - "Không lọc 5501/5502/5503 chỉ theo srcip (log PAM thường không có IP)"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0095-sshd_rules.xml: 5715 (level 3, if_sid 5700, match ^Accepted|authenticated.$, group authentication_success); 5710, 5712, 5716, 5760"
+      - "Wazuh 0280-attack_rules.xml: 40112 (if_group authentication_success sau if_matched_group authentication_failures, timeframe 240), 40111"
+      - "Wazuh 0085-pam_rules.xml: 5501, 5502, 5503, 5551"
+      - "ATT&CK T1078 Valid Accounts, T1021.004 SSH, T1110.003 Password Spraying"
+      - "Nội dung điều tra: Nguyên (2026-11-10), review Claude"
+
   - rule_id: "5902"
     title: "Tạo user mới trên hệ thống"
     mitre: ["T1136", "T1136.001"]

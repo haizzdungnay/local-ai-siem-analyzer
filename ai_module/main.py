@@ -23,6 +23,7 @@ SAMPLES_DIR = PROJECT_DIR / "eval" / "samples"
 _CONSOLE_METADATA_FIELDS = (
     "rule.id", "rule.description", "rule.level", "rule.mitre.id",
     "rule.mitre.tactic", "rule.mitre.technique", "agent.name", "agent.ip", "data.srcip",
+    "agent.id", "timestamp",
 )
 _CONSOLE_UNSAFE_KEYS = {
     "full_log", "raw_log", "sample_log", "raw_prompt", "system_prompt", "user_prompt",

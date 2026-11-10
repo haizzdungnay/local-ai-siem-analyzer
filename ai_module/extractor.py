@@ -58,6 +58,7 @@ _LABELS = {
     "agent.name": "Agent",
     "agent.ip": "Agent IP",
     "agent.id": "Agent ID (agent.id)",
+    "timestamp": "Alert time (timestamp)",
     "data.srcuser": "Source user (data.srcuser)",
     "data.dstuser": "Target user (data.dstuser)",
     "data.srcip": "Source IP",
@@ -77,6 +78,12 @@ def format_for_llm(extracted: dict) -> str:
         Log: Failed password for root from 192.168.100.30 port 22 ssh2
     """
     lines = []
+
+    # timestamp đầy đủ (có năm, múi giờ): log syslog trong full_log không có năm,
+    # thiếu dòng này model tự đoán năm khi viết khung thời gian truy vấn.
+    timestamp = extracted.get("timestamp")
+    if timestamp not in (None, ""):
+        lines.append(f"{_LABELS['timestamp']}: {timestamp}")
 
     rule_id = extracted.get("rule.id")
     level = extracted.get("rule.level")
@@ -132,7 +139,7 @@ def format_for_llm(extracted: dict) -> str:
 
     # Field nào chưa xử lý riêng ở trên (fallback) — tránh mất dữ liệu
     # nếu config.yaml sau này thêm field mới mà chưa cập nhật hàm này.
-    handled = {"rule.id", "rule.level", "rule.description",
+    handled = {"timestamp", "rule.id", "rule.level", "rule.description",
                "rule.mitre.id", "rule.mitre.tactic", "rule.mitre.technique",
                "agent.name", "agent.ip", "agent.id", "data.srcip", "data.srcuser",
                "data.dstuser", "full_log"}

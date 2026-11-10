@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-07-06T02:41:07.000+0700",
+  "rule": {
+    "id": "5715",
+    "level": 3,
+    "description": "sshd: authentication success.",
+    "mitre": {
+      "id": ["T1078", "T1021"],
+      "tactic": ["Defense Evasion", "Persistence", "Privilege Escalation", "Initial Access", "Lateral Movement"],
+      "technique": ["Valid Accounts", "Remote Services"]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "data": {
+    "srcip": "192.168.100.30",
+    "srcport": "50388",
+    "dstuser": "postgres"
+  },
+  "full_log": "Jul  6 02:41:07 victim-ubuntu sshd[13002]: Accepted password for postgres from 192.168.100.30 port 50388 ssh2"
+}

@@ -1,5 +1,6 @@
 """P1: playbook là khối TRUSTED trong system prompt, tách khỏi UNTRUSTED_RAG_CONTEXT."""
 import json
+import re
 
 import llm
 import playbooks
@@ -94,7 +95,7 @@ def test_config_example_lists_playbook_fields_and_flag():
     import yaml
     from pathlib import Path
     cfg = yaml.safe_load((Path(playbooks.__file__).parent / "config.example.yaml").read_text(encoding="utf-8"))
-    assert {"agent.id", "data.srcuser", "data.dstuser"} <= set(cfg["extractor"]["fields"])
+    assert {"timestamp", "agent.id", "data.srcuser", "data.dstuser"} <= set(cfg["extractor"]["fields"])
     assert cfg["playbooks"]["enabled"] is True
 
 
@@ -102,3 +103,20 @@ def test_playbook_for_config_defaults_off():
     assert playbooks.playbook_for_config({}, "5712") is None
     assert playbooks.playbook_for_config({"playbooks": {"enabled": False}}, "5712") is None
     assert playbooks.playbook_for_config({"playbooks": {"enabled": True}}, "5712")["rule_id"] == "5712"
+
+
+def test_block_instructions_contain_no_rule_specific_example():
+    # v2 có câu mẫu chứa "rule 5715, 40112 ... đã đăng nhập thành công chưa?"; model chép nguyên
+    # câu đó vào playbook 5715 và 40112 (A/B/C 2026-11-10). Chỉ dẫn chung không được chứa rule ID.
+    for language, text in playbooks._INSTRUCTIONS.items():
+        rendered = text.format(rule_id="R")
+        assert not re.search(r"\d{3,}", rendered), language
+
+
+def test_extractor_puts_full_timestamp_first():
+    import extractor
+    alert = {"timestamp": "2026-07-06T02:41:07.000+0700", "rule": {"id": "5715"},
+             "full_log": "Jul  6 02:41:07 host sshd[1]: Accepted password for x"}
+    text = extractor.format_for_llm(extractor.extract_fields(alert, ["timestamp", "rule.id", "full_log"]))
+    assert text.splitlines()[0] == "Alert time (timestamp): 2026-07-06T02:41:07.000+0700"
+    assert text.count("2026-07-06") == 1

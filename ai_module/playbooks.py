@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-PLAYBOOK_PROMPT_VERSION = "playbook-block-v2"  # đổi khi sửa _INSTRUCTIONS
+PLAYBOOK_PROMPT_VERSION = "playbook-block-v3"  # đổi khi sửa _INSTRUCTIONS
 PLAYBOOK_PATH = Path(__file__).resolve().parent / "rag_data" / "playbooks.yaml"
 PROMPT_FIELDS = ("rule_id", "title", "mitre", "trigger", "facts", "window", "verify",
                  "branches", "fp_conditions", "do_not")
@@ -33,9 +33,10 @@ _INSTRUCTIONS = {
         "Rule ID trong playbook là tên truy vấn cần chạy, KHÔNG phải sự kiện đã xảy ra, nên được "
         "phép và bắt buộc nêu dù ALERT không chứa chúng. Chỉ các giá trị (srcip, agent.id, user, "
         "thời gian) mới phải lấy từ ALERT; thiếu thì giữ placeholder như <agent_id>. Không ghi nhãn "
-        "nội bộ V0, V1... vào next_steps. Ví dụ đúng (thay phần trong ngoặc nhọn bằng giá trị thật từ ALERT): \"Tra rule 5715, 40112 "
-        "với srcip {{srcip}} trên agent.id {{agent_id}} từ t0 đến nay: IP này đã đăng nhập SSH thành công chưa?\"\n"
-        "3. Hành động trong branches viết có điều kiện (\"Nếu tra rule 5715 thấy đăng nhập thành công thì ...\") khi ALERT "
+        "nội bộ V0, V1... vào next_steps. Khuôn câu (không phải nội dung; mỗi phần trong ngoặc nhọn lấy từ câu verify tương ứng hoặc từ ALERT): "
+        "\"Tra rule {{các rule ID trong query}} với {{field}} {{giá trị từ ALERT}} trong {{time_range}}: {{question}}\". "
+        "Mỗi câu verify của playbook rule {rule_id} thành một bước riêng; không chép câu hỏi của rule khác.\n"
+        "3. Hành động trong branches viết có điều kiện (\"Nếu truy vấn ở bước trước có kết quả thì ...\") khi ALERT "
         "chưa chứa kết quả xác minh. Severity của nhánh chỉ áp dụng khi điều kiện nhánh có "
         "bằng chứng trong ALERT; nếu không, chấm severity theo thang trong contract.\n"
         "4. Không đề xuất việc nằm trong do_not.\n"
@@ -50,9 +51,10 @@ _INSTRUCTIONS = {
         "IDs in the playbook are queries to run, NOT events that happened, so they are allowed and "
         "required even when ALERT does not contain them. Only values (srcip, agent.id, user, time) "
         "must come from ALERT; keep placeholders such as <agent_id> when missing. Do not write the "
-        "internal labels V0, V1... in next_steps. Correct example (replace braces with real ALERT values): \"Query rule 5715, "
-        "40112 for srcip {{srcip}} on agent.id {{agent_id}} from t0 until now: has this IP logged in over SSH?\"\n"
-        "3. Write branch actions conditionally (\"If the rule 5715 query shows a successful login, ...\") while ALERT holds no "
+        "internal labels V0, V1... in next_steps. Sentence pattern (not content; each brace comes from the matching verify item or ALERT): "
+        "\"Query rule {{rule IDs in the query}} for {{field}} {{ALERT value}} in {{time_range}}: {{question}}\". "
+        "Each verify item of the rule {rule_id} playbook becomes its own step; never copy another rule's questions.\n"
+        "3. Write branch actions conditionally (\"If the previous step's query returns results, ...\") while ALERT holds no "
         "verification result. A branch severity applies only when ALERT evidences its condition; "
         "otherwise use the contract severity scale.\n"
         "4. Never propose anything listed under do_not.\n"

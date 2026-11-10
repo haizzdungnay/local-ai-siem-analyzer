@@ -40,6 +40,7 @@ ollama:
 # Trích trường chính từ alert (giảm token cho LLM)
 extractor:
   fields:
+    - "timestamp"                      # thời điểm alert (có năm) cho khung thời gian truy vấn
     - "rule.id"
     - "rule.description"
     - "rule.level"
