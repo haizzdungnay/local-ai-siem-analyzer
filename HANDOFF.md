@@ -2,6 +2,17 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Playbook 5763 + sửa ngữ nghĩa t_success (2026-11-11)
+
+- 5763 viết xong (Claude). Đọc XML: 5760 là con của 5716 (`if_sid 5700,5716`, match Failed password|keyboard|authentication error) → lần sai mật khẩu thường ra 5760, không ra 5716; 5763 = 8 × 5760 / 120 s. Khác 5712 ở chỗ tài khoản có thật nên đoán trúng là vào được.
+- Lỗi template phát hiện qua preview 5763: `<t_success>` bị điền giờ alert. Sửa: `<alert_time>` (điền) vs `<t_success>` (không điền). Bài học: template chỉ đúng khi ánh xạ placeholder đúng NGHĨA, không chỉ đúng cú pháp.
+- Bỏ nhãn V trong question/time_range (có test).
+- 5760: Nguyên viết (trả lời đúng cơ chế 5760 là con 5716 → rule sâu nhất). Review: nháp lại dùng schema cũ (`name/condition/action/summary`) dù đã thấy bản 5715 đã chuyển; `question` lặp lại query + placeholder (code đã in query riêng, placeholder trong question không được điền); nhánh "thành công nguy hiểm" đòi có chuỗi lỗi → mâu thuẫn với lý luận credential stuffing của chính Nguyên ở câu 1 → sửa B2; thiếu nhánh IP mới nhưng bình thường (B4), unknown, critical khi có hậu khai thác; nháp ghi "tuân thủ 3 luật test" nhưng chưa chạy test → nhắc tự chạy pytest trước khi gửi.
+- Preview 5760/5763 được Nguyên chấp nhận ở mức draft. Sửa chữ: bỏ "Hỏi ĐẦU TIÊN" (5712, 5763) vì bước 1 đã là câu tìm t0 → mâu thuẫn thứ tự in ra; đổi thành "Câu quan trọng nhất.".
+- Điều kiện lên `status: reviewed`: chạy thử từng query trên Wazuh Dashboard của lab (cú pháp DQL `timestamp >= "..."`, tên field user srcuser/dstuser, 5503 có srcip không, retention ≥ 30 ngày).
+- Còn lại họ SSH: 5710, 5716, 5503.
+- Vẫn chưa làm: ghép template với LLM (LLM chỉ chọn nhánh + severity).
+
 ## Template dựng bước tra cứu bằng code (2026-11-10 11:4x)
 
 - Bước 1 của hướng mới: `render_verify_steps` trong `ai_module/playbooks.py` (xem CHANGELOG). Chạy thử 40112 và 5715: mọi bước đúng agent.id `001`, đúng srcip/user, rule ID đầy đủ, V5 không bịa rule, khung thời gian nguyên văn — đúng tuyệt đối những gì LLM sai suốt 2 ngày.
