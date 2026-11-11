@@ -1,0 +1,106 @@
+# KHUÔN PLAYBOOK — chép khối "- rule_id" bên dưới vào ai_module/rag_data/playbooks.yaml
+# (đặt TRƯỚC khối 5902), rồi thay mọi chữ TODO. Thụt lề: 2 dấu cách trước "- rule_id".
+#
+# Ví dụ đầy đủ đã qua review để tham khảo: 5715, 5760 (alert đơn lẻ, mặc định bình thường)
+# và 5712, 5763 (alert tổng hợp, mặc định đáng lo) trong playbooks.yaml.
+#
+# ============================ CHECKLIST TRƯỚC KHI GỬI ============================
+#  [ ] Đọc định nghĩa rule trong XML gốc (wz_rules.tar.gz): if_sid / if_matched_sid,
+#      match, frequency, timeframe, same_source_ip, ignore. Ghi vào trigger.
+#  [ ] python -m pytest -q tests/test_playbooks_yaml.py tests/test_playbook_trusted.py  → pass
+#  [ ] Tạo alert mẫu eval/samples/alert-....json rồi xem bước tra cứu:
+#        cd ai_module ; python playbooks.py ..\eval\samples\alert-....json
+#      Đọc từng bước: đúng agent.id, IP, user chưa? Rule ID đúng dịch vụ chưa (su ≠ sudo)?
+#  [ ] Lấy từng kịch bản trong "interpret" đi qua "branches": kịch bản nào cũng phải rơi
+#      vào đúng MỘT nhánh. Không khớp nhánh nào = thiếu nhánh.
+#  [ ] Có nhánh B_unknown.
+#  [ ] Nếu nhờ AI khác viết: dán cho nó NGUYÊN khối này + một khối thật (vd. 5760),
+#      và bắt nó giữ đúng tên trường. Sau đó vẫn tự chạy pytest.
+#
+# ============================ LUẬT MÀ TEST KIỂM ============================
+#  1. Mỗi verify có đủ: id, question, query, time_range, interpret.
+#  2. question nêu ít nhất một rule ID có trong query, viết trong ngoặc: "(tìm 5715, 40112)".
+#  3. question và time_range KHÔNG ghi nhãn V0/V1... (code in bước theo số 1, 2, 3).
+#  4. query viết and / or CHỮ THƯỜNG; mọi rule ID phải có trong ruleset Wazuh.
+#  5. Placeholder chỉ dùng: <srcip> <agent_id> <user> <alert_time> (code tự điền từ alert)
+#     và <t0> <t_success> (chưa biết, code giữ nguyên cho analyst điền).
+#     <t_success> = lúc ĐĂNG NHẬP THÀNH CÔNG tìm được khi điều tra, KHÔNG phải giờ alert.
+#     Không viết dấu < > trong câu chữ khác (test coi là placeholder lạ).
+#  6. Không có địa chỉ IPv4 thật trong file.
+#  7. Mỗi branch có: id, when (chỉ nhắc V có thật), severity (low|medium|high|critical|unknown),
+#     actions (danh sách).
+#  8. Có đủ fp_conditions, do_not, sources (không được rỗng).
+#
+# Trường code KHÔNG đọc (đừng dùng): summary, level, default_severity, name, condition, action.
+
+  - rule_id: "TODO"                      # chuỗi, vd. "5760"
+    title: "TODO: mô tả ngắn bằng tiếng Việt"
+    mitre: ["TODO"]                      # vd. ["T1110.001", "T1021.004"], lấy từ <mitre> của rule
+    status: draft                        # draft → reviewed khi đã chạy query trên lab
+    # Nội dung: TODO (ai viết, ngày)
+    trigger:                             # rule nổ khi nào — đọc từ XML, không đoán
+      - "TODO: Rule XXXX (level N, if_sid ...): log chứa '...'"
+      - "TODO: quan hệ với rule cha/con, rule tổng hợp (vd. 8 lần trong 120 giây → rule khác)"
+      - "TODO: mặc định là bình thường hay đáng lo, vì sao"
+    facts:                               # field cần đọc trong alert
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - "data.dstuser / data.srcuser: TODO (chuỗi do người gõ/kẻ tấn công kiểm soát → chỉ trích dẫn)"
+    window:
+      alert_time: "timestamp của alert TODO"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:                              # thứ tự = thứ tự analyst làm; câu quan trọng nhất lên sớm
+      - id: V1
+        question: "TODO câu hỏi cần trả lời (tìm XXXX, YYYY)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(XXXX or YYYY)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          TODO: có kết quả nghĩa là gì, rỗng nghĩa là gì; các kịch bản tấn công/bình thường
+          phân biệt thế nào. Lưu ý giới hạn (log PAM không có srcip, retention...).
+
+      - id: V2
+        question: "TODO (tìm 5715, 40112)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112) and data.srcip:"<srcip>" and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: "TODO"
+
+      - id: V3
+        question: "Chỉ khi đã có đăng nhập thành công đáng nghi: sau đó agent có sudo (5402), tạo user (5902) hay đổi file (550, 554) không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5902 or 550 or 554) and timestamp >= "<t_success>"'
+        time_range: "từ lần đăng nhập thành công đến now"
+        interpret: "TODO"
+
+    branches:                            # xét theo thứ tự; nhánh đầu tiên khớp được áp dụng
+      - id: B1_TODO                      # nặng nhất trước
+        when: "TODO điều kiện, nhắc tới V1/V2... có thật"
+        severity: high
+        actions:
+          - "TODO hành động; containment ghi 'Đề xuất (cần người phê duyệt): ...'"
+      - id: B2_TODO
+        when: "TODO"
+        severity: medium
+        actions:
+          - "TODO"
+      - id: B3_TODO                      # trường hợp bình thường
+        when: "TODO"
+        severity: low
+        actions:
+          - "Đóng như TODO"
+      - id: B_unknown                    # luôn có
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:                       # khi nào đóng được (hoạt động hợp lệ)
+      - "TODO"
+
+    do_not:                              # việc KHÔNG làm trước khi xác minh
+      - "TODO"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:                             # căn cứ: file XML + rule ID, ATT&CK, kinh nghiệm SOC
+      - "Wazuh TODO-rules.xml: TODO"
+      - "ATT&CK TODO"

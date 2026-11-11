@@ -10,7 +10,11 @@ Ngày cập nhật: 2026-10-27
 - 5760: Nguyên viết (trả lời đúng cơ chế 5760 là con 5716 → rule sâu nhất). Review: nháp lại dùng schema cũ (`name/condition/action/summary`) dù đã thấy bản 5715 đã chuyển; `question` lặp lại query + placeholder (code đã in query riêng, placeholder trong question không được điền); nhánh "thành công nguy hiểm" đòi có chuỗi lỗi → mâu thuẫn với lý luận credential stuffing của chính Nguyên ở câu 1 → sửa B2; thiếu nhánh IP mới nhưng bình thường (B4), unknown, critical khi có hậu khai thác; nháp ghi "tuân thủ 3 luật test" nhưng chưa chạy test → nhắc tự chạy pytest trước khi gửi.
 - Preview 5760/5763 được Nguyên chấp nhận ở mức draft. Sửa chữ: bỏ "Hỏi ĐẦU TIÊN" (5712, 5763) vì bước 1 đã là câu tìm t0 → mâu thuẫn thứ tự in ra; đổi thành "Câu quan trọng nhất.".
 - Điều kiện lên `status: reviewed`: chạy thử từng query trên Wazuh Dashboard của lab (cú pháp DQL `timestamp >= "..."`, tên field user srcuser/dstuser, 5503 có srcip không, retention ≥ 30 ngày).
-- Còn lại họ SSH: 5710, 5716, 5503.
+- **Họ SSH xong 8/8 (draft):** 5712, 40112, 5715, 5763, 5760, 5710, 5716, 5503. 5710/5716/5503 Claude viết (Nguyên yêu cầu làm nốt). Preview 5503 lộ lỗi: V3 chỉ tra sudo (5401/5402/5404) trong khi mẫu là su → bổ sung su 5301–5304 (đọc 0020-syslog_rules.xml).
+- Cần kiểm trên lab cho 5716: kiểu lỗi thực tế ra 5716 (Failed publickey cần LogLevel VERBOSE), timeframe mặc định của 5720 (XML không khai báo). Cho 5503: field user (dstuser/srcuser), có data.srcip không.
+- Nguyên tự viết lại 5710/5716/5503 để so sánh (không xem bản Claude). Test trên bản Nguyên: FAIL (`KeyError: interpret`) — lần thứ 3 dùng schema cũ (`summary/level/default_severity`, `name`, `condition/action`, thiếu trigger/facts/window/sources, không id nhánh, không unknown) dù đã dặn chép khối 5760; không ghi đã chạy test. Nội dung có 5 ý hay hơn → gộp vào bản chính (xem CHANGELOG). Bản Nguyên thiếu: su 5301–5304 ở 5503 (Claude cũng từng thiếu), không xử lý đếm trùng 5503/5760, 5716 không đọc kiểu lỗi trước, 5503 lọc theo srcip dù biết thường không có. Đề xuất cho Nguyên: dán khối 5760 vào AI làm khuôn, tự chạy pytest trước khi gửi.
+- Nguyên xin khuôn mẫu → `docs/playbook_template.yaml` (có test giữ đồng bộ schema). Lần sau Nguyên viết: chép khối trong file này.
+- Việc cho Nguyên: lấy kịch bản tấn công trong `interpret` của từng câu verify, đi qua `branches` xem rơi vào nhánh nào (kiểm thiếu nhánh) — bắt đầu với 5503.
 - Vẫn chưa làm: ghép template với LLM (LLM chỉ chọn nhánh + severity).
 
 ## Template dựng bước tra cứu bằng code (2026-11-10 11:4x)

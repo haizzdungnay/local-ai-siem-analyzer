@@ -58,3 +58,24 @@ def test_verify_questions_name_their_rule_ids():
             ids = re.findall(r"\d+", " ".join(re.findall(r"rule\.id:\(?([\d\sor]+)\)?", v["query"])))
             if ids:
                 assert any(re.search(rf"(?<!\d){i}(?!\d)", v["question"]) for i in ids), (pb["rule_id"], v["id"])
+
+
+def test_rendered_fields_have_no_internal_labels():
+    # question/time_range được code in thành bước đánh số 1..n; nhãn V0/V1 không còn ý nghĩa với analyst.
+    for pb in filter(_complete, _load()):
+        for v in pb["verify"]:
+            for field in ("question", "time_range"):
+                assert not re.search(r"\bV\d\b", str(v.get(field, ""))), (pb["rule_id"], v["id"], field)
+
+
+def test_template_matches_real_playbook_schema():
+    # docs/playbook_template.yaml phải luôn khớp schema của playbook thật (vd. 5760),
+    # để người viết chép khuôn không bị lệch tên trường.
+    template = yaml.safe_load((ROOT / "docs" / "playbook_template.yaml").read_text(encoding="utf-8"))[0]
+    real = next(p for p in _load() if p["rule_id"] == "5760")
+    assert set(template) == set(real)
+    assert set(template["verify"][0]) == set(real["verify"][0])
+    assert set(template["branches"][0]) == set(real["branches"][0])
+    assert template["branches"][-1]["id"] == "B_unknown"
+    placeholders = set(re.findall(r"<([a-z_]+)>", " ".join(v["query"] for v in template["verify"])))
+    assert placeholders <= {"srcip", "agent_id", "user", "alert_time", "t0", "t_success"}
