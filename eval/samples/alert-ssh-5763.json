@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-07-06T14:07:55.000+0700",
+  "rule": {
+    "id": "5763",
+    "level": 10,
+    "description": "sshd: brute force trying to get access to the system. Authentication failed.",
+    "mitre": {
+      "id": ["T1110"],
+      "tactic": ["Credential Access"],
+      "technique": ["Brute Force"]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "data": {
+    "srcip": "192.168.100.30",
+    "srcport": "40122",
+    "dstuser": "admin"
+  },
+  "full_log": "Jul  6 14:07:55 victim-ubuntu sshd[14410]: Failed password for admin from 192.168.100.30 port 40122 ssh2"
+}

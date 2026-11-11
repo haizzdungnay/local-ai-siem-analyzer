@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-07-06T09:02:31.000+0700",
+  "rule": {
+    "id": "5710",
+    "level": 5,
+    "description": "sshd: Attempt to login using a non-existent user",
+    "mitre": {
+      "id": [
+        "T1110.001",
+        "T1021.004"
+      ],
+      "tactic": [
+        "Credential Access",
+        "Lateral Movement"
+      ],
+      "technique": [
+        "Password Guessing",
+        "SSH"
+      ]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "data": {
+    "srcip": "192.168.100.30",
+    "srcport": "40002",
+    "srcuser": "oracle"
+  },
+  "full_log": "Jul  6 09:02:31 victim-ubuntu sshd[15120]: Invalid user oracle from 192.168.100.30 port 40002"
+}

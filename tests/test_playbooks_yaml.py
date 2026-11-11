@@ -78,4 +78,4 @@ def test_template_matches_real_playbook_schema():
     assert set(template["branches"][0]) == set(real["branches"][0])
     assert template["branches"][-1]["id"] == "B_unknown"
     placeholders = set(re.findall(r"<([a-z_]+)>", " ".join(v["query"] for v in template["verify"])))
-    assert placeholders <= {"srcip", "agent_id", "user", "alert_time", "t0", "t_success"}
+    assert placeholders <= {"srcip", "agent_id", "user", "srcuser", "dstuser", "alert_time", "t0", "t_success"}

@@ -149,16 +149,21 @@ def check_next_steps(next_steps, entry: dict) -> dict:
 # Template: dựng bước tra cứu bằng code (tất định), không nhờ LLM.
 # Placeholder trong query được điền từ field đã trích của alert. Giá trị alert là
 # chuỗi không tin cậy (username do kẻ tấn công gõ) nên được làm sạch và escape dấu
-# nháy trước khi đặt vào chuỗi DQL. Placeholder không có giá trị (vd. <t0>, phải chạy
+# nháy trước khi đặt vào chuỗi DQL. Placeholder không có giá trị (vd. <t0>, <t_success>: phải chạy
 # câu verify trước mới biết) được giữ nguyên để analyst tự điền.
 # ---------------------------------------------------------------------------
 _PLACEHOLDER_RE = re.compile(r"<([a-z_]+)>")
 _PLACEHOLDER_SOURCES = {
     "srcip": ("data.srcip",),
     "agent_id": ("agent.id",),
-    "user": ("data.dstuser", "data.srcuser"),
-    "t_success": ("timestamp",),
+    "user": ("data.dstuser", "data.srcuser"),   # SSH/PAM: tài khoản đăng nhập
+    "srcuser": ("data.srcuser",),               # sudo/su/gpasswd: NGƯỜI GỌI lệnh
+    "dstuser": ("data.dstuser",),               # sudo: tài khoản đích (thường là root)
+    "alert_time": ("timestamp",),
 }
+# <t_success> (thời điểm đăng nhập thành công tìm được khi điều tra) KHÔNG lấy từ alert:
+# chỉ trùng giờ alert khi chính alert là lần thành công (40112, 5715) — các playbook đó dùng
+# <alert_time>. Với 5712/5763, alert là lúc đang dò nên <t_success> giữ nguyên chờ analyst điền.
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _STEP_LABELS = {
     "vi": ("Tra", "Khung thời gian"),

@@ -23,7 +23,6 @@ def _client(captured, next_steps):
 def test_get_playbook_exact_lookup_skips_empty_skeleton():
     assert playbooks.get_playbook("5712")["rule_id"] == "5712"
     assert playbooks.get_playbook(" 5712 ") is not None
-    assert playbooks.get_playbook("5902") is None  # mới có khung, verify rỗng
     assert playbooks.get_playbook("99999") is None
 
 
@@ -149,3 +148,34 @@ def test_render_escapes_attacker_controlled_username():
     v1 = steps[1]
     assert 'data.dstuser:"x\\" or rule.id:* or \\""' in v1  # nháy bị escape, không thoát khỏi chuỗi
     assert "\n" not in v1
+
+
+def test_t_success_only_filled_when_alert_is_the_success():
+    # 40112: alert chính là lần thành công → giờ alert được điền
+    v3 = playbooks.render_verify_steps(playbooks.get_playbook("40112"), ALERT_40112)[3]
+    assert 'timestamp >= "2026-07-06T10:19:42.000+0700"' in v3
+    # 5763: alert là lúc đang dò mật khẩu → <t_success> chưa biết, giữ nguyên
+    alert_5763 = {**ALERT_40112, "timestamp": "2026-07-06T14:07:55.000+0700"}
+    last = playbooks.render_verify_steps(playbooks.get_playbook("5763"), alert_5763)[-1]
+    assert 'timestamp >= "<t_success>"' in last and "14:07:55" not in last
+
+
+def test_only_known_placeholders_in_playbooks():
+    known = set(playbooks._PLACEHOLDER_SOURCES) | {"t0", "t_success"}
+    text = playbooks.PLAYBOOK_PATH.read_text(encoding="utf-8")
+    assert set(re.findall(r"<([a-z_]+)>", text)) <= known
+
+
+def test_get_playbook_skips_skeleton_without_verify(tmp_path):
+    path = tmp_path / "pb.yaml"
+    path.write_text('playbooks:\n  - rule_id: "1"\n    verify:\n      - question: ""\n', encoding="utf-8")
+    assert playbooks.get_playbook("1", path) is None
+
+
+def test_sudo_query_uses_caller_not_root():
+    # sudo: data.srcuser = người gọi, data.dstuser = root. <user> ưu tiên dstuser nên sẽ ra "root" — sai.
+    alert = {"agent.id": "001", "data.srcuser": "deploy", "data.dstuser": "root",
+             "timestamp": "2026-07-06T21:07:40.000+0700"}
+    steps = playbooks.render_verify_steps(playbooks.get_playbook("5402"), alert)
+    history = next(s for s in steps if "30 ngày" in s)
+    assert 'data.srcuser:"deploy"' in history and '"root"' not in history

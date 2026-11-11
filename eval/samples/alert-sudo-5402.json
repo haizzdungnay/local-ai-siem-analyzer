@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-07-06T21:07:40.000+0700",
+  "rule": {
+    "id": "5402",
+    "level": 3,
+    "description": "Successful sudo to ROOT executed.",
+    "mitre": {
+      "id": ["T1548.003"],
+      "tactic": ["Privilege Escalation", "Defense Evasion"],
+      "technique": ["Sudo and Sudo Caching"]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "data": {
+    "srcuser": "deploy",
+    "dstuser": "root",
+    "tty": "pts/1",
+    "pwd": "/home/deploy",
+    "command": "/bin/bash"
+  },
+  "full_log": "Jul  6 21:07:40 victim-ubuntu sudo:   deploy : TTY=pts/1 ; PWD=/home/deploy ; USER=root ; COMMAND=/bin/bash"
+}

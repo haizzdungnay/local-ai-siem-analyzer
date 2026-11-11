@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-07-06T21:05:13.000+0700",
+  "rule": {
+    "id": "5503",
+    "level": 5,
+    "description": "PAM: User login failed.",
+    "mitre": {
+      "id": [
+        "T1110.001"
+      ],
+      "tactic": [
+        "Credential Access"
+      ],
+      "technique": [
+        "Password Guessing"
+      ]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "data": {
+    "dstuser": "root"
+  },
+  "full_log": "Jul  6 21:05:13 victim-ubuntu su: pam_unix(su:auth): authentication failure; logname= uid=33 euid=0 tty=pts/1 ruser=www-data rhost=  user=root"
+}

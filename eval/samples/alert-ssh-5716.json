@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-07-06T09:40:18.000+0700",
+  "rule": {
+    "id": "5716",
+    "level": 5,
+    "description": "sshd: authentication failed.",
+    "mitre": {
+      "id": [
+        "T1110"
+      ],
+      "tactic": [
+        "Credential Access"
+      ],
+      "technique": [
+        "Brute Force"
+      ]
+    }
+  },
+  "agent": {
+    "id": "001",
+    "name": "victim-ubuntu",
+    "ip": "192.168.100.20"
+  },
+  "data": {
+    "srcip": "192.168.100.30",
+    "srcport": "51990",
+    "dstuser": "deploy"
+  },
+  "full_log": "Jul  6 09:40:18 victim-ubuntu sshd[15301]: Failed publickey for deploy from 192.168.100.30 port 51990 ssh2: RSA SHA256:EXAMPLE0000000000000000000000000000000000000"
+}

@@ -661,36 +661,838 @@ playbooks:
       - "ATT&CK T1110.001 Password Guessing, T1110.003 Password Spraying, T1110.004 Credential Stuffing"
       - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
 
-  - rule_id: "5902"
-    title: "Tạo user mới trên hệ thống"
-    mitre: ["T1136", "T1136.001"]
+  - rule_id: "5710"
+    title: "sshd: thử đăng nhập bằng user KHÔNG tồn tại, một lần"
+    mitre: ["T1110.001", "T1021.004"]
     status: draft
-    # Ngữ nghĩa rule: level 8; nổ khi syslog ghi "new user" (useradd/adduser).
-    # Nổ Y HỆT nhau khi admin tạo user hợp lệ và khi kẻ tấn công tạo backdoor
-    # => phân biệt bằng NGỮ CẢNH, không bằng rule ID.
-    # Thường đi kèm: 5901 (new group), 5402 (sudo), FIM 550/553/554 trên /etc/passwd,
-    # /etc/shadow, /etc/group và file .lock — các alert FIM đó là HỆ QUẢ của useradd,
-    # không phải hành vi riêng (không phải T1485/T1070.004).
+    trigger:                             # từ 0095-sshd_rules.xml
+      - "Rule 5710 (level 5, if_sid 5700): sshd ghi 'invalid user' hoặc 'illegal user'"
+      - "8 lần 5710 trong 120 giây cùng IP → 5712 (alert riêng); 5710 lẻ tẻ là dưới ngưỡng đó"
+      - "User không tồn tại nên lần thử này KHÔNG thể đăng nhập được; rủi ro nằm ở việc cùng IP thử user có thật hoặc đã vào được"
+      - "Username trong log là thứ người kết nối gõ vào: có thể là wordlist (admin, test, oracle), lỗi gõ tên thật, tên user máy local khi gõ 'ssh tên-máy' không ghi user, hoặc người dùng gõ nhầm MẬT KHẨU vào ô username"
     facts:
+      - data.srcip
+      - agent.id
       - agent.name, agent.ip
-      - data.dstuser          # user mới (nếu decoder trích được)
-      - full_log              # dòng "new user: name=..., UID=..., GID=..., home=..., shell=..."
+      - timestamp
+      - "data.srcuser / data.dstuser: username đã gõ (không tồn tại; có thể chứa mật khẩu gõ nhầm → không phát tán)"
+    window:
+      alert_time: "timestamp của alert 5710"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
     verify:
-      # TODO(Nguyên): gợi ý câu hỏi:
-      #   - AI tạo user này? (5402 sudo ngay trước đó: user nào chạy sudo, từ phiên nào?)
-      #   - Phiên đó bắt đầu từ đâu? (5715/5501 trước đó: srcip có thuộc dải admin không?
-      #     có chuỗi 5710/5712/5503 từ cùng srcip trước đó không?)
-      #   - User mới có đặc quyền không? (UID 0? thêm vào sudo/wheel? 5555/thay đổi /etc/group?)
-      #   - Có change ticket / yêu cầu tạo user không?
-      - question: ""
-        how: ""
+      - id: V1
+        question: "Trong 24 giờ trước, cùng srcip có thử thêm user khác hoặc sai mật khẩu không (tìm 5710, 5712, 5758, 5760, 5763)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5710 or 5712 or 5758 or 5760 or 5763)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert; đếm số username khác nhau"
+        interpret: >-
+          Nhiều username dạng wordlist (admin, test, ubuntu, oracle, git), rải rác → dò tên chậm né 5712.
+          Có cả 5760/5763 → đã chuyển sang đoán mật khẩu user có thật. Chỉ 1–2 lần, username gần
+          giống tên thật (sai một chữ) → gõ nhầm.
+
+      - id: V2
+        question: "Sau đó cùng srcip có đăng nhập thành công không (tìm 5715, 40112)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5715 or 40112) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có, và tài khoản thành công là tên đúng của username gõ nhầm → người dùng thật sửa lỗi gõ.
+          Có, nhưng V1 cho thấy dò nhiều username → nghi đã tìm ra tài khoản và vào được.
+
+      - id: V3
+        question: "Cùng srcip đã từng đăng nhập thành công (5715) vào agent này trong 30 ngày chưa?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:5715'
+        time_range: "30 ngày trước thời điểm alert"
+        interpret: "Có lịch sử → IP quen (máy admin, bastion). Rỗng → nguồn lạ với agent này (vẫn phụ thuộc retention Indexer)."
+
+      - id: V4
+        question: "srcip là nội bộ (RFC1918) hay công cộng, có phải là một agent không (agent.ip)?"
+        query: 'agent.ip:"<srcip>"'
+        time_range: "24 giờ gần nhất"
+        interpret: >-
+          Máy nội bộ không có vai trò quản trị mà dò username SSH → dấu hiệu máy đó đã bị chiếm và
+          đang dò ngang. IP công cộng một lần lẻ tẻ → nhiễu Internet thông thường.
+
     branches:
-      if_suspicious: []   # có dấu hiệu backdoor (phiên từ IP lạ sau brute force, UID 0, thêm sudo, ngoài giờ, không ticket)
-      if_legitimate: []   # xác nhận được là thao tác quản trị
-      if_unknown: []
-    fp_conditions: []
-    do_not: []
+      - id: B1_found_and_entered
+        when: "V1 cho thấy dò nhiều username hoặc có 5760/5763, VÀ V2 có đăng nhập thành công từ srcip"
+        severity: high
+        actions:
+          - "Xử lý theo playbook 40112/5715: xác minh chủ tài khoản đã vào, kiểm hoạt động sau đăng nhập"
+          - "Đề xuất (cần người phê duyệt): chặn srcip nếu chủ tài khoản không xác nhận"
+      - id: B2_internal_scanner
+        when: "V4: srcip là máy nội bộ không có vai trò quản trị, V3 không có lịch sử"
+        severity: medium
+        actions:
+          - "Kiểm máy nguồn: có bị chiếm hay chạy công cụ quét không (nếu là agent, xem đăng nhập/tiến trình gần thời điểm alert)"
+          - "Không chặn IP nội bộ khi chưa xác định máy đó là gì"
+      - id: B3_slow_enumeration
+        when: "V1 cho thấy nhiều username rải rác (dò chậm), V2 rỗng"
+        severity: medium
+        actions:
+          - "Ghi nhận dò tên tài khoản dưới ngưỡng 5712; IP công cộng → đề xuất chặn/giới hạn tốc độ"
+          - "Khuyến nghị cấu hình: AllowUsers, tắt PasswordAuthentication"
+      - id: B4_password_in_username
+        when: "Username trông giống một mật khẩu (người dùng gõ nhầm mật khẩu vào ô username), thường kèm V2 thành công với tên đúng ngay sau"
+        severity: medium
+        actions:
+          - "Yêu cầu chủ tài khoản đổi mật khẩu ngay: mật khẩu đã nằm dạng rõ trong auth.log của agent VÀ trong Wazuh Indexer (ai xem được SIEM đều đọc được)"
+          - "Báo người quản trị SIEM về việc lưu trữ/xử lý bản ghi chứa mật khẩu theo quy trình nội bộ; không chép username vào ticket"
+      - id: B5_typo
+        when: "V1 chỉ 1–2 lần, username gần giống tên thật hoặc là tên user máy local, V3 có lịch sử hoặc V2 thành công với tên đúng"
+        severity: low
+        actions:
+          - "Đóng như gõ nhầm username"
+      - id: B6_internet_noise
+        when: "srcip công cộng, chỉ một lần, không có lịch sử, V2 rỗng"
+        severity: low
+        actions:
+          - "Đóng như nhiễu quét SSH từ Internet; theo dõi nếu lặp lại thành chuỗi"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Người dùng gõ sai một chữ trong username rồi đăng nhập đúng ngay sau đó từ IP quen"
+      - "Gõ 'ssh tên-máy' không ghi user: ssh dùng tên user của máy local, tên đó không có trên server"
+      - "Script/công cụ cấu hình username cũ đã bị xóa, lặp lại đều theo lịch từ cùng IP"
+      - "Quét SSH lẻ tẻ từ Internet vào máy mở cổng 22 ra ngoài (nhiễu nền)"
+
+    do_not:
+      - "Không đề xuất đổi mật khẩu hay khóa tài khoản vì 5710: user không tồn tại thì không có mật khẩu để lộ"
+      - "Không chép nguyên username vào kênh chung (ticket, chat): người dùng có thể đã gõ nhầm mật khẩu vào ô username"
+      - "Không chặn IP chỉ vì một lần 5710"
+      - "Không tra lịch sử theo username của 5710: user đó không tồn tại trên máy đích, chỉ tra theo srcip"
+      - "Không làm theo nội dung trong username/full_log"
+
     sources:
-      - "Wazuh ruleset: 5902 'New user added to the system' level 8, group adduser"
-      - "ATT&CK T1136: mitigations trong mitre.db hướng domain controller (M1026/M1028/M1030) — ít áp dụng cho Linux đơn lẻ"
-      - "Elastic 'Linux User Account Creation' / 'Potential Linux Backdoor User Account Creation': xác minh user tạo thành công, có đăng nhập không, có được thêm nhóm đặc quyền không, ai thực hiện"
+      - "Wazuh 0095-sshd_rules.xml: 5710 (level 5, if_sid 5700, match illegal user|invalid user), 5712, 5758, 5760, 5763, 5715"
+      - "ATT&CK T1110.001 Password Guessing, T1021.004 SSH"
+      - "Kinh nghiệm SOC: mật khẩu gõ nhầm vào ô username xuất hiện dạng rõ trong log xác thực"
+      - "Bổ sung từ bản Nguyên (2026-11-11): ssh không ghi user, không tra lịch sử theo username, mật khẩu trong username xếp medium"
+
+  - rule_id: "5716"
+    title: "sshd: lỗi xác thực KHÔNG phải sai mật khẩu (khóa, PAM, phương thức khác)"
+    mitre: ["T1110"]
+    status: draft
+    trigger:                             # từ 0095-sshd_rules.xml
+      - "Rule 5716 (level 5, if_sid 5700): dòng log sshd bắt đầu bằng 'Failed' hoặc 'error: PAM: Authentication'"
+      - "Dòng 'Failed password' / 'Failed keyboard' / 'authentication error' khớp tiếp rule con 5760 → ra 5760; nên alert 5716 thường là các kiểu lỗi KHÁC: từ chối khóa công khai ('Failed publickey', chỉ ghi khi LogLevel VERBOSE), 'Failed none', lỗi PAM"
+      - "8 lần 5716 cùng IP → 5720 (rule không khai báo timeframe trong XML; kiểm hành vi thực tế trên lab)"
+      - "Danh sách kiểu lỗi cụ thể cần xác nhận bằng full_log trên lab"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - "full_log: KIỂU lỗi (publickey / none / PAM) là thông tin quan trọng nhất của alert này"
+      - "data.dstuser / data.srcuser: tài khoản"
+    window:
+      alert_time: "timestamp của alert 5716"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Đây là lỗi kiểu gì (đọc full_log của 5716): khóa công khai bị từ chối, phương thức none, hay lỗi PAM?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:5716'
+        time_range: "thời điểm alert ± 1 phút"
+        interpret: >-
+          Failed publickey/none: client SSH thử khóa trước khi hỏi mật khẩu → thường là nhiễu bình thường
+          (ssh-agent có nhiều khóa). Lặp nhiều với nhiều tài khoản → có thể là thử khóa bị đánh cắp.
+          Lỗi PAM → xử lý gần như sai mật khẩu (xem 5760, 5503).
+
+      - id: V2
+        question: "Trong 24 giờ trước có chuỗi lỗi từ cùng srcip không (tìm 5716, 5720, 5758, 5760, 5763)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5716 or 5720 or 5758 or 5760 or 5763)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert; đếm theo tài khoản"
+        interpret: >-
+          5758 (vượt MaxAuthTries) đi kèm 5716 publickey → client thử quá nhiều khóa (thường cấu hình
+          sai). Nhiều tài khoản khác nhau + publickey → nghi thử một khóa bị lộ trên nhiều tài khoản.
+
+      - id: V3
+        question: "Sau đó cùng srcip có đăng nhập thành công không (tìm 5715, 40112)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5715 or 40112) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Publickey thất bại rồi password thành công vài giây sau, cùng tài khoản → luồng bình thường của
+          client. Thành công bằng publickey sau nhiều lần thử khóa trên nhiều tài khoản → nghi khóa bị lộ.
+
+      - id: V4
+        question: "Cùng srcip đã từng đăng nhập thành công (5715) vào agent này trong 30 ngày chưa?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:5715'
+        time_range: "30 ngày trước thời điểm alert"
+        interpret: "Có lịch sử → IP quen, nhiều khả năng client cấu hình khóa chưa gọn. Rỗng → nguồn lạ."
+
+    branches:
+      - id: B1_key_spraying_success
+        when: "V2 cho thấy lỗi publickey trên nhiều tài khoản, VÀ V3 có đăng nhập thành công bằng publickey"
+        severity: high
+        actions:
+          - "Nghi khóa riêng bị lộ: xác định khóa nào (fingerprint trong full_log nếu có), tài khoản nào nhận khóa đó trong authorized_keys"
+          - "Xử lý theo playbook 40112 cho lần đăng nhập thành công; đề xuất (cần người phê duyệt) gỡ khóa đó khỏi authorized_keys"
+      - id: B2_pam_or_password_like
+        when: "V1 là lỗi PAM hoặc có 5760 đi kèm"
+        severity: low
+        actions:
+          - "Xử lý theo playbook 5760 (sai mật khẩu) với cùng srcip và tài khoản"
+      - id: B3_repeated_unknown_source
+        when: "V2 có chuỗi lỗi trên nhiều tài khoản, V4 không có lịch sử, V3 rỗng"
+        severity: medium
+        actions:
+          - "Ghi nhận thử xác thực bằng khóa/phương thức lạ từ nguồn lạ; IP công cộng → đề xuất chặn/giới hạn tốc độ"
+      - id: B4_client_noise
+        when: "V1 là publickey/none, cùng một tài khoản, V3 thành công ngay sau hoặc V4 có lịch sử"
+        severity: low
+        actions:
+          - "Đóng như hành vi bình thường của client SSH; nếu có 5758 lặp lại, khuyến nghị cấu hình IdentitiesOnly cho client"
+      - id: B_unknown
+        when: "Không đọc được kiểu lỗi trong full_log hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "ssh-agent có nhiều khóa: client thử lần lượt từng khóa (Failed publickey) trước khi khóa đúng hoặc mật khẩu thành công"
+      - "Client thử phương thức 'none' trước tiên theo giao thức SSH"
+      - "Script/tác vụ tự động dùng khóa đã bị thu hồi khỏi authorized_keys: Failed publickey lặp đều theo lịch từ cùng máy, cùng tài khoản"
+      - "IP quen của admin, cùng tài khoản, thành công ngay sau đó"
+
+    do_not:
+      - "Không coi 5716 là sai mật khẩu khi chưa đọc full_log: sai mật khẩu đã ra 5760"
+      - "Không đề xuất đổi mật khẩu khi lỗi là publickey (vấn đề nằm ở khóa, không ở mật khẩu)"
+      - "Không chặn IP chỉ vì vài lần Failed publickey từ IP quen"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0095-sshd_rules.xml: 5716 (level 5, if_sid 5700, match ^Failed|^error: PAM: Authentication), 5760 (con của 5716), 5720 (8 × 5716 cùng IP), 5758, 5715"
+      - "OpenSSH: thứ tự thử phương thức (none, publickey, password); 'Failed publickey' chỉ ghi khi LogLevel VERBOSE; IdentitiesOnly, MaxAuthTries"
+      - "ATT&CK T1110, T1552.004 Private Keys"
+      - "Bổ sung từ bản Nguyên (2026-11-11): tác vụ tự động dùng khóa đã thu hồi"
+
+  - rule_id: "5503"
+    title: "PAM: đăng nhập thất bại (sshd, su, sudo, login...)"
+    mitre: ["T1110.001"]
+    status: draft
+    trigger:                             # từ 0085-pam_rules.xml
+      - "Rule 5503 (level 5, if_sid 5500, decoder pam): log pam_unix chứa 'authentication failure; logname='"
+      - "PAM dùng chung cho nhiều dịch vụ: tên dịch vụ nằm trong full_log, vd. pam_unix(sshd:auth), (su:auth), (sudo:auth), (login:auth)"
+      - "Một lần sai mật khẩu SSH thường sinh HAI dòng log và hai alert: 5503 (từ pam_unix) và 5760 (từ sshd) → không đếm trùng"
+      - "IP nằm ở trường rhost= trong full_log; data.srcip thường KHÔNG có → không lọc 5503 theo srcip"
+      - "8 lần 5503 trong 180 giây (same_source_ip) → 5551"
+      - "su và sudo còn ghi dòng log riêng → alert riêng: su thất bại 5301/5302, su thành công 5303/5304; sudo thất bại 5401/5404, thành công 5402. Một lần su sai thường ra cả 5503 và 5302"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - "data.dstuser / data.srcuser: tài khoản (user=) — kiểm field thực tế trên lab"
+      - "full_log: dịch vụ (sshd/su/sudo/login), rhost (IP từ xa nếu có), ruser và uid (ai đang gõ khi dùng su/sudo; uid vẫn có khi ruser trống, vd. uid=33 là www-data trên Ubuntu)"
+    window:
+      alert_time: "timestamp của alert 5503"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Lỗi đến từ dịch vụ nào và ai gõ (đọc full_log của 5503: sshd, su, sudo hay login; rhost, ruser)?"
+        query: 'agent.id:"<agent_id>" and rule.id:5503 and (data.dstuser:"<user>" or data.srcuser:"<user>")'
+        time_range: "thời điểm alert ± 1 phút"
+        interpret: >-
+          sshd + rhost → đăng nhập từ xa: xử lý theo playbook 5760 (thường có 5760 đi kèm).
+          su hoặc sudo → một người ĐÃ ở trên máy đang cố lên quyền khác (ruser/uid là người gõ;
+          rhost trống chính là dấu hiệu thử mật khẩu cục bộ, không phải từ xa).
+          login → đăng nhập tại console/TTY.
+
+      - id: V2
+        question: "Nếu là sshd: có 5760 cùng tài khoản ngay lúc đó không (cùng một lần sai, tìm 5760)?"
+        query: 'agent.id:"<agent_id>" and rule.id:5760 and (data.dstuser:"<user>" or data.srcuser:"<user>")'
+        time_range: "thời điểm alert ± 1 phút"
+        interpret: "Có → 5503 này là bản trùng của một lần sai mật khẩu SSH; điều tra theo alert 5760 đó, không đếm hai lần."
+
+      - id: V3
+        question: "Nếu là su/sudo: có thất bại lặp lại (su 5301, 5302; sudo 5401, 5404) hay lên quyền thành công (su 5303, 5304; sudo 5402) ngay sau không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5301 or 5302 or 5303 or 5304 or 5401 or 5402 or 5404)'
+        time_range: "thời điểm alert - 10 phút → now"
+        interpret: >-
+          su: 5302 (sai khi su lên root) / 5303 (su lên root thành công). sudo: 5404 (sai 3 lần) / 5402
+          (thành công). Thành công sau nhiều lần sai, bởi tài khoản không thường lên quyền (nhất là
+          tài khoản dịch vụ như www-data) → nghi leo thang đặc quyền. Đối chiếu ruser ở V1.
+
+      - id: V4
+        question: "Trong 24 giờ trước, tài khoản này có chuỗi đăng nhập thất bại không (tìm 5503, 5551)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5503 or 5551) and (data.dstuser:"<user>" or data.srcuser:"<user>")'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: "Nhiều lần qua nhiều dịch vụ/IP (rhost khác nhau) → tài khoản đang bị nhắm; vài lần → gõ nhầm."
+
+    branches:
+      - id: B1_local_privesc_success
+        when: "V1 là su/sudo, V3 có thất bại lặp lại rồi thành công (5303/5304 hoặc 5402), người gõ (ruser) không phải admin quen"
+        severity: high
+        actions:
+          - "Nghi leo thang đặc quyền: xác định phiên của ruser (5501 gần thời điểm alert), kiểm lệnh chạy sau khi lên root"
+          - "Đề xuất (cần người phê duyệt): kết thúc phiên, đổi mật khẩu tài khoản đích nếu bị đoán trúng"
+      - id: B2_sshd_duplicate
+        when: "V1 là sshd và V2 có 5760 tương ứng"
+        severity: low
+        actions:
+          - "Không xử lý riêng; điều tra theo playbook 5760 của lần sai đó"
+      - id: B3_local_guessing
+        when: "V1 là su/sudo, V3 có thất bại lặp lại (5302 hoặc 5404) nhưng chưa thành công"
+        severity: medium
+        actions:
+          - "Xác minh với người dùng ruser: có đang cố dùng sudo/su không"
+          - "Nếu ruser là tài khoản dịch vụ (www-data...) → nghi web shell đang dò mật khẩu, nâng high"
+      - id: B4_targeted_account
+        when: "V4 có nhiều lần thất bại cho tài khoản này qua nhiều rhost hoặc dịch vụ"
+        severity: medium
+        actions:
+          - "Theo dõi đăng nhập thành công (5715, 5501) của tài khoản trong 24 giờ; xem playbook 5760 cho phần SSH"
+      - id: B5_typo
+        when: "Một lần, dịch vụ login/su/sudo, người dùng quen, không có chuỗi"
+        severity: low
+        actions:
+          - "Đóng như gõ nhầm mật khẩu"
+      - id: B_unknown
+        when: "Không đọc được dịch vụ trong full_log hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "5503 đi cặp với 5760 cùng giây, cùng tài khoản: là bản trùng của một lần sai mật khẩu SSH"
+      - "Admin gõ nhầm mật khẩu sudo một lần rồi thành công"
+      - "Người dùng gõ nhầm tại console"
+
+    do_not:
+      - "Không lọc 5503 theo data.srcip rồi kết luận rỗng: IP nằm ở rhost trong full_log"
+      - "Không bỏ qua 5503 khi rhost trống: đó là thử mật khẩu ngay trên máy; đọc dịch vụ và uid trong full_log"
+      - "Không đếm 5503 và 5760 (sshd), hay 5503 và 5302 (su), như hai lần thử riêng biệt"
+      - "Không đề xuất chặn IP khi lỗi đến từ su/sudo/login (không có kết nối từ xa)"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0085-pam_rules.xml: 5500 (decoder pam), 5503 (level 5, match 'authentication failure; logname='), 5501, 5551 (8 × 5503 / 180 s, same_source_ip)"
+      - "Wazuh 0020-syslog_rules.xml: su 5301, 5302 (sai khi lên root, level 9), 5303, 5304; sudo 5401, 5402, 5404"
+      - "Linux PAM pam_unix: định dạng 'authentication failure; logname= uid= euid= tty= ruser= rhost= user='"
+      - "ATT&CK T1110.001, T1548.003 Sudo and Sudo Caching"
+      - "Bổ sung từ bản Nguyên (2026-11-11): đọc uid khi ruser trống; rhost trống = thử mật khẩu cục bộ"
+
+  - rule_id: "5401"
+    title: "Sudo: nhập sai mật khẩu khi chạy lệnh sudo (1-2 lần)"
+    mitre: ["T1548.003", "T1110.001"]
+    status: draft
+    trigger:
+      - "Rule 5401 (level 5, if_sid 5400 — nhóm decoder sudo): log sudo chứa 'incorrect password attempt' (vd. '1 incorrect password attempt', '2 incorrect password attempts')"
+      - "'3 incorrect password attempts' cũng chứa chuỗi đó nên khớp 5401 rồi khớp tiếp rule con 5404 (level 10) → alert ra 5404; tài khoản không có trong sudoers → 5405 (rule riêng, 'user NOT in sudoers')"
+      - "Mỗi lần gõ sai, PAM còn ghi 'pam_unix(sudo:auth): authentication failure' → 5503; dòng 'incorrect password attempt' của sudo là dòng TỔNG KẾT của cả lệnh → không đếm 5503 và 5401 như các lần thử riêng"
+      - "Mặc định là bình thường nếu quản trị viên gõ nhầm mật khẩu 1 lần rồi nhập lại đúng, nhưng đáng ngờ nếu đi sau một phiên xâm nhập SSH hoặc xuất phát từ tài khoản dịch vụ"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+      - "data.srcuser / data.dstuser / data.command: tài khoản gọi sudo, tài khoản đích và lệnh định chạy (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 5401"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trong 24 giờ quanh thời điểm alert, trên agent có chuỗi thử sudo thất bại, user ngoài sudoers hoặc dò mật khẩu PAM không (tìm 5401, 5404, 5405, 5503, 5551)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5401 or 5404 or 5405 or 5503 or 5551)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Chỉ có 1 bản ghi 5401 đơn lẻ: người dùng gõ nhầm mật khẩu. Có nhiều bản ghi 5401, 5404 (sai 3 lần)
+          hoặc 5405 (không nằm trong sudoers): kẻ tấn công đang cố dò mật khẩu hoặc kiểm tra quyền leo thang
+          từ một tài khoản quyền thấp.
+
+      - id: V2
+        question: "Sau lần sai mật khẩu sudo này, tài khoản trên agent có chạy sudo thành công không (tìm 5402, 5403)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có 5402 hoặc 5403 ngay sau vài giây: người dùng đã nhập lại đúng mật khẩu (hoặc kẻ tấn công đã đoán
+          trúng mật khẩu sudo). Đọc trường data.command trong full_log để biết lệnh vừa thực thi là gì.
+
+      - id: V3
+        question: "Phiên làm việc trước khi gọi sudo bắt đầu từ đâu: trong 24 giờ trước có đăng nhập SSH hay cảnh báo brute-force không (tìm 5715, 40112, 5760, 5763, 5712)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5760 or 5763 or 5712)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 5715 từ IP quản trị quen thuộc và không có brute-force: phiên làm việc bình thường. Có 40112, 5763
+          hoặc Không có bất kỳ phiên SSH 5715 nào mà tài khoản gọi sudo lại là www-data/nginx/postgres: dấu hiệu
+          kẻ tấn công đang dò mật khẩu sudo từ phiên xâm nhập hoặc từ webshell/RCE.
+
+      - id: V4
+        question: "Chỉ khi đã có sudo thành công đáng nghi: sau đó agent có tạo group/user (5901, 5902, 2961) hay đổi file nhạy cảm (550, 553, 554) không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5901 or 5902 or 2961 or 550 or 553 or 554) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có tạo tài khoản mới hoặc sửa đổi file hệ thống sau khi dò trúng mật khẩu sudo: xác nhận kẻ tấn công
+          đã leo thang lên root và đang tạo chốt chặn.
+
+    branches:
+      - id: B1_escalated_after_guessing
+        when: "V2 có sudo thành công VÀ (V1 có chuỗi dò mật khẩu nhiều lần hoặc V3 phát hiện phiên xâm nhập/tài khoản dịch vụ hoặc V4 có tạo user/sửa file nhạy cảm)"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống và chủ tài khoản <user>"
+          - "Kiểm tra toàn bộ lệnh đã chạy trong V2 và các thay đổi ở V4"
+          - "Đề xuất (cần người phê duyệt): thu hồi phiên làm việc trên agent <agent_id>, đổi mật khẩu của <user> và cô lập máy nếu phát hiện webshell"
+      - id: B2_local_sudo_brute_force
+        when: "V2 chưa chạy được sudo thành công, nhưng V1 có chuỗi lỗi lặp lại (5401, 5404, 5405) HOẶC V3 cho thấy tài khoản dịch vụ/phiên SSH lạ đang thử sudo"
+        severity: medium
+        actions:
+          - "Kiểm tra trường data.srcuser và data.tty trong full_log xem lệnh sudo được gọi từ terminal người dùng hay từ tiến trình web/ứng dụng"
+          - "Đề xuất (cần người phê duyệt): khóa tạm thời phiên của tài khoản <user> nếu xác nhận đang bị dò mật khẩu cục bộ"
+      - id: B3_benign_sudo_typo
+        when: "V1 chỉ có 1-2 lần gõ sai, V3 xác nhận phiên đăng nhập SSH hợp lệ của quản trị viên, V2 nhập lại đúng mật khẩu với lệnh quản trị bình thường, không chạy V4"
+        severity: low
+        actions:
+          - "Đóng như lỗi quản trị viên gõ nhầm mật khẩu khi chạy lệnh sudo"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Quản trị viên gõ nhầm mật khẩu 1 lần rồi nhập lại đúng ngay sau đó (nổ 5402) trong phiên SSH từ IP quen thuộc"
+      - "Không có chuỗi lỗi 5404, 5405 hay cảnh báo brute-force SSH đi kèm trong 24 giờ"
+
+    do_not:
+      - "Không chạy truy vấn kiểm tra tạo user/FIM ở bước cuối nếu người dùng chưa chạy sudo thành công hoặc phiên làm việc hoàn toàn bình thường"
+      - "Không tự ý khóa tài khoản quản trị viên chỉ vì 1 lần gõ sai mật khẩu sudo"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0020-syslog_rules.xml (nhóm sudo, decoder sudo): 5400, 5401 (match 'incorrect password attempt'), 5404 (if_sid 5401, match '3 incorrect password attempts'), 5405 ('user NOT in sudoers')"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude (sửa trigger theo XML)"
+      - "ATT&CK T1548.003 (Sudo and Sudo Caching), T1110.001 (Password Guessing)"
+
+  - rule_id: "5402"
+    title: "Sudo: thực thi lệnh sudo lên quyền root thành công"
+    mitre: ["T1548.003"]
+    status: draft
+    trigger:
+      - "Rule 5402 (level 3, if_sid 5400): log sudo khớp ' ; USER=root ; COMMAND=' → lệnh chạy với quyền root thành công; data.srcuser = người gọi, data.dstuser = root"
+      - "5403 (level 4) KHÔNG phải rule con của 5402: cùng cha 5400, thêm điều kiện if_fts (lần đầu thấy giá trị đó) → lần đầu một tài khoản dùng sudo; cần kiểm trên lab alert ra 5402 hay 5403 trong trường hợp này"
+      - "sudo sang user khác root (sudo -u postgres) không khớp regex USER=root → không ra 5402"
+      - "Mặc định là hoạt động quản trị hoặc tự động hóa bình thường hàng ngày, chỉ đáng ngờ khi lệnh thực thi mang tính chất leo thang/xóa dấu vết hoặc đi sau phiên đăng nhập bất thường"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+      - "data.srcuser / data.dstuser / data.command / data.pwd: người gọi sudo, quyền đích, lệnh thực thi và thư mục đứng (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 5402"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trước khi sudo thành công, trong 24 giờ trên agent có lỗi xác thực sudo, PAM hoặc cảnh báo brute-force SSH không (tìm 5401, 5404, 5405, 5503, 5551, 5712, 5763, 40111, 40112)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5401 or 5404 or 5405 or 5503 or 5551 or 5712 or 5763 or 40111 or 40112)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Rỗng: không có dấu hiệu dò mật khẩu trước khi chạy sudo. Có 5404, 5551, 5763 hoặc 40112: phiên chạy
+          sudo này có thể là kết quả sau khi kẻ tấn công vừa brute-force thành công mật khẩu SSH hoặc mật khẩu sudo.
+
+      - id: V2
+        question: "Ai đã đăng nhập SSH vào agent trước khi lệnh sudo này được chạy, từ IP nào (tìm 5715, 40112)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Xác định IP nguồn của phiên SSH tương ứng với tài khoản data.srcuser. Nếu không có phiên SSH nào mà
+          data.srcuser là tác vụ định kỳ đã biết (cron/ansible) thì bình thường; nếu data.srcuser là tài khoản
+          dịch vụ web/database thì rất đáng ngờ.
+
+      - id: V3
+        question: "Tài khoản này đã từng chạy sudo trong 30 ngày qua chưa (tìm 5402, 5403), và lệnh trong data.command / full_log có nhạy cảm không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403) and data.srcuser:"<srcuser>"'
+        time_range: "30 ngày trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có nhiều bản ghi với cùng mẫu lệnh: thói quen vận hành hoặc script tự động. Đặc biệt chú ý đọc
+          data.command trong alert hiện tại: các lệnh mở shell root trực tiếp (sudo su, sudo bash, sudo -i),
+          cấp quyền SUID (chmod +s), sửa /etc/sudoers, sửa authorized_keys hoặc tải script từ mạng cần được
+          xem xét kỹ hơn các lệnh bảo trì thông thường (systemctl, apt, journalctl).
+
+      - id: V4
+        question: "Chỉ khi có dấu hiệu dò mật khẩu, phiên đăng nhập lạ hoặc lệnh nhạy cảm: sau thời điểm alert, agent có tạo group/user (5901, 5902, 2961) hay đổi file nhạy cảm (550, 553, 554) không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5901 or 5902 or 2961 or 550 or 553 or 554) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có tạo user mới hoặc thay đổi file cấu hình trọng yếu sau một lệnh sudo đáng nghi: dấu hiệu kẻ tấn
+          công đang thiết lập quyền truy cập bền vững (persistence) dưới quyền root.
+
+    branches:
+      - id: B1_malicious_root_execution
+        when: "(V1 có chuỗi brute-force hoặc V2 đến từ IP xâm nhập trái phép) VÀ (V3 thực thi lệnh độc hại/mở shell root hoặc V4 phát hiện tạo user/sửa file nhạy cảm)"
+        severity: high
+        actions:
+          - "Xác minh khẩn với chủ tài khoản <user> về lệnh sudo vừa thực thi"
+          - "Kiểm tra chi tiết lệnh trong data.command và các file bị thay đổi ở V4"
+          - "Đề xuất (cần người phê duyệt): ngắt phiên kết nối hiện tại trên agent <agent_id>, thu hồi quyền sudo hoặc khóa tạm thời tài khoản bị chiếm quyền"
+      - id: B2_unusual_sudo_command_or_context
+        when: "V1 sạch, nhưng V3 phát hiện lệnh mở interactive root shell / sửa cấu hình bảo mật ngoài giờ bảo trì HOẶC lần đầu chạy lệnh lạ không thuộc quy trình chuẩn"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên <user> để xác nhận mục đích của lệnh sudo (đối chiếu với change ticket nếu có)"
+          - "Theo dõi kết quả V4 xem có thay đổi hệ thống nào phát sinh ngoài dự kiến không"
+      - id: B3_normal_admin_or_automation_sudo
+        when: "V1 sạch, V2 từ nguồn quản trị hoặc tác vụ tự động hợp lệ, V3 xác nhận tài khoản và lệnh sudo quen thuộc trong 30 ngày qua, không chạy V4"
+        severity: low
+        actions:
+          - "Đóng như hoạt động quản trị hệ thống hoặc tác vụ tự động hóa hợp lệ"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Tài khoản quản trị viên hoặc hệ thống tự động (Ansible, monitoring, deploy) chạy các lệnh sudo quen thuộc theo lịch sử 30 ngày"
+      - "Phiên SSH đi trước xuất phát từ IP quản trị hợp lệ và không có chuỗi lỗi xác thực ở V1"
+
+    do_not:
+      - "Không chạy V4 cho mọi sự kiện 5402 thông thường để tránh lãng phí thời gian điều tra và ngân sách truy vấn"
+      - "Không tự ý khóa tài khoản quản trị viên hay chặn tác vụ tự động chỉ dựa trên một alert 5402 level 3"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0020-syslog_rules.xml (nhóm sudo): 5402 (if_sid 5400, regex USER=root ; COMMAND=), 5403 (if_sid 5400, if_fts)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude (sửa quan hệ 5402/5403, placeholder srcuser)"
+      - "ATT&CK T1548.003 (Sudo and Sudo Caching)"
+
+  - rule_id: "5404"
+    title: "Sudo: nhập sai mật khẩu 3 lần liên tiếp trong một lệnh sudo"
+    mitre: ["T1548.003", "T1110.001"]
+    status: draft
+    trigger:
+      - "Rule 5404 (level 10, if_sid 5401): log sudo chứa '3 incorrect password attempts'"
+      - "Kích hoạt khi người dùng hoặc kẻ tấn công nhập sai mật khẩu cả 3 lần cho phép của một phiên gọi lệnh sudo khiến lệnh bị hủy"
+      - "Mặc định là đáng lo (level 10): có thể là kẻ tấn công đã chiếm được tài khoản quyền thấp và đang dò mật khẩu để leo thang lên root"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+      - "data.srcuser / data.dstuser / data.command / data.tty: tài khoản gọi sudo, lệnh định chạy và terminal (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 5404"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Sau khi sai 3 lần, trên agent có chạy sudo hoặc mở phiên su/PAM thành công không (tìm 5402, 5403, 5501)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 5501) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Hỏi câu này đầu tiên để biết kẻ tấn công đã leo thang đặc quyền thành công hay chưa. Nếu có 5402
+          hoặc 5403 sau chuỗi 5404: mật khẩu sudo đã bị đoán trúng (hoặc người dùng nhớ lại đúng mật khẩu).
+
+      - id: V2
+        question: "Trong 24 giờ quanh thời điểm alert, có bao nhiêu lần lỗi xác thực sudo hoặc PAM trên agent này (tìm 5401, 5404, 5405, 5503, 5551)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5401 or 5404 or 5405 or 5503 or 5551)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Chỉ có đúng 1 lần nổ 5404 rồi dừng hoặc nhập đúng: có thể người dùng quên mật khẩu hoặc kẹt phím.
+          Có nhiều bản ghi 5404, 5405, 5551 nối tiếp nhau: hành vi brute-force mật khẩu cục bộ rõ rệt.
+
+      - id: V3
+        question: "Tài khoản gọi sudo đăng nhập vào agent bằng cách nào: trong 24 giờ trước có phiên SSH hay cảnh báo brute-force SSH không (tìm 5715, 40112, 5760, 5763, 5712)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5760 or 5763 or 5712)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112 hoặc 5715 từ IP lạ: kẻ tấn công vừa xâm nhập qua SSH và đang tìm cách leo thang lên root.
+          Không có phiên SSH 5715 mà lệnh sudo được gọi từ tài khoản dịch vụ hoặc pts/tty lạ: kiểm tra nguy cơ
+          webshell hoặc RCE trên ứng dụng.
+
+      - id: V4
+        question: "Chỉ khi đã có sudo thành công sau chuỗi sai mật khẩu: sau đó agent có tạo group/user (5901, 5902, 2961) hay đổi file nhạy cảm (550, 553, 554) không?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5901 or 5902 or 2961 or 550 or 553 or 554) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có bản ghi tạo user mới, thêm vào group sudo hoặc sửa file hệ thống sau khi vừa dò trúng mật khẩu:
+          xác nhận máy chủ đã bị chiếm quyền root.
+
+    branches:
+      - id: B1_sudo_compromised
+        when: "V1 có sudo/PAM thành công VÀ (V2 có nhiều lần dò mật khẩu hoặc V3 xuất phát từ phiên xâm nhập/tài khoản dịch vụ hoặc V4 có tạo user/sửa file)"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống và chủ tài khoản <user>"
+          - "Kiểm tra lệnh thực thi trong V1 và các thay đổi hệ thống ở V4"
+          - "Đề xuất (cần người phê duyệt): ngắt toàn bộ phiên của <user> trên agent <agent_id>, đặt lại mật khẩu và cô lập máy chủ nếu đã bị cài backdoor"
+      - id: B2_active_local_escalation_attempt
+        when: "V1 chưa thành công, nhưng V2 có nhiều lần nổ 5404/5405/5551 HOẶC V3 cho thấy phiên SSH đáng nghi / tài khoản dịch vụ gọi sudo"
+        severity: medium
+        actions:
+          - "Kiểm tra tiến trình cha và terminal (data.tty) của lệnh sudo trên agent <agent_id>"
+          - "Xác minh với chủ tài khoản <user> xem họ có đang thao tác trên máy không"
+          - "Đề xuất (cần người phê duyệt): khóa tạm thời tài khoản <user> và ngắt phiên SSH liên quan nếu người dùng xác nhận không thực hiện"
+      - id: B3_user_forgot_password
+        when: "V2 chỉ có 1 lần 5404 đơn lẻ, V3 xác nhận phiên SSH hợp lệ từ IP quen thuộc của quản trị viên (V1 nhập đúng ở lần sau hoặc tự dừng), không chạy V4"
+        severity: low
+        actions:
+          - "Đóng sau khi xác nhận người dùng gõ nhầm mật khẩu 3 lần (ví dụ bật nhầm CapsLock hoặc nhầm mật khẩu giữa các máy)"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Người dùng hợp lệ đăng nhập từ IP quản trị quen thuộc xác nhận đã gõ nhầm mật khẩu giữa các môi trường"
+      - "Chỉ xảy ra 1 lần 5404, không có chuỗi brute-force SSH đi trước ở V3 và không có hành vi bất thường ở V4"
+
+    do_not:
+      - "Không bỏ qua việc kiểm tra V3 (nguồn gốc phiên đăng nhập) vì 5404 thường là bước tiếp theo sau khi tài khoản quyền thấp bị lộ"
+      - "Không chạy V4 nếu ở V1 kẻ tấn công chưa vượt qua được bước xác thực sudo"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0020-syslog_rules.xml (nhóm sudo): 5404 (level 10, if_sid 5401, match '3 incorrect password attempts')"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1548.003 (Sudo and Sudo Caching), T1110.001 (Password Guessing)"
+
+  - rule_id: "5901"
+    title: "Hệ thống: tạo group mới trên Linux (groupadd)"
+    mitre: ["T1136.001", "T1098"]
+    status: draft
+    trigger:
+      - "Rule 5901 (level 8, nhóm syslog,adduser, không có if_sid): log groupadd/useradd bắt đầu bằng 'new group'"
+      - "Trên Linux, khi chạy lệnh useradd hoặc adduser để tạo tài khoản mới, hệ thống thường tự động tạo một primary group trùng tên user trước, nên 5901 rất hay nổ cặp cùng 5902"
+      - "Mặc định cần kiểm tra (level 8): hợp lệ khi cài đặt gói phần mềm mới hoặc cấp phát user theo quy trình, nhưng đáng ngờ nếu đi kèm tạo user trái phép"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+      - "data.dstuser / data.uid: tên group và GID vừa được tạo trong full_log (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 5901"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Quanh thời điểm tạo group, trên agent có tạo user mới, thêm user vào group hay chạy lệnh sudo nào không (tìm 5902, 2960, 2961, 5402, 5403)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5902 or 2960 or 2961 or 5402 or 5403)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Xem lệnh sudo (5402, 5403) ngay trước đó để biết ai (data.srcuser) đã chạy lệnh tạo group/user.
+          Nếu có 5902 và 2961 đi kèm: một tài khoản người dùng mới vừa được tạo và cấp quyền group.
+
+      - id: V2
+        question: "Ai đã đăng nhập SSH vào agent trước khi tạo group, và trong 24 giờ trước có cảnh báo brute-force nào không (tìm 5715, 40112, 5763, 5712, 5551)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 5715 từ IP quản trị quen thuộc hoặc hệ thống cấu hình tự động (Ansible/Puppet): có ngữ cảnh quản trị.
+          Có 40112, 5763 hoặc không có phiên đăng nhập quản trị nào: dấu hiệu tạo group/user từ phiên xâm nhập.
+
+      - id: V3
+        question: "Group này có được tạo tự động do cài đặt gói phần mềm hợp lệ (tìm 2902, 2903) hay đi kèm thay đổi file nhạy cảm (tìm 550, 553, 554)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(2902 or 2903 or 550 or 553 or 554)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Có 2902, 2903 (dpkg/rpm/yum cài đặt gói) và tên group trùng với tên dịch vụ (như docker, nginx,
+          postgres, zabbix): hoạt động cài đặt phần mềm bình thường. Nếu không có cài đặt gói mà có 550/554
+          trên /etc/sudoers hoặc authorized_keys: rất đáng ngờ.
+
+    branches:
+      - id: B1_unauthorized_group_and_user
+        when: "V2 có dấu hiệu xâm nhập/IP lạ HOẶC (V1 tạo kèm user mới/cấp quyền sudo trái phép và V3 không phải cài đặt phần mềm hợp lệ)"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống về group và user vừa được tạo ở V1"
+          - "Kiểm tra file /etc/group, /etc/passwd và /etc/sudoers trên agent <agent_id>"
+          - "Đề xuất (cần người phê duyệt): xóa user và group trái phép, thu hồi phiên làm việc đáng nghi trên agent <agent_id>"
+      - id: B2_unverified_admin_change
+        when: "V2 là phiên quản trị nội bộ, V1 tạo group/user thủ công và V3 không gắn với cài đặt gói tự động nhưng chưa rõ change ticket"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên vừa chạy lệnh sudo ở V1 để đối chiếu với yêu cầu cấp phát tài khoản hoặc lịch bảo trì"
+      - id: B3_package_install_or_approved_provisioning
+        when: "V2 sạch VÀ (V3 xác nhận group của dịch vụ được tạo tự động khi cài gói phần mềm 2902/2903 hoặc V1 thuộc quy trình cấp phát tài khoản đã được phê duyệt)"
+        severity: low
+        actions:
+          - "Đóng như hoạt động cài đặt gói phần mềm hoặc cấp phát tài khoản hợp lệ"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Trình quản lý gói (apt, dpkg, yum, rpm) tự động tạo group hệ thống (GID nhỏ hơn 1000) khi cài đặt dịch vụ mới (có rule 2902, 2903 đi kèm)"
+      - "Quản trị viên tạo tài khoản mới theo ticket đã phê duyệt từ IP quản trị quen thuộc"
+
+    do_not:
+      - "Không đánh giá riêng rẽ 5901 mà bỏ qua việc kiểm tra xem có 5902 (tạo user) và 2961 (thêm vào group) nổ cùng lúc hay không"
+      - "Không tự ý xóa group hệ thống vừa được tạo bởi trình cài đặt gói (apt/yum) vì sẽ làm lỗi dịch vụ"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0020-syslog_rules.xml (nhóm syslog,adduser): 5901 (match ^new group), 5902 (match ^new user|^new account added); 2902/2903 dpkg cài/gỡ gói (Debian); 2932/2933 yum (RHEL)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude (sửa trigger/sources theo XML)"
+      - "ATT&CK T1136.001 (Create Account: Local Account), T1098 (Account Manipulation)"
+
+  - rule_id: "5902"
+    title: "Hệ thống: tạo tài khoản người dùng mới trên Linux (useradd/adduser)"
+    mitre: ["T1136.001"]
+    status: draft
+    trigger:
+      - "Rule 5902 (level 8, nhóm syslog,adduser, không có if_sid): log bắt đầu bằng 'new user' hoặc 'new account added'"
+      - "useradd thường tạo group riêng trước → 5901 và 5902 nổ cùng lúc; FIM (550/554) trên /etc/passwd, /etc/shadow, /etc/group là HỆ QUẢ của useradd, không phải hành vi riêng"
+      - "Ghi nhận tên tài khoản mới, UID, GID, thư mục home và login shell (ví dụ /bin/bash hoặc /usr/sbin/nologin)"
+      - "Mặc định đáng chú ý (level 8): tạo tài khoản cục bộ mới là kỹ thuật duy trì truy cập (persistence) kinh điển của kẻ tấn công sau khi chiếm được quyền root"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+      - "data.dstuser / data.uid: tên tài khoản mới, UID, GID, home, shell trong full_log (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 5902"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Ai đã chạy lệnh tạo user này (tìm 5402, 5403), có do cài gói phần mềm không (tìm 2902, 2903), và user mới có được thêm vào group đặc quyền không (tìm 5901, 2960, 2961)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 2902 or 2903 or 5901 or 2960 or 2961)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Đọc full_log của 5902 để kiểm tra UID (nếu UID=0 là tài khoản tương đương root) và shell (có phải
+          /bin/bash, /bin/sh không). Đối chiếu với 5402/5403 để biết quản trị viên nào vừa chạy lệnh useradd,
+          và xem có 2961 thêm ngay user này vào group sudo/wheel/docker không.
+
+      - id: V2
+        question: "Phiên làm việc tạo user bắt đầu từ đâu: trong 24 giờ trước có đăng nhập SSH hay cảnh báo brute-force nào trên agent không (tìm 5715, 40112, 5763, 5712, 5551)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112, 5763 hoặc 5715 từ IP lạ trước khi tạo user: dấu hiệu kẻ tấn công vừa xâm nhập và đang tạo
+          tài khoản backdoor. Có 5715 từ Bastion/IP quản trị quen thuộc: phiên thao tác của quản trị viên.
+
+      - id: V3
+        question: "Sau khi được tạo, tài khoản mới hoặc agent có đăng nhập SSH, mở phiên PAM, chạy sudo hay sửa file nhạy cảm không (tìm 5715, 5501, 5402, 5403, 550, 553, 554)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 5501 or 5402 or 5403 or 550 or 553 or 554) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có 5715 (đăng nhập SSH ngay vào tài khoản mới), 5402/5403 (chạy sudo từ tài khoản mới) hoặc 550/554
+          (thêm SSH key vào authorized_keys của user mới): tài khoản vừa tạo đã được kích hoạt để sử dụng.
+
+    branches:
+      - id: B1_backdoor_user_created
+        when: "full_log có UID=0 HOẶC V2 có dấu hiệu xâm nhập/brute-force HOẶC (V1 cấp shell tương tác/quyền sudo mà không do quản trị viên hợp lệ thực hiện) HOẶC V3 phát hiện hành vi hậu khai thác"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống về tài khoản <user> vừa được tạo"
+          - "Kiểm tra /etc/passwd, /etc/shadow, /etc/sudoers và thư mục home của <user> trên agent <agent_id>"
+          - "Đề xuất (cần người phê duyệt): khóa hoặc xóa ngay tài khoản <user> (usermod -L / userdel), ngắt các phiên đang mở và cách ly agent <agent_id> nếu xác nhận bị xâm nhập"
+      - id: B2_manual_user_without_ticket
+        when: "V2 là phiên SSH từ IP quản trị quen thuộc, V1 là quản trị viên chạy sudo useradd với shell đăng nhập (/bin/bash) nhưng chưa đối chiếu được yêu cầu cấp phát"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên đã chạy lệnh sudo ở V1 để xác nhận mục đích tạo tài khoản <user> và đối chiếu change ticket"
+      - id: B3_service_account_or_approved_onboarding
+        when: "V2 sạch VÀ (V1 có 2902/2903 cài gói phần mềm tự tạo tài khoản hệ thống với shell nologin/false, hoặc quản trị viên tạo user đúng quy trình cấp phát)"
+        severity: low
+        actions:
+          - "Đóng như hoạt động cài đặt dịch vụ hoặc cấp phát tài khoản hợp lệ"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Tài khoản dịch vụ được tạo tự động khi cài gói phần mềm (đi kèm rule 2902, 2903) với UID hệ thống và shell là /usr/sbin/nologin hoặc /bin/false"
+      - "Quản trị viên hoặc Ansible tạo tài khoản cho nhân sự mới đúng theo ticket đã được phê duyệt"
+
+    do_not:
+      - "Không bỏ qua việc đọc UID và shell trong full_log (tài khoản dịch vụ nhưng lại có shell /bin/bash hoặc UID=0 là dấu hiệu giả mạo rất rõ)"
+      - "Không tự ý xóa tài khoản hệ thống vừa được tạo bởi trình quản lý gói khi chưa kiểm tra V1"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0020-syslog_rules.xml (nhóm syslog,adduser): 5902 (match ^new user|^new account added)"
+      - "Elastic 'Potential Linux Backdoor User Account Creation': UID 0, có đăng nhập ngay, được thêm nhóm đặc quyền"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1136.001 (Create Account: Local Account)"
+
+  - rule_id: "2961"
+    title: "Hệ thống: thêm tài khoản vào group SUDO (gpasswd)"
+    mitre: ["T1098", "T1548.003"]
+    status: draft
+    trigger:
+      - "Rule cha 2960 (level 2, decoder gpasswd, match 'added by'): thêm user vào BẤT KỲ group nào"
+      - "Rule 2961 (level 5, if_sid 2960) chỉ khớp khi field group = sudo → 2961 luôn là thêm vào group sudo"
+      - "ĐIỂM MÙ: 2960 chỉ level 2, dưới log_alert_level mặc định (3) → thêm user vào docker, lxd, wheel, adm (đều leo lên root được) KHÔNG sinh alert nào; chỉ thấy qua FIM 550 trên /etc/group hoặc /etc/gshadow nếu có giám sát"
+      - "Chỉ bắt được lệnh đi qua gpasswd; usermod -aG sudo X có thể ghi log khác (usermod) — cần kiểm trên lab có ra 2960/2961 không"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+      - "data.dstuser / data.srcuser: tài khoản được thêm, người thực hiện và tên group đích trong full_log (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 2961"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Quanh thời điểm thêm group, lệnh sudo nào đã được chạy và tài khoản này có phải vừa mới được tạo không (tìm 5402, 5403, 5901, 5902, 2960)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 5901 or 5902 or 2960)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Đọc full_log của 2961 để xác định: ai được thêm, ai thực hiện (group luôn là sudo). Kết hợp xem 5902 và 5402 để biết đây là
+          cấp quyền cho tài khoản vừa mới tạo hay nâng quyền cho một tài khoản cũ.
+
+      - id: V2
+        question: "Ai đã đăng nhập SSH vào agent trước khi thay đổi group, và trong 24 giờ trước có cảnh báo brute-force nào không (tìm 5715, 40112, 5763, 5712, 5551)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112, 5763 hoặc 5715 từ IP lạ: kẻ tấn công sau khi chiếm được quyền đang tự thêm tài khoản vào
+          group đặc quyền để duy trì quyền root. Có 5715 từ IP quản trị quen thuộc: thao tác của quản trị viên.
+
+      - id: V3
+        question: "Sau khi được thêm vào group, trên agent có phát sinh lệnh sudo mới, mở phiên PAM hay sửa đổi file nhạy cảm không (tìm 5402, 5403, 5404, 5501, 550, 553, 554)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 5404 or 5501 or 550 or 553 or 554) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có 5403 (lần đầu tiên user chạy sudo) hoặc 5402 ngay sau khi được thêm vào group sudo/wheel: tài khoản
+          vừa được nâng quyền đã lập tức sử dụng quyền mới để thực thi lệnh với quyền root.
+
+    branches:
+      - id: B1_unauthorized_privilege_group_grant
+        when: "V2 có dấu hiệu xâm nhập/IP lạ, hoặc V1 cho thấy thêm cho tài khoản dịch vụ/user lạ/user vừa tạo trái phép, hoặc V3 có lệnh hậu khai thác"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống về việc cấp quyền group trong full_log"
+          - "Kiểm tra toàn bộ lệnh sudo mà tài khoản vừa chạy ở V3"
+          - "Đề xuất (cần người phê duyệt): gỡ ngay tài khoản khỏi group đặc quyền (gpasswd -d), thu hồi phiên làm việc và khóa tài khoản nếu trái phép"
+      - id: B2_unverified_sudo_or_docker_group_add
+        when: "V2 là phiên quản trị bình thường, nhưng chưa có thông tin phê duyệt việc cấp quyền sudo"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên thực hiện lệnh ở V1 để xác nhận yêu cầu cấp quyền sudo"
+          - "Kiểm thêm /etc/group: user có nằm trong docker/lxd/wheel không (các group này không sinh alert, xem trigger)"
+      - id: B3_benign_group_assignment
+        when: "V2 sạch VÀ việc cấp quyền sudo thuộc quy trình cấp phát đã được phê duyệt"
+        severity: low
+        actions:
+          - "Đóng như thao tác phân quyền group hợp lệ của quản trị viên hoặc trình cài đặt"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Quản trị viên phân quyền cho nhân sự hoặc dịch vụ theo đúng change ticket từ phiên SSH quản trị hợp lệ"
+      - "Onboarding quản trị viên mới theo ticket (thêm vào sudo là bước chuẩn)"
+
+    do_not:
+      - "Không coi việc không có 2961 là không có leo quyền qua group: docker/lxd/wheel chỉ ra 2960 level 2 (không thành alert); thành viên docker/lxd mount được ổ đĩa máy chủ để lấy root"
+      - "Không tự ý gỡ quyền group của tài khoản dịch vụ đang chạy sản phẩm khi chưa kiểm tra V1 và xác nhận với quản trị viên"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0020-syslog_rules.xml: 2960 (level 2, decoded_as gpasswd, match 'added by'), 2961 (level 5, if_sid 2960, field group=sudo)"
+      - "Wazuh ossec.conf: log_alert_level mặc định 3 → rule level < 3 không ghi vào alerts"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude (2961 chỉ là group sudo; điểm mù 2960)"
+      - "ATT&CK T1098 (Account Manipulation), T1548.003 (Sudo and Sudo Caching)"
+
