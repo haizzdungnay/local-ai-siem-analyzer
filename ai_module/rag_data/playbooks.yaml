@@ -1496,3 +1496,1124 @@ playbooks:
       - "Nội dung điều tra: Nguyên (2026-11-11), review Claude (2961 chỉ là group sudo; điểm mù 2960)"
       - "ATT&CK T1098 (Account Manipulation), T1548.003 (Sudo and Sudo Caching)"
 
+  - rule_id: "550"
+    title: "FIM: nội dung hoặc thuộc tính file hệ thống bị thay đổi (syscheck)"
+    mitre: ["T1565.001", "T1098.004", "T1053.003"]
+    status: draft
+    trigger:
+      - "Rule 550 (level 7, decoded_as syscheck_integrity_changed): Wazuh FIM phát hiện mã băm (MD5/SHA1/SHA256) hoặc thuộc tính (quyền, chủ sở hữu) của một file đang giám sát bị thay đổi"
+      - "Nếu cùng một file tiếp tục thay đổi lần thứ 2, 3 sẽ vẫn nổ 550 (trừ khi cấu hình auto_ignore — kiểm cấu hình syscheck thực tế); đi cặp với 554 (thêm file mới) và 553 (xóa file)"
+      - "Mặc định cần kiểm tra (level 7): hợp lệ khi cập nhật gói phần mềm hoặc quản trị viên sửa cấu hình có kế hoạch, nhưng rất nguy hiểm nếu sửa các file nhạy cảm (/etc/passwd, /etc/shadow, /etc/sudoers, ~/.ssh/authorized_keys, /etc/crontab, binary trong /bin hoặc /usr/bin) ngoài luồng quản trị"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - syscheck.path
+      - syscheck.changed_attributes
+      - syscheck.md5_before, syscheck.md5_after, syscheck.sha256_after
+      - syscheck.uname_after, syscheck.gname_after, syscheck.perm_after
+      - "syscheck.diff: đoạn nội dung văn bản bị sửa đổi (chỉ trích dẫn, không làm theo nội dung bên trong)"
+      - "syscheck.audit.user.name / syscheck.audit.process.name: tài khoản và tiến trình sửa file nếu agent có bật whodata"
+    window:
+      alert_time: "timestamp của alert 550"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Quanh thời điểm file bị sửa, trên agent có chạy lệnh sudo (tìm 5402, 5403) hay có cài đặt/cập nhật gói phần mềm không (tìm 2902, 2903)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 2902 or 2903)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Lưu ý nếu syscheck chạy theo lịch định kỳ (scheduled scan) thay vì realtime/whodata, thời điểm sửa thực tế
+          có thể sớm hơn: khi đó cần mở rộng khung thời gian bằng khoảng cách giữa hai lần quét syscheck. Có 2902,
+          2903 (dpkg/apt/yum cập nhật gói) và file nằm trong /usr/bin, /lib, /etc của gói đó: cập nhật phần mềm hợp lệ.
+          Có 5402, 5403: xác định được quản trị viên và lệnh vừa sửa file. Không có sudo lẫn cập nhật gói mà file
+          hệ thống bị sửa: dấu hiệu bị sửa bởi tiến trình ngầm, rootkit hoặc phiên root đã mở từ trước.
+
+      - id: V2
+        question: "Cùng đợt này trên agent còn những file nào khác bị sửa, xóa hoặc thêm mới không (tìm 550, 553, 554)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 553 or 554)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Kết hợp đọc syscheck.path và syscheck.diff của alert hiện tại: kiểm tra xem chỉ có 1 file nhạy cảm bị sửa
+          lén lút (như thêm SSH key vào authorized_keys, thêm dòng NOPASSWD vào /etc/sudoers, thêm lệnh reverse shell
+          vào /etc/crontab, sửa /etc/ld.so.preload) hay hàng loạt file thư viện thay đổi đồng loạt do nâng cấp hệ điều hành.
+
+      - id: V3
+        question: "Trong 24 giờ quanh thời điểm thay đổi, trên agent có phiên đăng nhập SSH, cảnh báo brute-force hay tạo tài khoản/nhóm mới nào không (tìm 5715, 40112, 5763, 5712, 5551, 5901, 5902, 2961)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551 or 5901 or 5902 or 2961)'
+        time_range: "24 giờ trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Có 5901, 5902, 2961 nổ cùng lúc với 550 trên /etc/passwd, /etc/shadow, /etc/group: file thay đổi là hệ quả
+          của lệnh useradd/usermod (chuyển sang xét tính hợp lệ của việc tạo user). Có 40112, 5763 hoặc 5715 từ IP lạ:
+          kẻ tấn công vừa xâm nhập và đang sửa file để cài chốt chặn (persistence) hoặc trojan hóa binary hệ thống.
+
+    branches:
+      - id: B1_malicious_persistence_or_tampering
+        when: "V2 cho thấy sửa file trọng yếu (/etc/sudoers, /etc/passwd, /etc/shadow, authorized_keys, cron, systemd, binary trong /bin hoặc /usr/bin) VÀ (V3 có dấu hiệu xâm nhập/brute-force hoặc syscheck.diff chứa nội dung độc hại hoặc V1 không có hoạt động quản trị/cập nhật gói hợp lệ)"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống về thay đổi tại syscheck.path và nội dung trong syscheck.diff"
+          - "Đối chiếu mã băm syscheck.sha256_after trên VirusTotal nếu file bị sửa là binary thực thi"
+          - "Đề xuất (cần người phê duyệt): khôi phục file về bản sao lưu sạch, thu hồi phiên làm việc đáng nghi và cách ly agent <agent_id> nếu phát hiện backdoor"
+      - id: B2_unverified_config_modification
+        when: "V3 là phiên đăng nhập từ IP quản trị quen thuộc và V1 có lệnh sudo sửa file cấu hình trong /etc, nhưng không có cập nhật gói tự động và chưa đối chiếu được lịch bảo trì (change ticket)"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên đã chạy lệnh sudo ở V1 để xác nhận mục đích thay đổi file cấu hình và đối chiếu change ticket"
+      - id: B3_package_update_or_approved_change
+        when: "V3 không có dấu hiệu xâm nhập VÀ (V1 có 2902/2903 cập nhật gói phần mềm hợp lệ hoặc thay đổi trên /etc/passwd, /etc/group khớp với thao tác quản trị đã được phê duyệt)"
+        severity: low
+        actions:
+          - "Đóng như thay đổi file hợp lệ do cập nhật phần mềm hoặc bảo trì hệ thống có phê duyệt"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Trình quản lý gói (apt, dpkg, yum, rpm) cập nhật các file binary và thư viện hệ thống theo định kỳ (có rule 2902, 2903 đi kèm ở V1)"
+      - "Quản trị viên sửa đổi file cấu hình qua sudo từ IP quản trị quen thuộc đúng theo lịch bảo trì và nội dung syscheck.diff hợp lệ"
+
+    do_not:
+      - "Không bỏ qua việc đọc trường syscheck.diff (với file văn bản) và syscheck.changed_attributes (xem file có bị gắn thêm quyền SUID/SGID không)"
+      - "Không tự ý ghi đè hoặc xóa file hệ thống trong /bin, /lib, /etc khi chưa kiểm tra V1 xem có phải vừa cập nhật gói phần mềm không"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0015-ossec_rules.xml: rule 550 (level 7, decoded_as syscheck_integrity_changed)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1565.001 (Stored Data Manipulation), T1098.004 (SSH Authorized Keys), T1053.003 (Cron)"
+
+  - rule_id: "553"
+    title: "FIM: file trong thư mục giám sát bị xóa khỏi hệ thống (syscheck)"
+    mitre: ["T1070.004", "T1485"]
+    status: draft
+    trigger:
+      - "Rule 553 (level 7, decoded_as syscheck_deleted): Wazuh FIM phát hiện một file từng tồn tại trong cơ sở dữ liệu syscheck đã bị xóa"
+      - "Thuộc bộ ba rule FIM cốt lõi: 554 (thêm file), 550 (sửa file), 553 (xóa file)"
+      - "Mặc định cần kiểm tra (level 7): hợp lệ khi gỡ cài đặt phần mềm hoặc dọn file tạm, nhưng đáng ngờ nếu kẻ tấn công xóa công cụ tấn công sau khi chạy xong (xóa dấu vết) hoặc xóa file cấu hình/nhật ký quan trọng"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - syscheck.path
+      - syscheck.mode
+      - "syscheck.audit.user.name / syscheck.audit.process.name: người dùng và tiến trình thực hiện lệnh xóa nếu bật whodata"
+    window:
+      alert_time: "timestamp của alert 553"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Quanh thời điểm file bị xóa, trên agent có chạy lệnh sudo (tìm 5402, 5403) hay có gỡ/cập nhật gói phần mềm không (tìm 2902, 2903)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 2902 or 2903)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Có 2902, 2903: trình quản lý gói tự động xóa các file phiên bản cũ trong quá trình nâng cấp hoặc gỡ gói.
+          Có 5402, 5403: kiểm tra lệnh sudo xem quản trị viên có chủ동 chạy lệnh rm, mv hoặc dọn dẹp cấu hình không.
+
+      - id: V2
+        question: "Trong 24 giờ trước khi bị xóa, chính file này có vừa được tạo ra hoặc sửa đổi không (tìm 554, 550 cùng đường dẫn)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 554) and syscheck.path:"<path>"'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Bản ghi 554/550 của chính file là nơi duy nhất còn mã băm (553 không có hash của file đã mất).
+          554 rồi vài phút sau 553 cùng đường dẫn → dropper/script tự xóa sau khi chạy.
+
+      - id: V2b
+        question: "Cùng đợt đó còn file nào khác bị tạo, sửa hoặc xóa không (tìm 550, 553, 554 trên agent)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 553 or 554)'
+        time_range: "24 giờ trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Nếu thấy kịch bản một file lạ vừa nổ 554 (được tạo ra trong /tmp, /etc, /var/www hoặc /usr/local/bin) rồi
+          vài phút sau nổ 553 (bị xóa đi): đây là dấu hiệu kinh điển của script khai thác hoặc dropper tự xóa sau
+          khi đã nạp mã độc vào bộ nhớ. Nếu thấy 553 đi cặp với 554 của một file tên tương tự:file chỉ bị đổi tên (mv).
+
+      - id: V3
+        question: "Trong 24 giờ trước khi xóa file, trên agent có phiên đăng nhập SSH, cảnh báo brute-force hay lỗi leo thang đặc quyền nào không (tìm 5715, 40112, 5763, 5712, 5551, 5404)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551 or 5404)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112, 5763, 5404 hoặc 5715 từ IP lạ: phiên làm việc có dấu hiệu bị xâm nhập và kẻ tấn công đang xóa
+          dấu vết (indicator removal) hoặc phá hoại dữ liệu.
+
+    branches:
+      - id: B1_anti_forensics_or_destruction
+        when: "V3 có dấu hiệu xâm nhập/brute-force HOẶC V2 phát hiện chu trình tạo file lạ (554) rồi xóa ngay (553) để xóa dấu vết HOẶC V2b có xóa hàng loạt file hệ thống/cấu hình bảo mật mà không có lệnh quản trị ở V1"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống về đường dẫn syscheck.path vừa bị xóa"
+          - "Nếu V2 có sự kiện 554 trước đó: lấy mã băm sha256 từ bản ghi 554 để tra cứu mã độc và kiểm tra các tiến trình đang chạy trong bộ nhớ trên agent <agent_id>"
+          - "Đề xuất (cần người phê duyệt): cô lập agent <agent_id> nếu phát hiện hành vi xóa dấu vết sau khai thác hoặc phá hoại hệ thống"
+      - id: B2_unverified_manual_deletion
+        when: "V3 là phiên quản trị bình thường, V1 có quản trị viên chạy lệnh xóa file cấu hình trong /etc hoặc thư mục ứng dụng nhưng chưa rõ mục đích bảo trì"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên thực hiện lệnh ở V1 để xác nhận việc xóa file tại syscheck.path là có chủ đích và không làm gián đoạn dịch vụ"
+      - id: B3_package_cleanup_or_temp_file
+        when: "V3 sạch VÀ (V1 có 2902/2903 cập nhật hoặc gỡ gói phần mềm, hoặc syscheck.path là file tạm/lock/backup của trình soạn thảo như .swp, .bak, .lock)"
+        severity: low
+        actions:
+          - "Đóng như hoạt động dọn dẹp file tự động khi cập nhật gói phần mềm hoặc xóa file tạm thông thường"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Trình quản lý gói xóa hoặc thay thế file cũ khi nâng cấp phần mềm (có rule 2902, 2903 đi kèm ở V1)"
+      - "Các file tạm của trình soạn thảo (vim .swp, nano .save) hoặc file pid/lock trong thư mục cấu hình được tự động xóa khi đóng chương trình"
+
+    do_not:
+      - "Không bỏ qua bước tìm bản ghi 554 trước đó của cùng syscheck.path ở V2, vì bản ghi 553 khi file đã mất sẽ không còn lưu mã băm của file đó"
+      - "Không kết luận ngay là tấn công phá hoại khi thấy nhiều cảnh báo 553 nổ cùng lúc mà chưa kiểm tra xem quản trị viên có đang chạy apt autoremove / yum remove ở V1 hay không"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0015-ossec_rules.xml: rule 553 (level 7, decoded_as syscheck_deleted; Wazuh gán T1070.004, T1485)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1070.004 (Indicator Removal: File Deletion), T1485 (Data Destruction)"
+
+  - rule_id: "554"
+    title: "FIM: có file mới được thêm vào thư mục giám sát (syscheck)"
+    mitre: ["T1105", "T1505.003", "T1053.003", "T1098.004"]
+    status: draft
+    trigger:
+      - "Rule 554 (level 5, decoded_as syscheck_new_entry): Wazuh FIM phát hiện một file mới xuất hiện trong thư mục đang giám sát (tùy cấu hình alert_new_files của manager — kiểm trên lab)"
+      - "Bản ghi 554 lưu giữ đầy đủ mã băm (md5_after, sha256_after), quyền hạn (perm_after) và chủ sở hữu (uname_after) của file vừa tạo"
+      - "Mặc định là level 5, nhưng là chỉ dấu cực kỳ quan trọng để bắt hành vi thả webshell vào thư mục web (/var/www), thêm khóa SSH (~/.ssh/authorized_keys), tạo cronjob độc hại (/etc/cron.d, /var/spool/cron) hoặc thả binary lạ vào /bin, /usr/bin, /usr/local/bin"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - syscheck.path
+      - syscheck.md5_after, syscheck.sha256_after
+      - syscheck.uname_after, syscheck.gname_after, syscheck.perm_after
+      - "syscheck.audit.user.name / syscheck.audit.process.name: tài khoản và tiến trình tạo file nếu bật whodata"
+    window:
+      alert_time: "timestamp của alert 554"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Quanh thời điểm file mới xuất hiện, trên agent có cài đặt gói phần mềm (tìm 2902, 2903) hay quản trị viên chạy lệnh sudo không (tìm 5402, 5403)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(2902 or 2903 or 5402 or 5403)'
+        time_range: "15 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Có 2902, 2903: file mới được sinh ra do cài đặt gói phần mềm qua apt/dpkg/yum. Có 5402, 5403: đối chiếu
+          lệnh sudo với đường dẫn syscheck.path. Nếu không có cài đặt gói cũng không có lệnh sudo của quản trị viên
+          mà một file .php/.jsp/.sh/.py mới xuất hiện trong thư mục web hoặc /etc/cron.d (đặc biệt khi chủ sở hữu
+          uname_after là www-data, nginx, apache, tomcat): dấu hiệu rất cao là webshell hoặc mã độc được tải xuống.
+
+      - id: V2
+        question: "Trong 24 giờ trước khi file mới xuất hiện, trên agent có phiên đăng nhập SSH, cảnh báo brute-force hay tạo tài khoản mới nào không (tìm 5715, 40112, 5763, 5712, 5551, 5902)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551 or 5902)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112, 5763 hoặc 5715 từ IP lạ: kẻ tấn công vừa đăng nhập và tải công cụ (ingress tool transfer) hoặc
+          tạo file authorized_keys / cronjob để duy trì quyền truy cập. Có 5902: các file mới trong /home hoặc
+          /var/mail được tạo tự động khi khởi tạo thư mục home cho người dùng mới.
+
+      - id: V3
+        question: "Sau khi file mới được tạo, chính file đó có bị sửa hoặc xóa (tìm 550, 553 cùng đường dẫn), hay agent có mở phiên PAM, chạy sudo đáng nghi không (tìm 5501, 5402, 5403, 5404)?"
+        query: 'agent.id:"<agent_id>" and timestamp >= "<alert_time>" and ((rule.id:(550 or 553) and syscheck.path:"<path>") or rule.id:(5501 or 5402 or 5403 or 5404))'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Nếu file mới vừa tạo xong đã bị xóa ngay (nổ 553) hoặc đi kèm lỗi dò sudo (5404) và mở phiên PAM (5501):
+          file đó nhiều khả năng là script/binary khai thác leo thang đặc quyền cục bộ đã được thực thi.
+
+    branches:
+      - id: B1_webshell_backdoor_or_malicious_dropper
+        when: "(syscheck.path nằm trong thư mục web, ~/.ssh, /etc/cron*, /etc/systemd, /bin, /usr/bin và V1 không có cài đặt gói/quản trị hợp lệ) HOẶC V2 có dấu hiệu xâm nhập/brute-force HOẶC V3 phát hiện file tự xóa/leo thang ngay sau khi tạo"
+        severity: high
+        actions:
+          - "Kiểm tra ngay mã băm syscheck.sha256_after trên VirusTotal và đọc nội dung file tại syscheck.path trên agent <agent_id>"
+          - "Nếu syscheck.uname_after là tài khoản dịch vụ web (www-data, nginx, apache): rà soát access log của web server quanh thời điểm alert để tìm lỗ hổng upload file hoặc RCE"
+          - "Đề xuất (cần người phê duyệt): cách ly file độc hại (gỡ quyền thực thi chmod 000 hoặc di chuyển sang thư mục cách ly để phục vụ điều tra số) và cô lập agent <agent_id>"
+      - id: B2_unverified_admin_file_creation
+        when: "V2 là phiên quản trị bình thường và V1 có lệnh sudo tạo file mới trong thư mục hệ thống (/etc, /usr/local/bin) nhưng chưa rõ ticket bảo trì"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên đã chạy lệnh ở V1 để xác minh mục đích của file mới tại syscheck.path"
+      - id: B3_package_install_or_normal_provisioning
+        when: "V2 sạch VÀ (V1 có 2902/2903 cài đặt gói phần mềm hợp lệ, hoặc file mới là cấu hình chuẩn sinh ra khi tạo user/triển khai ứng dụng đã được phê duyệt)"
+        severity: low
+        actions:
+          - "Đóng như hoạt động thêm file hợp lệ do cài đặt gói phần mềm hoặc triển khai cấu hình theo quy trình"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Các file thực thi, thư viện và cấu hình mới được tạo ra trong quá trình cài đặt gói phần mềm (có rule 2902, 2903 ở V1)"
+      - "Các file khởi tạo mặc định (.bashrc, .profile) sinh ra khi quản trị viên tạo tài khoản người dùng mới hợp lệ"
+
+    do_not:
+      - "Không xóa thẳng tay file nghi ngờ là webshell/dropper trước khi lưu lại bản sao hoặc thu thập mã băm sha256 và thời gian tạo file (mtime/ctime) phục vụ điều tra"
+      - "Không bỏ qua việc kiểm tra trường syscheck.uname_after và syscheck.perm_after (một file mới do www-data tạo ra hoặc có quyền thực thi 0777/4755 trong thư mục cấu hình là dấu hiệu rất nguy hiểm)"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0015-ossec_rules.xml: rule 554 (level 5, decoded_as syscheck_new_entry)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1105 (Ingress Tool Transfer), T1505.003 (Web Shell), T1053.003 (Cron), T1098.004 (SSH Authorized Keys)"
+  - rule_id: "503"
+    title: "Agent: dịch vụ Wazuh agent khởi động lại hoặc máy chủ vừa bật lên"
+    mitre: ["T1562.001", "T1529"]
+    status: draft
+    trigger:
+      - "Rule 503 (level 3, if_sid 500): log từ wazuh-remoted/ossec chứa 'Agent started'"
+      - "Cả 501 và 503 đều khớp 'Agent started' (501 = agent mới kết nối). Rule 503 nổ mỗi khi một agent đã đăng ký khởi động lại dịch vụ hoặc máy chủ bật lại sau khi tắt/reboot (thường đi sau rule 506 hoặc 504)"
+      - "Mặc định là bình thường (bảo trì, reboot định kỳ, cập nhật cấu hình hoặc Active Response tự khởi động lại agent), nhưng đáng ngờ nếu kẻ tấn công vừa sửa file cấu hình ossec.conf để tắt module giám sát rồi khởi động lại dịch vụ"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+    window:
+      alert_time: "timestamp của alert 503"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trong 24 giờ trước, agent này có dừng dịch vụ hoặc mất kết nối bao nhiêu lần (tìm 503, 504, 506)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(503 or 504 or 506)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 1 cặp 506 (Agent stopped) rồi vài giây đến vài phút sau là 503 (Agent started): chu trình khởi động
+          lại dịch vụ hoặc reboot máy bình thường. Có 504 (Agent disconnected) rồi mới tới 503 mà không có 506:
+          máy bị mất mạng, sập nguồn đột ngột (kernel panic/reset cứng) hoặc dịch vụ bị giết cưỡng bức (kill -9).
+          Nếu 503/504/506 lặp lại liên tục nhiều lần: dịch vụ agent đang bị lỗi crash loop hoặc mạng chập chờn.
+          Lưu ý: 504 (Agent disconnected) do MANAGER phát hiện nên có thể mang agent.id của manager (000), không
+          phải của máy đích → nếu lọc agent.id mà rỗng, tìm 504 theo tên agent trong full_log (kiểm trên lab).
+
+      - id: V2
+        question: "Quanh thời điểm agent khởi động lại, trên máy có chạy lệnh sudo, cài đặt gói phần mềm hay thay đổi file cấu hình nào không (tìm 5402, 5403, 2902, 2903, 550, 553, 554)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 2902 or 2903 or 550 or 553 or 554)'
+        time_range: "30 phút trước thời điểm alert → 15 phút sau thời điểm alert"
+        interpret: >-
+          Có 2902, 2903 hoặc lệnh sudo reboot / systemctl restart wazuh-agent của quản trị viên: bảo trì hợp lệ.
+          Có 550 trên file cấu hình của chính Wazuh (/var/ossec/etc/ossec.conf) hoặc xóa log hệ thống (553) ngay
+          trước khi 503 nổ: dấu hiệu kẻ tấn công sửa cấu hình để vô hiệu hóa FIM/logcollector rồi khởi động lại
+          agent nhằm áp dụng cấu hình mù.
+
+      - id: V3
+        question: "Trong 24 giờ trước khi agent khởi động lại, trên máy có phiên đăng nhập SSH hay cảnh báo brute-force đáng nghi nào không (tìm 5715, 40112, 5763, 5712, 5551)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112, 5763 hoặc 5715 từ IP lạ kèm theo khoảng trống mất kết nối kéo dài trước khi 503 nổ: nguy cơ
+          kẻ tấn công đã tắt agent trong lúc thực hiện hành vi hậu khai thác rồi mới bật lại để tránh bị chú ý.
+
+    branches:
+      - id: B1_tampered_agent_or_hidden_window
+        when: "V2 phát hiện sửa đổi trái phép cấu hình giám sát / xóa log trước khi khởi động lại HOẶC (V3 có dấu hiệu xâm nhập và V1 cho thấy agent bị tắt trong một khoảng thời gian trước khi bật lại)"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống về nguyên nhân khởi động lại agent <agent_id>"
+          - "Kiểm tra nội dung file /var/ossec/etc/ossec.conf và lịch sử lệnh trong khoảng thời gian agent bị ngừng hoạt động"
+          - "Đề xuất (cần người phê duyệt): khôi phục cấu hình chuẩn của Wazuh agent và cô lập máy chủ nếu phát hiện dấu hiệu che giấu hành vi xâm nhập"
+      - id: B2_unplanned_reboot_or_flapping
+        when: "V3 không có dấu hiệu xâm nhập, nhưng V1 ghi nhận mất kết nối đột ngột (504 không kèm 506) hoặc khởi động lại lặp đi lặp lại mà V2 không có thao tác bảo trì"
+        severity: medium
+        actions:
+          - "Báo cho nhóm vận hành hệ thống kiểm tra sức khỏe máy chủ (dmesg, syslog, mức sử dụng RAM/CPU) hoặc đường truyền mạng tới Wazuh Manager"
+      - id: B3_normal_restart_or_maintenance
+        when: "V3 sạch VÀ (V2 có lệnh bảo trì/cập nhật gói hợp lệ hoặc V1 chỉ là chu trình 506 → 503 ngắn gọn theo lịch khởi động lại định kỳ)"
+        severity: low
+        actions:
+          - "Đóng như sự kiện khởi động dịch vụ Wazuh agent hoặc reboot máy chủ hợp lệ"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Máy chủ hoặc dịch vụ wazuh-agent được khởi động lại theo lịch bảo trì, sau khi cập nhật gói phần mềm (có 2902, 2903) hoặc do cơ chế Active Response tự động"
+      - "Khoảng cách từ lúc dừng (506) đến lúc chạy lại (503) chỉ vài giây và không có cảnh báo xâm nhập ở V3"
+
+    do_not:
+      - "Không coi mọi cảnh báo 503 là bình thường nếu trước đó agent vừa bị tắt hàng giờ đồng hồ sau một phiên đăng nhập SSH lạ"
+      - "Không tự ý khởi động lại dịch vụ thêm lần nữa khi chưa kiểm tra xem quản trị viên có đang nâng cấp agent không"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0015-ossec_rules.xml: rule 500 (decoded_as ossec), 501 và 503 (if_sid 500, match 'Agent started'), 504, 506"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1562.001 (Impair Defenses: Disable or Modify Tools), T1529 (System Shutdown/Reboot)"
+
+  - rule_id: "506"
+    title: "Agent: dịch vụ Wazuh agent đã dừng hoạt động (Agent stopped)"
+    mitre: ["T1562.001", "T1529"]
+    status: draft
+    trigger:
+      - "Rule 506 (level 3, if_sid 500): log chứa 'Agent stopped'; Wazuh gán T1562.001"
+      - "Khoảng agent tắt là lỗ hổng log VĨNH VIỄN: logcollector mặc định chỉ đọc dòng mới sau khi khởi động lại (only-future-events), nên những gì ghi vào auth.log trong lúc tắt sẽ không bao giờ về SIEM"
+      - "Khác với rule 504 (mất kết nối đột ngột do rớt mạng hoặc sập nguồn), rule 506 nổ khi dịch vụ wazuh-agent nhận lệnh dừng chủ động (systemctl stop wazuh-agent, service wazuh-agent stop hoặc quá trình tắt máy/reboot tuần tự) và kịp gửi gói tin thông báo dừng về Manager"
+      - "Mặc định là level 3 vì thường đi kèm reboot/cập nhật, nhưng trở thành cảnh báo nghiêm trọng (vô hiệu hóa công cụ giám sát - Defense Evasion) nếu dịch vụ bị dừng chủ động và KHÔNG khởi động lại sau đó"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+    window:
+      alert_time: "timestamp của alert 506"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Sau khi dừng, agent đã khởi động lại chưa (tìm 503)?"
+        query: 'agent.id:"<agent_id>" and rule.id:503 and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Hỏi câu này đầu tiên. Nếu có 503 ngay sau vài giây đến vài phút: đây chỉ là thao tác restart dịch vụ
+          hoặc reboot máy chủ. Nếu rỗng (sau hơn 10-15 phút vẫn chưa có 503): agent đang bị tắt hoàn toàn,
+          mọi sự kiện trên máy đích hiện tại đều không còn được gửi về SIEM.
+
+      - id: V2
+        question: "Ngay trước khi agent dừng, ai đã chạy lệnh sudo hoặc thao tác quản trị nào trên máy (tìm 5402, 5403, 5404, 2902, 2903)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5403 or 5404 or 2902 or 2903)'
+        time_range: "30 phút trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Đọc trường data.command trong bản ghi 5402/5403 cuối cùng trước khi agent tắt: xem đó là lệnh
+          reboot/shutdown/apt upgrade hợp lệ hay lệnh systemctl stop wazuh-agent / pkill ossec nhằm cố tình
+          tắt giám sát.
+
+      - id: V3
+        question: "Trong 24 giờ trước khi agent dừng, trên máy có đăng nhập SSH, cảnh báo brute-force, tạo tài khoản hay sửa file nhạy cảm nào không (tìm 5715, 40112, 5763, 5712, 5551, 5902, 550, 553, 554)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5551 or 5902 or 550 or 553 or 554)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112, 5763, 5715 từ IP lạ hoặc 5902/550 đáng nghi ngay trước khi agent nổ 506: kịch bản kinh điển
+          khi kẻ tấn công chiếm được quyền root và lập tức tắt Wazuh agent để che mắt SOC trước khi cài mã độc.
+
+    branches:
+      - id: B1_defense_evasion_agent_killed
+        when: "V1 rỗng (agent không bật lại) VÀ (V2 có lệnh tắt trực tiếp dịch vụ wazuh-agent trái phép hoặc V3 có dấu hiệu xâm nhập/brute-force/thay đổi hệ thống đáng nghi)"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống và truy cập trực tiếp vào máy chủ (qua console/out-of-band) vì SIEM đã mất tầm nhìn trên agent <agent_id>"
+          - "Kiểm tra các tiến trình, kết nối mạng và lịch sử lệnh được thực thi sau thời điểm <alert_time> trực tiếp trên máy đích"
+          - "Đề xuất (cần người phê duyệt): cô lập máy chủ <agent_id> trên firewall/switch nếu xác nhận kẻ tấn công đã tắt agent để hành động ngầm"
+      - id: B2_agent_stays_down_without_ticket
+        when: "V1 rỗng (agent dừng quá 15 phút chưa bật lại) và V3 sạch, nhưng V2 không rõ lịch bảo trì hay hạ cấp máy chủ (decommission)"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên phụ trách máy chủ <agent_id> để kiểm tra xem máy đang tắt chủ động để bảo trì hay dịch vụ wazuh-agent bị quên bật lại"
+      - id: B3_normal_service_restart_or_reboot
+        when: "V1 có 503 khởi động lại ngay sau đó ít phút VÀ V3 không có dấu hiệu xâm nhập (hoặc máy được tắt theo đúng kế hoạch bảo trì ở V2)"
+        severity: low
+        actions:
+          - "Đóng như sự kiện dừng tạm thời khi khởi động lại dịch vụ hoặc reboot máy chủ hợp lệ"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Có sự kiện 503 (Agent started) xuất hiện ngay sau sự kiện 506 vài giây đến vài phút do khởi động lại dịch vụ hoặc reboot máy chủ"
+      - "Quản trị viên chủ động tắt máy ảo hoặc bảo trì hệ thống theo lịch đã được phê duyệt"
+
+    do_not:
+      - "Không kết luận 'không có gì xảy ra' vì SIEM trống trong khoảng agent tắt: log của máy đó trong khoảng này đã mất; phải lấy bằng chứng trực tiếp trên máy hoặc từ nguồn khác (firewall, máy khác, log mạng)"
+      - "Không bỏ qua cảnh báo 506 chỉ vì thấy mức độ mặc định là level 3 khi chưa kiểm tra V1 xem agent đã khởi động lại hay chưa"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0015-ossec_rules.xml: rule 506 (if_sid 500, match 'Agent stopped'), 504 (match 'Agent disconnected')"
+      - "Wazuh logcollector: only-future-events (mặc định yes)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1562.001 (Impair Defenses: Disable or Modify Tools), T1529 (System Shutdown/Reboot)"
+
+  - rule_id: "510"
+    title: "Rootcheck: phát hiện dấu hiệu bất thường hoặc rootkit trên máy chủ"
+    mitre: ["T1014", "T1564.001", "T1036"]
+    status: draft
+    trigger:
+      - "Rule 510 (level 7, if_sid 509, decoded_as rootcheck): module rootcheck phát hiện bất thường trên host trong đợt quét định kỳ"
+      - "Gồm 3 nhóm chính trong full_log: (1) 'Trojaned version of file ... detected' (binary hệ thống khớp chữ ký lạ), (2) 'File ... is owned by root and has written permissions to anyone' (file của root nhưng cấp quyền world-writable), (3) phát hiện tiến trình ẩn, cổng mạng ẩn, file ẩn trong /dev hoặc card mạng ở chế độ promiscuous"
+      - "Mặc định cần điều tra kỹ (level 7): rất nguy hiểm nếu là tiến trình/cổng ẩn hoặc binary bị trojan hóa thật, nhưng cũng rất hay nổ cảnh báo giả lặp lại theo chu kỳ quét đối với vùng chứa Docker/LXC (/var/lib/docker, /dev/.lxc) hoặc lỗi chữ ký trên /bin/diff của Ubuntu"
+    facts:
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - full_log
+      - "data.title / data.file: nội dung bất thường và đường dẫn file do rootcheck ghi nhận (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 510"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Cảnh báo 510 với cùng đường dẫn/nội dung này đã lặp lại theo chu kỳ quét trong 30 ngày qua chưa, hay vừa mới xuất hiện lần đầu (tìm 510)?"
+        query: 'agent.id:"<agent_id>" and rule.id:510'
+        time_range: "30 ngày trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Đọc kỹ full_log của alert hiện tại và đối chiếu với lịch sử 30 ngày: nếu cùng một thông báo (ví dụ
+          file trong /var/lib/docker/overlay2, /dev/.lxc hoặc Trojaned version of file /bin/diff) đã nổ đều đặn
+          cứ mỗi 12 giờ (chu kỳ quét rootcheck) suốt nhiều tuần qua thì khả năng cao là cảnh báo giả cố hữu của
+          môi trường. Nếu đây là lần đầu tiên xuất hiện trên agent: cần điều tra sâu ở bước tiếp theo.
+
+      - id: V2
+        question: "Nếu full_log nêu tên một file hoặc binary cụ thể, trong 24 giờ trước file đó có bị sửa đổi, thêm mới (tìm 550, 553, 554) hay do cập nhật gói phần mềm không (tìm 2902, 2903)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 553 or 554 or 2902 or 2903)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Nếu rootcheck báo 'Trojaned version of file' trên /bin/netstat, /bin/ps, /usr/bin/ssh VÀ FIM cũng ghi
+          nhận 550 (thay đổi mã băm) trên chính file đó mà không có cập nhật gói 2902/2903: xác nhận binary hệ
+          thống đã bị thay thế bằng bản độc hại. Nếu báo 'Trojaned version of file /bin/diff' ngay sau khi cập
+          nhật gói diffutils trên Ubuntu: khả năng là cảnh báo giả của chữ ký rootcheck (cần đối chiếu hash với gói chính thức trước khi kết luận).
+
+      - id: V3
+        question: "Trong 24 giờ trước đợt quét rootcheck này, trên agent có phiên đăng nhập SSH, cảnh báo brute-force, chạy sudo hay tạo tài khoản mới nào không (tìm 5715, 40112, 5763, 5712, 5402, 5403, 5902)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5715 or 40112 or 5763 or 5712 or 5402 or 5403 or 5902)'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Có 40112, 5763 hoặc phiên SSH/sudo bất thường đi trước cảnh báo tiến trình ẩn (hidden process), cổng
+          ẩn (hidden port) hoặc file lạ trong /dev, /tmp: dấu hiệu kẻ tấn công đã xâm nhập và cài đặt rootkit
+          hoặc công cụ che giấu trên máy đích.
+
+    branches:
+      - id: B1_rootkit_or_trojaned_binary_confirmed
+        when: "(full_log báo tiến trình ẩn, cổng mạng ẩn, file ẩn trong /dev hoặc chế độ promiscuous trái phép) HOẶC (full_log báo Trojaned file kèm theo V2 có thay đổi FIM 550/554 không do cập nhật gói) HOẶC V3 có dấu hiệu xâm nhập đi trước"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống và kiểm tra mã băm của file bị cảnh báo (từ bản ghi 550 ở V2 hoặc băm trực tiếp) trên VirusTotal"
+          - "Nếu phát hiện tiến trình ẩn hoặc binary hệ thống (/bin/ps, /bin/netstat, /bin/ls) bị trojan hóa: không tin tưởng kết quả của các lệnh trên máy đó mà phải kiểm tra qua công cụ tĩnh sạch hoặc bộ nhớ"
+          - "Đề xuất (cần người phê duyệt): cô lập ngay agent <agent_id> khỏi mạng để tiến hành điều tra số (DFIR) và cài đặt lại từ bản sao lưu sạch"
+      - id: B2_world_writable_root_file_misconfig
+        when: "V3 sạch và V2 không có dấu hiệu trojan, nhưng full_log báo 'owned by root and has written permissions to anyone' lần đầu ở V1 trên file cấu hình/script thật của hệ thống (ngoài vùng Docker/LXC)"
+        severity: medium
+        actions:
+          - "Liên hệ quản trị viên hệ thống kiểm tra đường dẫn file trong full_log vì file thuộc sở hữu của root nhưng ai cũng sửa được sẽ tạo lỗ hổng leo thang đặc quyền cục bộ"
+          - "Đề xuất (cần người phê duyệt): chỉnh lại quyền file về mức an toàn (ví dụ chmod 644 hoặc 600) trên agent <agent_id>"
+      - id: B3_known_rootcheck_false_positive
+        when: "V3 sạch VÀ V1/V2 xác nhận đây là cảnh báo giả lặp lại theo chu kỳ của môi trường (như file tạm trong /var/lib/docker, /dev/.lxc hoặc chữ ký giả trên /bin/diff, /usr/bin/diff sau khi cài gói hợp lệ)"
+        severity: low
+        actions:
+          - "Đóng như cảnh báo giả đã biết của module rootcheck và ghi nhận đường dẫn để tinh chỉnh cấu hình ignore nếu cần"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Cảnh báo 'owned by root and has written permissions to anyone' nằm trong các đường dẫn container ảo hóa như /var/lib/docker/overlay2, /var/lib/kubelet hoặc /dev/.lxc"
+      - "Cảnh báo 'Trojaned version of file /bin/diff' (hoặc /usr/bin/diff) trên Ubuntu/Debian mà mã băm sha256 khớp 100% với gói chuẩn của nhà phát hành"
+
+    do_not:
+      - "Không kết luận ngay máy bị nhiễm rootkit khi thấy thông báo 'Trojaned version of file /bin/diff' mà chưa đối chiếu V1 và V2 (đây là false positive rất phổ biến do biểu thức chính quy của rootcheck)"
+      - "Không tự ý chạy lệnh chmod hoặc xóa các file nằm trong /var/lib/docker hay /dev/.lxc vì sẽ làm hỏng các container đang chạy"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0015-ossec_rules.xml: rule 509 (level 0, decoded_as rootcheck), rule 510 (level 7, if_sid 509)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1014 (Rootkit), T1564.001 (Hidden Files and Directories), T1036 (Masquerading)"
+  - rule_id: "31101"
+    title: "Web: máy chủ web trả về mã lỗi HTTP 4xx (đơn lẻ)"
+    mitre: ["T1595.003", "T1190"]
+    status: draft
+    trigger:
+      - "Rule 31101 (level 5, if_sid 31100): access log của web server có mã trạng thái HTTP bắt đầu bằng 4 (400, 401, 403, 404...)"
+      - "14 lần 31101 trong 90 giây từ cùng IP nguồn → rule tổng hợp 31151 (level 10, if_matched_sid 31101, same_source_ip, T1595.002)"
+      - "Mặc định là bình thường nếu chỉ xảy ra vài lần (trình duyệt tự tìm favicon.ico, người dùng bấm link cũ bị gãy, hết hạn phiên 401), nhưng đáng chú ý nếu là dò quét chậm (low-and-slow) vào các đường dẫn nhạy cảm (.env, .git, wp-config.php, phpmyadmin, backup.zip) hoặc dò tìm webshell"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - data.id
+      - "data.url / full_log: đường dẫn URL, mã trạng thái HTTP và User-Agent do client gửi lên (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 31101"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trong 24 giờ quanh thời điểm alert, cùng srcip có gây ra chuỗi lỗi 4xx, quét thư mục hay thử nghiệm SQLi/XSS/LFI trên agent không (tìm 31101, 31151, 31103, 31104, 31105, 31152, 31153, 31154)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31101 or 31151 or 31103 or 31104 or 31105 or 31152 or 31153 or 31154)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Chỉ có 1-3 bản ghi 31101 trên các file tĩnh (.css, .js, .png, favicon.ico): lỗi truy cập trang bình thường.
+          Có hàng chục bản ghi 31101 rải rác (lách ngưỡng 14 lần/90 giây của 31151) nhắm vào các đường dẫn quản trị,
+          file cấu hình ẩn hoặc đi kèm 31103/31104/31105: kẻ tấn công đang rà quét lỗ hổng ứng dụng web.
+
+      - id: V2
+        question: "Cùng srcip có nhận được phản hồi thành công cho các request tấn công (tìm 31106) hoặc gây lỗi máy chủ HTTP 5xx không (tìm 31120, 31121, 31122, 31123)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31106 or 31120 or 31121 or 31122 or 31123)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Có 31106: ít nhất một request tấn công từ IP này đã nhận được mã HTTP 200 OK. Có 31120, 31121, 31122, 31123:
+          payload gửi lên đã làm crash script hoặc gây lỗi xử lý phía backend. Rỗng: các phép thử đều bị chặn hoặc
+          không tìm thấy tài nguyên.
+
+      - id: V3
+        question: "Đọc data.url và full_log của alert hiện tại kết hợp kiểm tra xem cùng srcip có đang quét các máy chủ khác không (tìm 31101, 31151, 31106)?"
+        query: 'data.srcip:"<srcip>" and rule.id:(31101 or 31151 or 31106)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Kiểm tra 3 yếu tố trong full_log: (1) đường dẫn data.url là tài nguyên giao diện bình thường hay file nhạy cảm
+          (.env, .git/config, shell.php, /manager/html), (2) User-Agent là trình duyệt chuẩn hay công cụ quét
+          (sqlmap, nikto, gobuster, ffuf, nuclei, python-requests), (3) IP này có quét ngang sang nhiều agent khác không.
+
+      - id: V4
+        question: "Chỉ khi đã có dấu hiệu tấn công thành công: sau đó trên agent có xuất hiện file mới/bị sửa trong thư mục web (tìm 550, 553, 554) hay chạy sudo/PAM bất thường không (tìm 5401, 5402, 5404, 5503)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 553 or 554 or 5401 or 5402 or 5404 or 5503) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có 554 hoặc 550 trong thư mục web (/var/www, /usr/share/nginx...) hoặc lỗi dò mật khẩu từ tài khoản dịch vụ:
+          dấu hiệu kẻ tấn công đã dò trúng điểm upload hoặc lỗ hổng RCE và thả webshell lên máy chủ.
+
+    branches:
+      - id: B1_web_scan_led_to_compromise
+        when: "V2 có 31106 đáng nghi HOẶC V4 phát hiện tạo/sửa file webshell hay leo thang đặc quyền sau khi quét"
+        severity: high
+        actions:
+          - "Kiểm tra ngay các URL đã trả về mã 200 ở V2 và các file mới phát sinh ở V4 trên agent <agent_id>"
+          - "Xác minh với nhóm vận hành web về tính hợp lệ của đường dẫn vừa bị truy cập"
+          - "Đề xuất (cần người phê duyệt): chặn <srcip> trên WAF/firewall và cách ly file nghi ngờ là webshell trên agent <agent_id>"
+      - id: B2_slow_directory_or_vuln_probing
+        when: "V2 và V4 chưa phát hiện xâm nhập thành công, nhưng V1 có chuỗi dò quét rải rác HOẶC V3 cho thấy data.url nhắm vào đường dẫn nhạy cảm (.env, .git, wp-admin, phpmyadmin, shell.php) hay dùng User-Agent của công cụ quét"
+        severity: medium
+        actions:
+          - "Ghi nhận hành vi dò quét thư mục/file nhạy cảm từ <srcip>"
+          - "Nếu <srcip> là IP nội bộ: kiểm tra xem máy trạm/máy chủ nguồn có đang chạy công cụ pentest hoặc bị chiếm quyền không"
+          - "Đề xuất (cần người phê duyệt): chặn <srcip> trên WAF/firewall nếu là IP ngoài Internet đang rà quét"
+      - id: B3_normal_client_4xx
+        when: "V1 chỉ có vài lỗi 404/401 rời rạc, V2 rỗng, V3 xác nhận URL là tài nguyên web thông thường (favicon, ảnh, trang cũ) với trình duyệt bình thường, không chạy V4"
+        severity: low
+        actions:
+          - "Đóng như lỗi HTTP 4xx thông thường của trình duyệt người dùng"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Trình duyệt của người dùng yêu cầu các file tĩnh không tồn tại như /favicon.ico, /apple-touch-icon.png, file .map hoặc đường dẫn bài viết cũ (404)"
+      - "Phiên đăng nhập web của người dùng hết hạn trả về mã 401/403 một vài lần, không có chuỗi quét ở V1 và không nhắm vào file cấu hình nhạy cảm"
+
+    do_not:
+      - "Không chạy V4 (truy vấn FIM và sudo) cho mọi cảnh báo 31101 đơn lẻ khi V1, V2, V3 đều là truy cập web bình thường"
+      - "Không tự ý chặn IP chỉ vì một vài lỗi 404 hoặc 401 thông thường của khách truy cập"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0245-web_rules.xml: 31101 (level 5, if_sid 31100, id ^4), 31151 (14 × 31101 / 90 giây), 31103/31104/31105 (SQLi / tấn công chung / XSS theo URL), 31106 (tấn công trả 200), 31120–31123 (5xx), 31152–31154 (lặp SQLi/chung/XSS)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1595.003 (Active Scanning: Wordlist Scanning), T1190 (Exploit Public-Facing Application)"
+
+  - rule_id: "31103"
+    title: "Web: phát hiện dấu hiệu tấn công SQL Injection trong URL (mã trả về khác 2xx)"
+    mitre: ["T1190"]
+    status: draft
+    trigger:
+      - "Rule 31103 (level 7, if_sid 31100,31108): URL khớp một trong các mẫu =select%20, select+, insert%20, %20from%20, %20where%20, union%20, union+, where+, null,null, xp_cmdshell (chỉ nhìn URL, không nhìn body POST)"
+      - "Cơ chế Wazuh: nếu request SQLi trả về đúng mã 200 thì khớp tiếp rule con 31106 (if_sid 31103,31104,31105, id ^200) → alert là 31106. Do đó alert 31103 nghĩa là mã trả về KHÁC 200. Cần kiểm trên lab: 31101 (4xx) đứng TRƯỚC 31103 trong file nên SQLi bị chặn 403/404 có thể ra 31101 thay vì 31103. 8 lần 31103 trong 120 giây cùng IP → 31152"
+      - "Mặc định đáng chú ý (level 6): cần kiểm tra xem có bất kỳ biến thể payload nào trước hoặc sau đó từ cùng IP đã lọt qua được (nổ 31106) hoặc gây lỗi SQL 500 (Blind/Error-based SQLi) hay không"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - data.id
+      - "data.url / full_log: chuỗi URL chứa payload SQLi, mã HTTP data.id và User-Agent (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 31103"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trong 24 giờ quanh thời điểm alert, cùng srcip có request tấn công nào trả về mã HTTP 200 thành công (tìm 31106) hoặc gây lỗi máy chủ HTTP 5xx không (tìm 31120, 31121, 31122, 31123)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31106 or 31120 or 31121 or 31122 or 31123)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Hỏi câu này đầu tiên. Nếu có 31106: kẻ tấn công đã tinh chỉnh payload và nhận được phản hồi 200 OK.
+          Nếu có 31120/31122 (5xx; 31122 là đúng mã 500, 31121 là 501) hoặc chính các alert 31103 có data.id 500: ứng dụng rất có thể đang nối chuỗi SQL trực tiếp làm
+          câu truy vấn bị lỗi cú pháp (dấu hiệu Error-based / Blind SQLi). Nếu hoàn toàn rỗng và mã data.id của
+          alert là 403/404: các đòn thử đều đã bị từ chối.
+
+      - id: V2
+        question: "Trong 24 giờ quanh thời điểm alert, cùng srcip đã gửi bao nhiêu phép thử SQLi hoặc quét lỗ hổng web trên agent này (tìm 31103, 31152, 31101, 31151, 31104, 31105, 31153, 31154)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31103 or 31152 or 31101 or 31151 or 31104 or 31105 or 31153 or 31154)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Có hàng loạt bản ghi 31103, 31152: kẻ tấn công đang chạy công cụ tự động (như sqlmap) bắn liên tục vào
+          tham số URL. Chỉ có 1 bản ghi duy nhất: đọc kỹ data.url trong full_log xem là payload SQLi thật (chứa
+          UNION SELECT, OR 1=1, SLEEP) hay chỉ là tham số tìm kiếm/bài viết vô tình chứa từ khóa tiếng Anh như
+          'select' và 'union' (false positive).
+
+      - id: V3
+        question: "Cùng srcip có đang rà quét hoặc thử SQLi trên các agent khác trong hệ thống không (tìm 31103, 31152, 31106, 31151)?"
+        query: 'data.srcip:"<srcip>" and rule.id:(31103 or 31152 or 31106 or 31151)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Xác định phạm vi tấn công: IP này chỉ nhắm vào một ứng dụng cụ thể hay đang quét diện rộng toàn bộ
+          các máy chủ web của tổ chức.
+
+      - id: V4
+        question: "Chỉ khi đã có request tấn công trả 200 hoặc lỗi 5xx đáng nghi: sau đó trên agent có xuất hiện file mới/bị sửa (tìm 550, 553, 554) hay chạy lệnh sudo/PAM bất thường không (tìm 5401, 5402, 5404, 5501, 5503)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 553 or 554 or 5401 or 5402 or 5404 or 5501 or 5503) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Kiểm tra xem kẻ tấn công có lợi dụng SQLi (ví dụ qua INTO OUTFILE hoặc xp_cmdshell/COPY TO) để ghi
+          webshell lên đĩa cứng hoặc thực thi lệnh hệ thống dưới quyền dịch vụ web/database không.
+
+    branches:
+      - id: B1_sqli_succeeded_or_error_based_active
+        when: "V1 có 31106 với payload SQLi thật HOẶC (V1 có chuỗi lỗi 500 đi kèm V2 chạy sqlmap/payload khai thác) HOẶC V4 phát hiện tạo file mới/leo thang"
+        severity: high
+        actions:
+          - "Kiểm tra ngay tham số bị khai thác trong data.url và log của hệ quản trị cơ sở dữ liệu trên agent <agent_id>"
+          - "Rà soát các bản ghi 31106 ở V1 và file mới ở V4 để đánh giá mức độ lộ lọt dữ liệu hoặc ghi file trái phép"
+          - "Đề xuất (cần người phê duyệt): chặn khẩn cấp <srcip> trên WAF/firewall và tạm đóng endpoint bị lỗi hoặc thêm rule chặn tham số đó trên WAF"
+      - id: B2_blocked_sqli_attack_attempt
+        when: "V1 không có 31106 (request bị chặn với mã 403/404/400), nhưng V2 hoặc full_log xác nhận đây là payload SQLi thật sự hoặc chuỗi quét tự động"
+        severity: medium
+        actions:
+          - "Xác nhận WAF hoặc ứng dụng đã từ chối request (kiểm tra mã HTTP trong data.id)"
+          - "Đề xuất (cần người phê duyệt): chặn <srcip> trên firewall/WAF nếu IP này tiếp tục gửi chuỗi tấn công ở V2 hoặc quét nhiều máy ở V3"
+      - id: B3_benign_url_keyword_match
+        when: "V1 rỗng, V2 chỉ có 1-2 sự kiện đơn lẻ và đọc data.url thấy chỉ là chuỗi văn bản/tìm kiếm hợp lệ của người dùng vô tình chứa từ khóa trùng với regex (không có cú pháp SQLi), không chạy V4"
+        severity: low
+        actions:
+          - "Đóng như cảnh báo giả do URL hợp lệ trùng từ khóa với biểu thức chính quy của rule 31103"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "URL tìm kiếm hoặc đường dẫn bài viết hợp lệ của người dùng vô tình chứa các từ tiếng Anh thông thường như 'select', 'union', 'update' đi cùng nhau nhưng không mang cấu trúc câu lệnh SQL"
+      - "Không có chuỗi quét ở V2 và không có phản hồi 31106 hay lỗi 500 ở V1"
+
+    do_not:
+      - "Không kết luận ngay là SQLi đã bị chặn an toàn nếu thấy data.id là 500 (mã 500 trong SQLi thường báo hiệu dữ liệu đầu vào đã chui vào tới tận câu lệnh SQL trong database)"
+      - "Không chạy V4 nếu V1 và V2 xác nhận đây chỉ là false positive từ khóa hoặc request đã bị chặn hoàn toàn ở tầng ngoài"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0245-web_rules.xml: 31103 (level 7, if_sid 31100,31108, url mẫu SQLi), 31106 (if_sid 31103,31104,31105, id ^200), 31152 (8 × 31103 / 120 giây), 31120 (^50), 31122 (^500)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1190 (Exploit Public-Facing Application)"
+
+  - rule_id: "31105"
+    title: "Web: phát hiện dấu hiệu tấn công Cross-Site Scripting - XSS (mã trả về khác 2xx)"
+    mitre: ["T1059.007", "T1189", "T1190"]
+    status: draft
+    trigger:
+      - "Rule 31105 (level 6, if_sid 31100): URL khớp một trong các mẫu %3Cscript, %3C%2Fscript, script>, script%3E, SRC=javascript, IMG%20, %20ONLOAD=, INPUT%20, iframe%20 (Wazuh gán T1059.007)"
+      - "Cơ chế Wazuh: nếu request XSS trả về đúng mã 200 thì alert là rule con 31106 (id ^200). Do đó alert 31105 nghĩa là mã trả về KHÁC 200 (cũng như 31103, cần kiểm trên lab trường hợp 4xx có ra 31101 thay vì 31105). 10 lần 31105 trong 120 giây cùng IP → 31154"
+      - "Mặc định là level 6: bản thân XSS nhắm vào trình duyệt của người dùng cuối chứ không trực tiếp chiếm quyền máy chủ, nhưng 31105 thường đi chung trong bộ kịch bản của các trình quét lỗ hổng tự động"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - data.id
+      - "data.url / full_log: đường dẫn URL chứa chuỗi thử XSS, mã HTTP data.id và User-Agent (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 31105"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trong 24 giờ quanh thời điểm alert, cùng srcip có request tấn công nào nhận được mã HTTP 200 thành công không (tìm 31106)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:31106'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Có 31106: kiểm tra xem payload được trả về mã 200 là XSS (có nguy cơ Reflected/Stored XSS nếu ứng dụng
+          không mã hóa đầu ra HTML) hay là một đòn SQLi/LFI đi kèm từ cùng IP đó. Rỗng: mọi phép thử từ IP này
+          đều không nhận được mã 200.
+
+      - id: V2
+        question: "Trong 24 giờ quanh thời điểm alert, cùng srcip có chạy trình quét lỗ hổng thử nghiệm hàng loạt XSS, SQLi, LFI hay dò thư mục trên agent không (tìm 31105, 31154, 31101, 31151, 31103, 31104, 31152, 31153)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31105 or 31154 or 31101 or 31151 or 31103 or 31104 or 31152 or 31153)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Có nhiều bản ghi 31105, 31154 trộn lẫn với 31103 (SQLi) và 31104 (LFI): kẻ tấn công đang dùng trình
+          quét tự động (Acunetix, ZAP, Burp, Nuclei) rà quét toàn diện ứng dụng web. Chỉ có 1 bản ghi 31105 duy
+          nhất: đọc data.url xem có phải ứng dụng truyền tham số HTML/redirect hợp lệ bị bắt nhầm không.
+
+      - id: V3
+        question: "Cùng srcip có đang rà quét các agent khác trong hệ thống không (tìm 31105, 31154, 31106, 31151)?"
+        query: 'data.srcip:"<srcip>" and rule.id:(31105 or 31154 or 31106 or 31151)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Giúp xác định <srcip> đang quét toàn bộ dải IP/tên miền của tổ chức hay chỉ thử nghiệm trên một trang web.
+
+    branches:
+      - id: B1_xss_or_multi_vector_with_200_success
+        when: "V1 có bản ghi 31106 chứa payload khai thác thật sự (đặc biệt nếu đi kèm chuỗi tấn công SQLi/LFI ở V2 hoặc nhắm vào tính năng lưu trữ dữ liệu/trang quản trị)"
+        severity: high
+        actions:
+          - "Kiểm tra ngay các bản ghi 31106 ở V1 xem ứng dụng có phản사 nguyên vẹn thẻ script ra giao diện hoặc bị khai thác lỗ hổng khác đi kèm không"
+          - "Thông báo cho nhóm phát triển ứng dụng kiểm tra cơ chế lọc đầu vào và mã hóa đầu ra (output encoding) tại endpoint trong data.url"
+          - "Đề xuất (cần người phê duyệt): chặn <srcip> trên WAF/firewall"
+      - id: B2_blocked_xss_or_vulnerability_scanner
+        when: "V1 rỗng (các request đều trả về 403/400/404), nhưng V2 hoặc full_log xác nhận đây là payload XSS thật hoặc hoạt động rà quét lỗ hổng tự động"
+        severity: medium
+        actions:
+          - "Xác nhận mã trạng thái HTTP trong data.id là 403/400/404 (request đã bị từ chối)"
+          - "Đề xuất (cần người phê duyệt): chặn <srcip> trên WAF/firewall nếu V2 hoặc V3 cho thấy IP này đang chạy công cụ quét tự động"
+      - id: B3_benign_parameter_false_positive
+        when: "V1 rỗng, V2 chỉ có 1-2 bản ghi đơn lẻ và data.url trong full_log là tham số ứng dụng hợp lệ (không chứa mã độc JavaScript)"
+        severity: low
+        actions:
+          - "Đóng như cảnh báo giả do tham số URL hợp lệ khớp nhầm mẫu chuỗi của rule 31105"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Tham số URL của hệ thống quản trị nội dung (CMS) hoặc trình soạn thảo truyền các thuộc tính định dạng hợp lệ từ người dùng đã xác thực"
+      - "Mã phản hồi là 403/404 đơn lẻ, không có chuỗi quét lỗ hổng ở V2 và không có bản ghi 31106 ở V1"
+
+    do_not:
+      - "Không nhầm lẫn bản chất của XSS: một request XSS đơn thuần trên URL (dù thành công) chạy trên trình duyệt nạn nhân chứ không tự sinh ra tiến trình sudo hay tạo user cục bộ trên máy chủ Linux"
+      - "Không bỏ qua V2 vì kẻ tấn công rất hiếm khi chỉ thử mỗi XSS mà thường chạy chung trong một phiên quét có cả SQLi và LFI"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0245-web_rules.xml: 31105 (level 6, if_sid 31100, url mẫu XSS), 31106 (id ^200), 31154 (10 × 31105 / 120 giây)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1189 (Drive-by Compromise), T1190 (Exploit Public-Facing Application)"
+
+  - rule_id: "31106"
+    title: "Web: request chứa dấu hiệu tấn công web nhận được mã phản hồi HTTP 200 (thành công)"
+    mitre: ["T1190", "T1505.003"]
+    status: draft
+    trigger:
+      - "Rule 31106 (level 6, if_sid 31103, 31104, 31105): một request đã khớp mẫu SQL Injection (31103), Common Web Attack như LFI/RFI/Command Injection (31104) hoặc XSS (31105) VÀ được máy chủ phản hồi đúng mã 200 (id ^200; 201/204/206 không khớp)"
+      - "Do cơ chế một sự kiện chỉ sinh alert ở rule sâu nhất của Wazuh, 31106 đã che khuất mã rule cha (31103, 31104 hoặc 31105), nên analyst bắt buộc phải đọc data.url trong full_log để phân loại đây là SQLi, LFI/Command Injection hay XSS"
+      - "Mặc định là đáng lo: mã HTTP 200 cho thấy request không bị WAF hay web server chặn ở vòng ngoài, cần xác minh ngay xem ứng dụng đã bị khai thác thật hay chỉ trả về trang báo lỗi thân thiện kèm mã 200"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - data.id
+      - "data.url / full_log: đường dẫn URL chứa payload, dung lượng phản hồi (response size), phương thức GET/POST và User-Agent (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 31106"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trong 24 giờ quanh thời điểm alert, cùng srcip đã gửi bao nhiêu request tấn công đạt mã 200 (tìm 31106) và có đi kèm chuỗi quét lỗi 4xx/5xx hay SQLi/LFI/XSS trước đó không (tìm 31101, 31151, 31103, 31104, 31105, 31152, 31153, 31154, 31120, 31121)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31106 or 31101 or 31151 or 31103 or 31104 or 31105 or 31152 or 31153 or 31154 or 31120 or 31121)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Đọc kỹ data.url của các bản ghi 31106: (1) nếu trước đó có hàng loạt 31103/31104/31151 bị lỗi 403/404/500
+          rồi đột nhiên xuất hiện 31106 với kích thước gói tin trả về (bytes) khác biệt: khả năng rất cao kẻ tấn công
+          đã tìm ra đúng payload khai thác thành công; (2) nếu mọi request quét bất kỳ đều trả về 200 với cùng một
+          dung lượng byte cố định: ứng dụng web đang cấu hình trả về trang chủ hoặc trang lỗi tùy chỉnh với mã 200 (Soft 404).
+
+      - id: V2
+        question: "Quanh và sau thời điểm alert, trên agent có xuất hiện file mới (webshell), sửa đổi hoặc xóa file trong thư mục giám sát không (tìm 550, 553, 554)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 553 or 554) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có 554 (file mới như .php, .jsp, .aspx, .sh) hoặc 550 (sửa file cấu hình, cron, authorized_keys) ngay sau
+          khi nổ 31106: bằng chứng xác thực cho thấy đòn tấn công web đã dẫn tới ghi file hoặc tải webshell lên máy chủ.
+
+      - id: V3
+        question: "Sau thời điểm alert, trên agent có phát sinh hoạt động thực thi sudo, lỗi PAM hoặc tạo tài khoản/group mới từ tiến trình web không (tìm 5401, 5402, 5403, 5404, 5501, 5503, 5901, 5902, 2961)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5401 or 5402 or 5403 or 5404 or 5501 or 5503 or 5901 or 5902 or 2961) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có hoạt động thử mật khẩu PAM/sudo từ tài khoản dịch vụ (www-data, nginx, apache, tomcat) hoặc tạo user mới:
+          kẻ tấn công đã đạt được thực thi lệnh từ xa (RCE) và đang leo thang đặc quyền trên máy chủ.
+
+      - id: V4
+        question: "Cùng srcip có gửi các request tấn công thành công tương tự trên các agent khác không (tìm 31106, 31103, 31104, 31105)?"
+        query: 'data.srcip:"<srcip>" and rule.id:(31106 or 31103 or 31104 or 31105)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Kiểm tra xem cùng một lỗ hổng hoặc chiến dịch khai thác có đang đánh trúng các máy chủ web khác trong mạng không.
+
+    branches:
+      - id: B1_confirmed_web_exploitation
+        when: "V2 phát hiện tạo/sửa file đáng nghi (webshell) HOẶC V3 phát hiện hành vi leo thang đặc quyền/chạy lệnh cục bộ HOẶC V1 cho thấy payload LFI/RCE/SQLi trả về dữ liệu thành công sau chuỗi dò tìm"
+        severity: high
+        actions:
+          - "Xác minh khẩn với quản trị viên hệ thống và kiểm tra ngay nội dung phản hồi thực tế của endpoint trong data.url"
+          - "Nếu V2 có file mới hoặc V3 có lệnh thực thi: thu thập mẫu file và kiểm tra cây tiến trình của web server trên agent <agent_id>"
+          - "Đề xuất (cần người phê duyệt): chặn ngay <srcip> trên firewall/WAF, cách ly file webshell và cô lập agent <agent_id> nếu đã bị RCE"
+      - id: B2_attack_reached_200_needs_app_verification
+        when: "V2 và V3 hoàn toàn sạch, nhưng V1 và full_log xác nhận đây là payload tấn công thật (SQLi, LFI, XSS, quét lỗ hổng) nhận mã 200 (chưa rõ ứng dụng có bị lộ dữ liệu hay chỉ trả về trang Soft 404)"
+        severity: medium
+        actions:
+          - "Đối chiếu kích thước byte trả về trong full_log của các bản ghi 31106 ở V1 để phân biệt giữa khai thác thành công và trang lỗi mặc định trả mã 200"
+          - "Báo cho nhóm ứng dụng kiểm tra log chi tiết của backend đối với request từ <srcip>"
+          - "Đề xuất (cần người phê duyệt): chặn <srcip> trên WAF/firewall nếu xác nhận đang gửi payload tấn công"
+      - id: B3_benign_url_false_positive
+        when: "V2 và V3 sạch, V1 không có chuỗi quét lỗ hổng, và đọc data.url thấy đây là truy vấn hợp lệ của người dùng (ví dụ URL tìm kiếm, tham số đường dẫn bình thường khớp nhầm regex)"
+        severity: low
+        actions:
+          - "Đóng như cảnh báo giả do URL hợp lệ trùng mẫu ký tự và nhận mã phản hồi 200 bình thường"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Đường dẫn hoặc tham số truy vấn hợp lệ của ứng dụng vô tình chứa chuỗi ký tự trùng với rule 31103/31104/31105 (như từ khóa tìm kiếm, đường dẫn chuyển hướng nội bộ)"
+      - "Ứng dụng web được lập trình trả về mã HTTP 200 kèm giao diện báo lỗi chung (Soft 404) cho mọi đường dẫn không hợp lệ, và kiểm tra V2, V3 hoàn toàn sạch"
+
+    do_not:
+      - "Không mặc định mã HTTP 200 trong 31106 luôn là đã bị chiếm quyền 100% mà không kiểm tra kích thước gói tin trả về (response size) và kết quả V2, V3"
+      - "Không bỏ qua việc đọc data.url trong full_log vì bản thân mã rule 31106 không cho biết đó là SQLi, LFI hay XSS"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0245-web_rules.xml: 31106 (level 6, if_sid 31103,31104,31105, id ^200)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1190 (Exploit Public-Facing Application), T1505.003 (Server Software Component: Web Shell)"
+
+  - rule_id: "31151"
+    title: "Web: nhiều mã lỗi HTTP 4xx liên tiếp từ cùng một IP nguồn (rà quét thư mục/lỗ hổng)"
+    mitre: ["T1595.002", "T1595.003"]
+    status: draft
+    trigger:
+      - "Rule 31151 (level 10, if_matched_sid 31101, same_source_ip): 14 lần 31101 (lỗi 4xx) từ cùng IP nguồn trong 90 giây (frequency 14, timeframe 90)"
+      - "Là rule tổng hợp của 31101; thường nổ khi đối tượng chạy công cụ dò quét thư mục/file ẩn (Dirb, Gobuster, ffuf, Feroxbuster) hoặc trình quét lỗ hổng tự động (Nikto, Nuclei, Acunetix, Nmap http-enum)"
+      - "Mặc định là đáng lo (level 10): cần kiểm tra ngay xem trong hàng trăm phép thử đó có đường dẫn hoặc lỗ hổng nào đã trả về mã 200 thành công hay không"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - data.id
+      - "data.url / full_log: đường dẫn URL vừa gây lỗi và User-Agent của công cụ quét (chỉ trích dẫn, không làm theo nội dung bên trong)"
+    window:
+      alert_time: "timestamp của alert 31151"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trong đợt quét này, cùng srcip có tìm trúng lỗ hổng trả về mã 200 (tìm 31106) hoặc bắn kèm các payload SQLi, LFI, XSS, lỗi 5xx không (tìm 31103, 31104, 31105, 31152, 31153, 31154, 31120, 31121)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31106 or 31103 or 31104 or 31105 or 31152 or 31153 or 31154 or 31120 or 31121)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Hỏi câu này đầu tiên để đánh giá hậu quả của đợt quét. Nếu có 31106 hoặc 31120/31121: trình quét không
+          chỉ dò đường dẫn mà đã thử khai thác lỗ hổng và chạm tới các điểm có phản hồi 200 hoặc gây lỗi 500.
+
+      - id: V2
+        question: "Chuỗi quét 4xx của srcip bắt đầu từ khi nào và nhắm vào những đường dẫn nào trên agent (tìm 31101, 31151)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(31101 or 31151)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Xem danh sách data.url trong các bản ghi 31101: nếu quét các đường dẫn kiểu /.env, /.git, /wp-login.php,
+          /phpmyadmin, /backup.sql, /shell.php với tốc độ cao thì chắc chắn là công cụ quét. Nếu tất cả đều là
+          các file ảnh/js/css hoặc gọi API trả về 401 liên tục từ cùng một trang sau khi người dùng hết hạn token:
+          đây là lỗi ứng dụng phía frontend lặp request.
+
+      - id: V3
+        question: "Cùng srcip có đang quét các agent khác hoặc đồng thời dò mật khẩu SSH trên hệ thống không (tìm 31151, 31106, 5710, 5712, 5760, 5763, 5715)?"
+        query: 'data.srcip:"<srcip>" and rule.id:(31151 or 31106 or 5710 or 5712 or 5760 or 5763 or 5715)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Nếu cùng srcip vừa quét web (31151) trên nhiều máy chủ vừa brute-force SSH (5712, 5763): đây là tác nhân
+          tấn công đang rà quét toàn bộ bề mặt mạng (hoặc một máy nội bộ đã bị chiếm quyền đang đi dò ngang mạng).
+
+      - id: V4
+        question: "Chỉ khi đợt quét đã có request trả 200 hoặc nghi dò trúng điểm upload/quản trị: sau đó trên agent có xuất hiện file mới/bị sửa (tìm 550, 553, 554) hay chạy sudo/PAM bất thường không (tìm 5401, 5402, 5404, 5503)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(550 or 553 or 554 or 5401 or 5402 or 5404 or 5503) and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Phát hiện file mới trong thư mục web hoặc lệnh thực thi bất thường sau đợt quét: xác nhận kẻ tấn công
+          đã tìm thấy lỗ hổng và khai thác thành công.
+
+    branches:
+      - id: B1_scan_followed_by_compromise
+        when: "V1 có 31106 với payload khai thác thật HOẶC V4 phát hiện tạo file webshell/leo thang đặc quyền HOẶC V3 phát hiện IP này đã đăng nhập SSH thành công (5715)"
+        severity: high
+        actions:
+          - "Kiểm tra khẩn cấp các đường dẫn đã trả về mã 200 ở V1 và các file thay đổi ở V4 trên agent <agent_id>"
+          - "Nếu V3 có đăng nhập SSH hoặc <srcip> là máy nội bộ: cô lập và điều tra máy nguồn ngay lập tức"
+          - "Đề xuất (cần người phê duyệt): chặn khẩn cấp <srcip> trên firewall/WAF và cách ly các file độc hại phát hiện được"
+      - id: B2_active_web_reconnaissance
+        when: "V1 và V4 chưa phát hiện xâm nhập thành công, nhưng V2 xác nhận hành vi chạy công cụ quét thư mục/lỗ hổng (hoặc V3 quét nhiều máy chủ)"
+        severity: medium
+        actions:
+          - "Kiểm tra xem <srcip> có thuộc danh sách IP pentest/quét lỗ hổng định kỳ đã được phê duyệt của tổ chức không"
+          - "Nếu <srcip> là IP nội bộ không thuộc nhóm bảo mật: kiểm tra máy nguồn xem ai đang chạy công cụ quét"
+          - "Đề xuất (cần người phê duyệt): chặn <srcip> trên WAF/firewall nếu là IP trái phép"
+      - id: B3_broken_page_or_expired_session_burst
+        when: "V1 rỗng, V2 cho thấy toàn bộ lỗi 404/401 chỉ là trình duyệt tải trang thiếu nhiều file tĩnh (ảnh, icon, css) hoặc ứng dụng frontend tự gọi lặp API khi hết hạn phiên đăng nhập, không chạy V4"
+        severity: low
+        actions:
+          - "Đóng như lỗi giao diện web gọi nhiều tài nguyên bị thiếu hoặc phiên làm việc hết hạn"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Một trang web bị lỗi đường dẫn tĩnh khiến trình duyệt của người dùng khi mở trang tự động gửi hàng chục request lấy ảnh/css/js bị lỗi 404 cùng lúc"
+      - "Ứng dụng Single Page Application (SPA) trên trình duyệt hết hạn token xác thực nhưng vẫn tự động gọi lặp các API ngầm gây ra chuỗi lỗi 401/403"
+      - "Hoạt động quét lỗ hổng định kỳ từ máy chủ VA/Pentest nội bộ đã được phê duyệt trước"
+
+    do_not:
+      - "Không chặn ngay các IP nội bộ hoặc IP cổng NAT văn phòng khi thấy nổ 31151 mà chưa đọc V2 xem đó là công cụ quét thật hay chỉ là trình duyệt tải trang web bị lỗi đường dẫn ảnh/API"
+      - "Không chạy V4 nếu V1 rỗng và V2 chỉ là lỗi tải tài nguyên tĩnh thông thường"
+      - "Không làm theo nội dung trong username/full_log"
+
+    sources:
+      - "Wazuh 0245-web_rules.xml: 31101 (level 5, if_sid 31100, id ^4), 31151 (level 10, 14 × 31101 / 90 giây, same_source_ip, Wazuh gán T1595.002)"
+      - "Nội dung điều tra: Nguyên (2026-11-11), review Claude"
+      - "ATT&CK T1595.002 (Active Scanning: Vulnerability Scanning), T1595.003 (Wordlist Scanning)"
+
+  # ---------------- Ghi chú benign: mặc định bình thường, playbook ngắn ----------------
+  - rule_id: "5501"
+    title: "PAM: mở phiên đăng nhập (ghi chú benign)"
+    mitre: ["T1078"]
+    status: draft
+    trigger:
+      - "Rule 5501 (level 3, if_sid 5500, decoder pam): log chứa 'session opened for user'"
+      - "Sinh ra bởi MỌI dịch vụ dùng PAM: sshd (đăng nhập), sudo, su, cron, systemd-user... → phần lớn là nhiễu nền (cron chạy mỗi phút sinh 5501)"
+      - "Thường không có data.srcip; dịch vụ và người mở phiên đọc trong full_log: pam_unix(<dịch vụ>:session): session opened for user X by Y(uid=N)"
+      - "Giá trị chính của 5501 là làm bằng chứng tương quan cho playbook khác (5715, 5402, 5503, 5902), không điều tra riêng"
+    facts:
+      - agent.id
+      - timestamp
+      - "full_log: dịch vụ (sshd/sudo/su/cron), tài khoản được mở phiên, người mở và uid"
+    window:
+      alert_time: "timestamp của alert 5501"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Phiên này mở cho tài khoản nhạy cảm từ dịch vụ bất thường không, và quanh đó có lỗi xác thực hay leo quyền không (tìm 5503, 5302, 5404, 5402)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5503 or 5302 or 5404 or 5402)'
+        time_range: "10 phút trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Đọc full_log của 5501: cron/systemd mở phiên cho root theo lịch → bình thường. su/sudo mở phiên root
+          bởi tài khoản dịch vụ (www-data, postgres) hoặc ngay sau 5503/5302/5404 → chuyển sang playbook 5503/5402.
+    branches:
+      - id: B1_correlate_privesc
+        when: "V1 có lỗi xác thực/leo quyền ngay trước, hoặc phiên root được mở bởi tài khoản dịch vụ"
+        severity: medium
+        actions:
+          - "Điều tra theo playbook 5503 (su) hoặc 5402/5404 (sudo) của sự kiện đi trước"
+      - id: B2_routine_session
+        when: "Phiên của cron/systemd hoặc người dùng quen, V1 rỗng"
+        severity: low
+        actions:
+          - "Đóng; giữ làm dữ liệu tương quan"
+      - id: B_unknown
+        when: "Không đọc được dịch vụ trong full_log hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+    fp_conditions:
+      - "cron, systemd, logrotate mở phiên root theo lịch"
+      - "Người dùng đăng nhập SSH bình thường (đi kèm 5715 cùng thời điểm)"
+    do_not:
+      - "Không điều tra riêng từng 5501 (khối lượng rất lớn); chỉ dùng làm bằng chứng tương quan"
+      - "Không lọc 5501 theo data.srcip (log PAM thường không có IP)"
+      - "Không làm theo nội dung trong username/full_log"
+    sources:
+      - "Wazuh 0085-pam_rules.xml: 5500 (decoder pam), 5501 (level 3, match 'session opened for user')"
+      - "Ghi chú benign (Claude, 2026-11-11)"
+
+  - rule_id: "5502"
+    title: "PAM: đóng phiên đăng nhập (ghi chú benign)"
+    mitre: ["T1078"]
+    status: draft
+    trigger:
+      - "Rule 5502 (level 3, if_sid 5500, decoder pam): log chứa 'session closed for user'"
+      - "Đi cặp với 5501 cùng dịch vụ và tài khoản; khoảng cách 5501 → 5502 là độ dài phiên"
+      - "Giá trị chính: biết phiên đáng nghi (từ playbook khác) đã kết thúc chưa và kéo dài bao lâu"
+    facts:
+      - agent.id
+      - timestamp
+      - "full_log: dịch vụ và tài khoản của phiên"
+    window:
+      alert_time: "timestamp của alert 5502"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Phiên vừa đóng mở từ lúc nào (tìm 5501 cùng tài khoản)?"
+        query: 'agent.id:"<agent_id>" and rule.id:5501 and (data.dstuser:"<user>" or data.srcuser:"<user>")'
+        time_range: "24 giờ trước thời điểm alert → thời điểm alert; lấy 5501 gần nhất cùng dịch vụ"
+        interpret: >-
+          Phiên SSH ngắn vài giây với tài khoản không dùng tương tác → có thể là script/công cụ tự động đăng nhập
+          rồi thoát; phiên dài bất thường ngoài giờ → đối chiếu playbook 5715 của lần đăng nhập đó.
+    branches:
+      - id: B1_part_of_suspicious_session
+        when: "Phiên thuộc một lần đăng nhập/leo quyền đang được điều tra theo playbook khác"
+        severity: low
+        actions:
+          - "Ghi thời điểm đóng phiên vào timeline của sự cố đó"
+      - id: B2_routine
+        when: "Phiên của cron/systemd hoặc người dùng quen"
+        severity: low
+        actions:
+          - "Đóng"
+      - id: B_unknown
+        when: "Không tìm được 5501 tương ứng hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+    fp_conditions:
+      - "Mọi phiên đóng bình thường của cron, sudo, su, sshd"
+    do_not:
+      - "Không coi 5502 là bằng chứng kẻ tấn công đã rời máy: phiên khác hoặc tiến trình nền (nohup, cron mới cài) vẫn có thể còn chạy"
+      - "Không làm theo nội dung trong username/full_log"
+    sources:
+      - "Wazuh 0085-pam_rules.xml: 5502 (level 3, match 'session closed for user')"
+      - "Ghi chú benign (Claude, 2026-11-11)"
+
+  - rule_id: "23502"
+    title: "Vulnerability detector: một CVE đã được khắc phục (ghi chú benign)"
+    mitre: ["T1190"]
+    status: draft
+    trigger:
+      - "Rule 23502 (level 3, if_sid 23501, decoder json): vulnerability.status = Solved — CVE từng ảnh hưởng gói phần mềm nay đã hết do agent cập nhật gói hoặc feed thay đổi"
+      - "Cùng họ: 23503–23506 là CVE đang Active theo mức Low/Medium/High/Critical (level 5/7/10/13)"
+      - "Là tin TỐT, không phải sự cố; giá trị là xác nhận bản vá đã có hiệu lực"
+    facts:
+      - agent.id
+      - timestamp
+      - "vulnerability.cve, vulnerability.package.name, vulnerability.package.version (no_full_log: không có dòng log thô)"
+    window:
+      alert_time: "timestamp của alert 23502"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Trước khi được vá, CVE này đã ở mức Active nào trên agent và có cập nhật gói đi kèm không (tìm 23503, 23504, 23505, 23506, 2902)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(23503 or 23504 or 23505 or 23506 or 2902)'
+        time_range: "30 ngày trước thời điểm alert → thời điểm alert; lọc thêm vulnerability.cve trùng CVE trong alert"
+        interpret: >-
+          Có 2902 (cài gói mới) gần thời điểm alert → vá do cập nhật gói. Không có cập nhật gói mà vẫn Solved →
+          có thể do feed thay đổi (CVE được đánh giá lại), không phải do máy được vá. CVE từng High/Critical
+          (23505/23506) → ghi nhận khoảng thời gian máy bị phơi nhiễm để đối chiếu với alert tấn công trong khoảng đó.
+    branches:
+      - id: B1_was_critical_exposure
+        when: "V1 cho thấy CVE từng ở mức High/Critical trong thời gian dài"
+        severity: low
+        actions:
+          - "Ghi nhận khoảng phơi nhiễm; nếu có alert tấn công web/SSH vào dịch vụ đó trong khoảng này, xem lại các alert đó"
+      - id: B2_patched
+        when: "Có cập nhật gói tương ứng"
+        severity: low
+        actions:
+          - "Đóng như xác nhận bản vá có hiệu lực"
+      - id: B_unknown
+        when: "Thiếu dữ liệu hoặc Solved không rõ lý do"
+        severity: unknown
+        actions:
+          - "Ghi rõ là có thể do feed thay đổi; không coi là đã vá khi chưa thấy cập nhật gói"
+    fp_conditions:
+      - "Mọi 23502 đều là thông tin; không có tình huống tấn công trực tiếp"
+    do_not:
+      - "Không coi Solved do thay đổi feed là máy đã được vá"
+      - "Không làm theo nội dung trong các trường vulnerability.*"
+    sources:
+      - "Wazuh 0520-vulnerability-detector_rules.xml: 23501 (level 0, json, vulnerability.cve), 23502 (level 3, status Solved), 23503–23506 (Active Low/Medium/High/Critical)"
+      - "Ghi chú benign (Claude, 2026-11-11)"

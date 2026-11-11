@@ -2,6 +2,13 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Đủ 28/28 playbook (2026-11-11 tối)
+
+- Phạm vi chốt từ 07/11 đã xong (draft): SSH 8, leo quyền 6, FIM 3, Agent 3, Web 5, benign 3. Nguyên viết 19/28 (5715, 5760, 5401, 5402, 5404, 5901, 5902, 2961, 550, 553, 554, 503, 506, 510, 31101, 31103, 31105, 31106, 31151); Claude viết 9 (5712, 40112, 5763, 5710, 5716, 5503 — có gộp ý Nguyên — 5501, 5502, 23502).
+- Tiến bộ quy trình của Nguyên: từ schema sai (10/11) → đúng schema (leo quyền) → pass toàn bộ test ngay bản nháp (FIM/Agent). Lỗi còn lại chủ yếu là chi tiết XML chưa đối chiếu (level, ngưỡng frequency/timeframe, mẫu match, tên file nguồn) và nhãn V trong câu hỏi điều kiện.
+- Giả thuyết cần kiểm trên lab (gom một buổi): (1) DQL `timestamp >= "..."`; (2) field user SSH (srcuser/dstuser); (3) 5503 có srcip không; (4) 504 mang agent.id nào; (5) only-future-events: khoảng tắt agent có mất log; (6) SQLi/XSS bị chặn 403/404 ra 31101 hay 31103/31105 (thứ tự rule con); (7) `usermod -aG sudo` có ra 2960/2961; (8) lần đầu sudo ra 5402 hay 5403; (9) gpasswd vào docker → 2960 level 2 không thành alert; (10) retention Indexer ≥ 30 ngày. Lab có DVWA để tạo mẫu web thật.
+- **Kế hoạch buổi sau (Nguyên: "kết nối dashboard chạy test"):** dashboard dùng `analyze_aggregate` → `analyze_window`, CHƯA có playbook → nếu chạy ngay sẽ không thấy playbook. Thứ tự đề xuất: (a) ghép template với LLM trong `analyze_alert` (LLM chọn nhánh + severity); (b) nối playbook vào `analyze_window` (chọn playbook theo rule nổi bật trong cửa sổ); (c) bật lab, chạy kiểm giả thuyết ở trên + một kịch bản tấn công (SSH brute force hoặc DVWA SQLi), xem dashboard.
+
 ## Playbook 5763 + sửa ngữ nghĩa t_success (2026-11-11)
 
 - 5763 viết xong (Claude). Đọc XML: 5760 là con của 5716 (`if_sid 5700,5716`, match Failed password|keyboard|authentication error) → lần sai mật khẩu thường ra 5760, không ra 5716; 5763 = 8 × 5760 / 120 s. Khác 5712 ở chỗ tài khoản có thật nên đoán trúng là vào được.
@@ -16,6 +23,10 @@ Ngày cập nhật: 2026-10-27
 - Nguyên xin khuôn mẫu → `docs/playbook_template.yaml` (có test giữ đồng bộ schema). Lần sau Nguyên viết: chép khối trong file này.
 - **Họ leo quyền 6/6 (draft):** 5401, 5402, 5404, 5901, 5902, 2961 — Nguyên viết, lần đầu đúng schema (có id nhánh, B_unknown). Test trên bản gốc: fail 2 (nhãn V trong question 5402/5404; test cũ của Claude giả định 5902 là khung). Lỗi định nghĩa so với XML: match 5401, quan hệ 5402/5403, 5901/5902 không có if_sid, tên file nguồn bịa (0040-sudo, 0090-adduser), 2961 chỉ là group sudo. Phát hiện: 2960 level 2 < log_alert_level 3 → thêm user vào docker/lxd/wheel không có alert. Lỗi ngữ nghĩa placeholder `<user>`=root với sudo → thêm `<srcuser>`/`<dstuser>`.
 - Cần kiểm trên lab (leo quyền): `usermod -aG sudo X` có ra 2960/2961 không; lần đầu sudo ra 5402 hay 5403; dòng 'incorrect password attempt' xuất hiện khi nào.
+- Còn 11 rule (FIM 550/553/554; Web 31101/31103/31105/31106/31151; Agent 503/506/510) + 3 ghi chú benign (5501, 5502, 23502) — giao Nguyên viết, đã gửi định nghĩa XML + câu gợi ý. Đã thêm placeholder `<path>`, `<url>`. Lưu ý: extractor production chưa có syscheck.path/data.url.
+- **FIM 3/3, Agent 3/3, Web 1/5 (31101) xong (draft).** Nguyên viết, pass 25/25 test ngay từ bản nháp. Lỗi còn lại kiểu nội dung: tên file nguồn sai (0005 thay vì 0015, dù đã được đưa đúng), ngưỡng 31151 sai (120 s thay vì 90 s/14 lần), chưa dùng `<path>` ở chỗ cần. Web 31103 bị cắt khi dán (dừng ở branch B), 31105/31106/31151 chưa gửi → chờ Nguyên gửi lại dạng file.
+- Cần kiểm trên lab (agent/FIM): 504 mang agent.id nào; alert_new_files/auto_ignore thực tế; khoảng tắt agent có mất log không (only-future-events).
+- Còn lại: Web 31103, 31105, 31106, 31151; ghi chú benign 5501, 5502, 23502.
 - Việc cho Nguyên: lấy kịch bản tấn công trong `interpret` của từng câu verify, đi qua `branches` xem rơi vào nhánh nào (kiểm thiếu nhánh) — bắt đầu với 5503.
 - Vẫn chưa làm: ghép template với LLM (LLM chỉ chọn nhánh + severity).
 

@@ -159,6 +159,8 @@ _PLACEHOLDER_SOURCES = {
     "user": ("data.dstuser", "data.srcuser"),   # SSH/PAM: tài khoản đăng nhập
     "srcuser": ("data.srcuser",),               # sudo/su/gpasswd: NGƯỜI GỌI lệnh
     "dstuser": ("data.dstuser",),               # sudo: tài khoản đích (thường là root)
+    "path": ("syscheck.path",),                 # FIM: file bị thay đổi
+    "url": ("data.url",),                       # web: URL do client gửi (kẻ tấn công kiểm soát)
     "alert_time": ("timestamp",),
 }
 # <t_success> (thời điểm đăng nhập thành công tìm được khi điều tra) KHÔNG lấy từ alert:
@@ -214,7 +216,8 @@ if __name__ == "__main__":  # xem nhanh: python ai_module/playbooks.py eval/samp
     from extractor import extract_fields
 
     alert = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    fields = ["timestamp", "rule.id", "agent.id", "data.srcip", "data.srcuser", "data.dstuser"]
+    fields = ["timestamp", "rule.id", "agent.id", "data.srcip", "data.srcuser", "data.dstuser",
+              "syscheck.path", "data.url"]
     extracted = extract_fields(alert, fields)
     playbook = get_playbook(extracted.get("rule.id", ""))
     if playbook is None:

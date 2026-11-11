@@ -179,3 +179,9 @@ def test_sudo_query_uses_caller_not_root():
     steps = playbooks.render_verify_steps(playbooks.get_playbook("5402"), alert)
     history = next(s for s in steps if "30 ngày" in s)
     assert 'data.srcuser:"deploy"' in history and '"root"' not in history
+
+
+def test_path_and_url_placeholders_are_escaped():
+    values = playbooks.placeholder_values({"syscheck.path": "/etc/sudoers", "data.url": '/a?q=" or 1=1--'})
+    assert values["path"] == "/etc/sudoers"
+    assert values["url"] == '/a?q=\\" or 1=1--'

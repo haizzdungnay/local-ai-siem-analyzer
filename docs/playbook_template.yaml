@@ -22,7 +22,8 @@
 #  2. question nêu ít nhất một rule ID có trong query, viết trong ngoặc: "(tìm 5715, 40112)".
 #  3. question và time_range KHÔNG ghi nhãn V0/V1... (code in bước theo số 1, 2, 3).
 #  4. query viết and / or CHỮ THƯỜNG; mọi rule ID phải có trong ruleset Wazuh.
-#  5. Placeholder chỉ dùng: <srcip> <agent_id> <user> <srcuser> <dstuser> <alert_time> (code tự điền)
+#  5. Placeholder chỉ dùng: <srcip> <agent_id> <user> <srcuser> <dstuser> <path> <url> <alert_time>
+#     (code tự điền; <path> = syscheck.path của FIM, <url> = data.url của log web)
 #     <user> = tài khoản đăng nhập (SSH/PAM, lấy dstuser rồi srcuser). Với sudo/su/gpasswd dùng
 #     <srcuser> (người gọi lệnh) hoặc <dstuser> (tài khoản đích) — <user> sẽ ra "root" với sudo.
 #     và <t0> <t_success> (chưa biết, code giữ nguyên cho analyst điền).
