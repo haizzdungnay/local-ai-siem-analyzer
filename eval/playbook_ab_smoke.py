@@ -4,7 +4,7 @@ eval/playbook_ab_smoke.py — phép thử A/B nhanh cho playbook Tầng 3 (chưa
 Cùng một alert mẫu, gọi LLM ba lần với cấu hình giống hệt nhau:
   A: không có playbook (giống pipeline hiện tại khi RAG không trả về gì)
   B: playbook đi qua rag_context → bị bọc UNTRUSTED_RAG_CONTEXT (cách cũ)
-  C: playbook là khối TRUSTED_PLAYBOOK trong system prompt (P1, tham số playbook=)
+  C: playbook TRUSTED; model chỉ chọn nhánh (enum), next_steps do code dựng (block v5)
 Cả B và C dùng cùng playbook tra chính xác theo rule.id; khác nhau chỉ ở chỗ đặt và nhãn
 tin cậy. In next_steps cạnh nhau kèm số bước có rule ID (check_next_steps). N=1, chỉ để kiểm tra playbook có được model dùng hay không;
 kết luận định lượng phải chờ ablation trên tập test khóa.
@@ -38,11 +38,12 @@ def playbook_context(entry: dict) -> str:
 
 
 def run(alert_text: str, context: str, cfg: dict, model: str, language: str,
-        playbook: dict | None = None) -> dict:
+        playbook: dict | None = None, extracted: dict | None = None) -> dict:
     analysis, provenance = analyze_alert(
         alert_text=alert_text,
         rag_context=context,
         playbook=playbook,
+        extracted=extracted,
         model=model,
         base_url=cfg["ollama"]["base_url"],
         timeout=cfg["ollama"].get("timeout", 120),
@@ -51,7 +52,8 @@ def run(alert_text: str, context: str, cfg: dict, model: str, language: str,
         allow_remote=cfg["ollama"].get("allow_remote", False),
     )
     return {"analysis": analysis, "latency_s": (provenance or {}).get("total_duration", 0) / 1e9,
-            "output_origin": (provenance or {}).get("output_origin")}
+            "output_origin": (provenance or {}).get("output_origin"),
+            "playbook": (provenance or {}).get("playbook")}
 
 
 def main() -> None:
@@ -81,7 +83,8 @@ def main() -> None:
         "B_playbook": ("B — playbook qua rag_context (UNTRUSTED)",
                        run(alert_text, context_b, cfg, model, args.language)),
         "C_trusted_playbook": ("C — TRUSTED_PLAYBOOK trong system prompt",
-                               run(alert_text, "", cfg, model, args.language, playbook=entry)),
+                               run(alert_text, "", cfg, model, args.language, playbook=entry,
+                                   extracted=extracted)),
     }
     for key, (label, res) in arms.items():
         an = res["analysis"]
@@ -91,6 +94,17 @@ def main() -> None:
         print(f"{label}   (severity={an.get('severity')}, origin={res['output_origin']}, {res['latency_s']:.1f}s)")
         print(f"  bước có rule ID: {chk['steps_with_rule_id']}/{chk['steps_total']} | "
               f"verify được nêu: {','.join(chk['verify_cited']) or '-'} / {chk['verify_total']}")
+        pb = res.get("playbook") or {}
+        if pb.get("mode") == "signals":
+            for sid, item in (pb.get("signals") or {}).items():
+                print(f"  tín hiệu {sid}: {item['answer']}  (model: {item.get('model_answer')}, "
+                      f"regex: {item.get('rule_answer')})  [{item['value']}]")
+            print(f"  nhánh CODE chọn: {pb['branch_id']} | severity theo: {pb.get('severity_source')} "
+                  f"(model nói: {pb.get('model_severity', an.get('severity'))})")
+        elif pb.get("branch_id"):
+            print(f"  nhánh model chọn: {pb['branch_id']} (hợp lệ: {pb.get('branch_valid')}) | "
+                  f"severity theo: {pb.get('severity_source')} (model nói: {pb.get('model_severity', an.get('severity'))})")
+            print(f"  căn cứ: {pb.get('branch_evidence')}")
         print("=" * 78)
         for i, step in enumerate(an.get("next_steps") or [], 1):
             print(f"  {i}. {step}")

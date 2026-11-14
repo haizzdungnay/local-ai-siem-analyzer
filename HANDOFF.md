@@ -2,6 +2,35 @@
 
 Ngày cập nhật: 2026-10-27
 
+## Chế độ tín hiệu — block v6, pilot 5715 / 5402 / 5503 (2026-11-14, chiều)
+
+- Nguyên chọn "sửa trước, dashboard sau". Đã làm theo đề xuất bên dưới.
+- YAML: `signals` (S_..., câu có/không đọc từ alert) + `select_if: {any|all: [S_...]}` trên nhánh chọn được chỉ từ alert. 5715: B2_sensitive_account ← S_sensitive_account. 5402: B2_unusual ← any(S_root_shell, S_security_change, S_service_caller). 5503: **nhánh mới B0_service_account_su (high)** ← all(S_local_su_sudo, S_service_actor) — nâng ghi chú cũ ở B3 thành nhánh; **Nguyên cần duyệt nội dung**.
+- Code: model trả `signals` (enum yes/no/unknown + value ≤200, đã làm sạch), `select_branch` chọn nhánh, không bao giờ chọn nhánh thiếu `select_if`. Prompt v6 chỉ đưa rule_id, title, mitre, trigger, facts, signals, do_not (khối ngắn hơn ~một nửa) → model không thấy nhánh "Đóng" để mà chọn. next_steps: bước tra cứu → tín hiệu (câu hỏi → có/không/không rõ [giá trị]) → nhánh code chọn + hành động → "Nhánh chỉ xác định được sau khi tra cứu: B1... (high)". Không chọn được → B_unknown, severity model (sàn rule level vẫn áp).
+- Kỳ vọng smoke (alert mẫu): 5715 postgres → S_sensitive_account yes → B2 (medium). 5402 `/bin/bash` → S_root_shell yes → B2 (medium). 5503 www-data su → cả hai yes → B0 (high).
+- Sửa kèm: hành động sudo 5401/5402/5404 dùng `<srcuser>` (preview phát hiện "liên hệ quản trị viên root"). 5902 vẫn dùng `<user>` cho user vừa tạo — kiểm field decoder trên lab.
+- Thước đo cho chương đánh giá: độ chính xác từng tín hiệu (so nhãn tay), không chấm nhánh do model chọn nữa.
+- Test: 372 passed, 2 skipped.
+- **Smoke v6 (11:34):** model đúng 5/8 tín hiệu; 3 câu sai đều là "giá trị có trong danh sách không" — trích đúng giá trị nhưng nói "no" (thiên về "bình thường") → cả 3 ca ra B_unknown, 5402 vẫn low.
+- **v6.1:** thêm `match` (regex do code chạy) cho cả 8 tín hiệu; kết quả = regex OR model (một nguồn yes là yes). Regex chặn bỏ sót cái đã biết; model có thể bắt kiểu né regex (vd. `COMMAND=/usr/bin/env bash`). Test phát lại câu trả lời smoke 11:34 → B2/B2/B0 đúng. Thước đo chương đánh giá: 3 cột độ chính xác tín hiệu (model riêng, regex riêng, kết hợp). Test: 376 passed.
+- Giới hạn cần ghi báo cáo: regex né được (env bash, python -c pty, copy bash sang tên khác); regex trên full_log có thể bắt nhầm → chỉ làm TĂNG severity (chấp nhận được); B_unknown vẫn lấy severity của model (5402 trước v6.1 ra low) → cân nhắc sàn severity cho B_unknown.
+- **Smoke v6.1 (11:43): 3/3 đúng nhánh** — 5715 → B2_sensitive_account (medium), 5402 → B2_unusual (medium), 5503 → B0_service_account_su (high). Câu trả lời model y hệt 11:34 (temp 0, seed 42): model 5/8, regex 8/8, kết hợp 8/8. Cả 3 lần regex sửa đều là model "no" → regex "yes".
+- **Cảnh báo khi viết báo cáo:** regex 8/8 KHÔNG phải bằng chứng — regex viết ra khi đã nhìn đúng 3 alert này (overfit). Cần bộ alert giữ riêng (held-out) do người khác tạo/nhãn trước khi đo; thêm ca âm tính (sudo systemctl, publickey vào tài khoản cá nhân, admin gõ nhầm su).
+- Lặt vặt thấy trong output: hành động nhánh ghi "Chạy V4" nhưng next_steps đánh số 1–4, không có nhãn V → analyst phải tự đếm; 5503 query lọc `data.dstuser:"root"` (tài khoản đích) chứ không theo người gõ www-data (decoder không tách ruser) — chấp nhận, ghi chú.
+- Next: Nguyên commit; viết signals + match cho 25 playbook còn lại (ưu tiên rule có hành động "Đóng"/low); tạo alert held-out; rồi nối `analyze_window` (dashboard).
+
+## Ghép template với LLM — block v5 (2026-11-14)
+
+- Model chỉ còn phán đoán: chọn `branch_id` (enum, Ollama structured output ép đúng id có thật) + `branch_evidence`. Code dựng toàn bộ `next_steps` (bước tra cứu + hành động của nhánh, nguyên văn playbook). Severity = severity của nhánh (trừ `B_unknown` → giữ severity model theo thang contract; sàn rule level ≥ 12 vẫn áp sau).
+- Thiết kế an toàn: hành động nhánh đến từ file nội bộ; thứ duy nhất model viết vào next_steps là căn cứ (cắt 300 ký tự, bỏ ký tự điều khiển). Model không thể bịa nhánh hay rule ID.
+- Đánh đổi cần ghi trong báo cáo: nhánh được chọn TRƯỚC khi chạy truy vấn → là "nhánh dự kiến từ dữ liệu alert"; phần lớn alert đúng ra phải là `B_unknown` cho tới khi có kết quả tra cứu. Giá trị LLM thể hiện ở các ca mà alert tự chứa bằng chứng (vd. 5715 postgres+password+02:41 → B2).
+- Input đổi lần 3 (syscheck.path, data.url, data.id) → chạy lại baseline.
+- `check_next_steps` không còn trong provenance (next_steps do code dựng nên đếm rule ID vô nghĩa); vẫn còn trong smoke cho nhánh A/B.
+- Test: 364 passed, 2 skipped.
+- **Kết quả smoke v5 (11:21, N=1/mẫu):** nhánh luôn hợp lệ (enum), nhưng 2/3 sai. 5715 postgres → B3_first_seen_anomalous (đúng: B2_sensitive_account; căn cứ tự mâu thuẫn: "đã đăng nhập trong 30 ngày" mà chọn nhánh "lần đầu"). 5402 deploy `sudo /bin/bash` → **B3_normal (low, "Đóng")** (đúng: B2_unusual — mở shell root có ngay trong alert) → nguy hiểm: đóng nhầm. 5503 www-data su → B3_local_guessing (chấp nhận được). Nguyên nhân gốc: model **bịa kết quả câu verify chưa chạy** ("không có chuỗi thất bại", "đã đăng nhập 30 ngày") dù chỉ dẫn cấm; điều kiện `when` trộn dữ kiện đọc-từ-alert với dữ kiện cần-truy-vấn.
+- **Đề xuất (chờ Nguyên quyết):** thêm `signals` (câu có/không đọc được từ alert) cho mỗi playbook; model chỉ trả lời tín hiệu (có/không/không rõ + giá trị trích); code chọn nhánh từ tín hiệu, không bao giờ chọn nhánh cần kết quả truy vấn chưa có. Pilot 5715, 5402, 5503 trước. Thước đo: độ chính xác từng tín hiệu.
+- Next (cũ): Nguyên chạy smoke cho 5715, 5763, 40112, 5402, 5503; đo nhánh model chọn so với kỳ vọng (5715 → B2; 5763 admin → B2_privileged_target? hoặc B_unknown; 40112 → B_unknown hoặc B2 tùy cách hiểu V1; 5402 deploy sudo /bin/bash → B2_unusual; 5503 www-data su → B3_local_guessing/B_unknown). Sau đó nối playbook vào `analyze_window` (dashboard).
+
 ## Đủ 28/28 playbook (2026-11-11 tối)
 
 - Phạm vi chốt từ 07/11 đã xong (draft): SSH 8, leo quyền 6, FIM 3, Agent 3, Web 5, benign 3. Nguyên viết 19/28 (5715, 5760, 5401, 5402, 5404, 5901, 5902, 2961, 550, 553, 554, 503, 506, 510, 31101, 31103, 31105, 31106, 31151); Claude viết 9 (5712, 40112, 5763, 5710, 5716, 5503 — có gộp ý Nguyên — 5501, 5502, 23502).

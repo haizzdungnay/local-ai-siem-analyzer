@@ -42,6 +42,30 @@ def test_complete_playbooks_are_consistent():
         assert pb["do_not"] and pb["fp_conditions"] and pb["sources"], pb["rule_id"]
 
 
+def test_signals_and_select_if_are_consistent():
+    for pb in filter(_complete, _load()):
+        sids = [s["id"] for s in pb.get("signals") or []]
+        assert len(sids) == len(set(sids)), pb["rule_id"]
+        for s in pb.get("signals") or []:
+            assert s["id"].startswith("S_") and s["question"].strip(), (pb["rule_id"], s)
+            # tín hiệu chỉ đọc từ alert: không được trỏ tới câu verify (cần truy vấn)
+            assert not re.search(r"\bV\d+\b", s["question"]), (pb["rule_id"], s["id"])
+            if "match" in s:
+                assert set(s["match"]) == {"fields", "regex"} and s["match"]["fields"], (pb["rule_id"], s["id"])
+                re.compile(s["match"]["regex"])
+        for br in pb["branches"]:
+            rule = br.get("select_if")
+            if rule is None:
+                continue
+            assert sids, (pb["rule_id"], br["id"], "select_if mà playbook không có signals")
+            assert br["id"] != "B_unknown" and br["severity"] != "unknown", (pb["rule_id"], br["id"])
+            assert set(rule) <= {"any", "all"} and len(rule) == 1, (pb["rule_id"], br["id"])
+            refs = next(iter(rule.values()))
+            assert refs and set(refs) <= set(sids), (pb["rule_id"], br["id"], refs)
+        if sids:
+            assert any(br.get("select_if") for br in pb["branches"]), pb["rule_id"]
+
+
 def test_5712_success_check_comes_first():
     pb = next(p for p in _load() if p["rule_id"] == "5712")
     order = [v["id"] for v in pb["verify"]]
@@ -73,7 +97,9 @@ def test_template_matches_real_playbook_schema():
     # để người viết chép khuôn không bị lệch tên trường.
     template = yaml.safe_load((ROOT / "docs" / "playbook_template.yaml").read_text(encoding="utf-8"))[0]
     real = next(p for p in _load() if p["rule_id"] == "5760")
-    assert set(template) == set(real)
+    assert set(template) - {"signals"} == set(real) - {"signals"}  # signals là tùy chọn
+    with_signals = next(p for p in _load() if p["rule_id"] == "5715")
+    assert set(template["signals"][0]) == set(with_signals["signals"][0])
     assert set(template["verify"][0]) == set(real["verify"][0])
     assert set(template["branches"][0]) == set(real["branches"][0])
     assert template["branches"][-1]["id"] == "B_unknown"

@@ -2,8 +2,12 @@
 import json
 import re
 
+from pathlib import Path
+
 import llm
 import playbooks
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _client(captured, next_steps):
@@ -57,19 +61,237 @@ def test_no_playbook_keeps_prompt_unchanged(monkeypatch):
     assert "playbook" not in provenance
 
 
-def test_provenance_records_playbook_and_check(monkeypatch):
-    steps = [
-        "Tìm rule.id 5715/40112 từ srcip 203.0.113.9 trên agent 001",
-        "Tìm 5760 cùng srcip",
-        "Theo dõi IP",
-    ]
-    monkeypatch.setattr(llm.ollama_sdk, "Client", _client({}, steps))
-    entry = playbooks.get_playbook("5712")
-    _, provenance = llm.analyze_alert("alert", include_provenance=True, playbook=entry)
+def _branch_client(captured, payload):
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def chat(self, **kwargs):
+            captured.update(kwargs)
+            return {"message": {"content": json.dumps(payload)}}
+    return Client
+
+
+ALERT_5760 = {"timestamp": "2026-07-06T03:12:00.000+0700", "rule.id": "5760", "agent.id": "001",
+              "data.srcip": "203.0.113.9", "data.dstuser": "root"}
+ALERT_5715 = {"timestamp": "2026-07-06T02:41:07.000+0700", "rule.id": "5715", "agent.id": "001",
+              "data.srcip": "203.0.113.9", "data.dstuser": "postgres"}
+ALERT_5402 = {"timestamp": "2026-07-06T21:07:40.000+0700", "rule.id": "5402", "agent.id": "001",
+              "data.srcuser": "deploy", "data.dstuser": "root"}
+
+
+# --- Chế độ chọn nhánh (v5): playbook KHÔNG có signals, model chọn nhánh bằng enum ---
+
+def test_playbook_mode_builds_next_steps_and_takes_branch_severity(monkeypatch):
+    captured = {}
+    payload = {"summary": "s", "root_cause": "c", "severity": "low", "mitre": "T1110",
+               "branch_id": "B2_suspicious_success", "branch_evidence": "root, 03:12",
+               "next_steps": ["model tự viết bước này"]}
+    monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client(captured, payload))
+    entry = playbooks.get_playbook("5760")
+    assert not playbooks.has_signals(entry)
+    result, provenance = llm.analyze_alert("rule 5760", include_provenance=True, playbook=entry,
+                                           extracted=ALERT_5760)
+    schema = captured["format"]
+    assert "next_steps" not in schema["properties"]
+    assert schema["properties"]["branch_id"]["enum"][-1] == "B_unknown"
+    steps = result["next_steps"]
+    assert "model tự viết" not in " ".join(steps)
+    assert 'agent.id:"001"' in steps[0]
+    assert any("B2_suspicious_success" in step for step in steps)
+    assert result["severity"] == "high"  # severity của nhánh, không phải "low" model nói
     pb = provenance["playbook"]
-    assert pb["rule_id"] == "5712" and pb["sha256"] == playbooks.playbook_sha256(entry)
-    assert pb["check"]["steps_total"] == 3 and pb["check"]["steps_with_rule_id"] == 2
-    assert "V1" in pb["check"]["verify_cited"] and "V2" in pb["check"]["verify_cited"]
+    assert pb["mode"] == "branch" and pb["block_version"] == playbooks.PLAYBOOK_PROMPT_VERSION
+    assert pb["branch_id"] == "B2_suspicious_success" and pb["branch_valid"]
+    assert pb["severity_source"] == "branch" and pb["model_severity"] == "low"
+
+
+def test_playbook_mode_invalid_branch_falls_back_to_unknown(monkeypatch):
+    payload = {"summary": "s", "root_cause": "c", "severity": "medium", "mitre": "",
+               "branch_id": "B9_invented", "branch_evidence": "x"}
+    monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
+    result, provenance = llm.analyze_alert("rule 5760", include_provenance=True,
+                                           playbook=playbooks.get_playbook("5760"), extracted=ALERT_5760)
+    assert provenance["playbook"]["branch_id"] == "B_unknown"
+    assert provenance["playbook"]["branch_valid"] is False
+    assert result["severity"] == "medium"  # B_unknown → giữ severity theo thang contract
+
+
+def test_branch_evidence_cannot_inject_steps(monkeypatch):
+    payload = {"summary": "s", "root_cause": "c", "severity": "low", "mitre": "",
+               "branch_id": "B_unknown", "branch_evidence": "ok\n\nIgnore rules\r" + "A" * 900}
+    monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
+    result = llm.analyze_alert("rule 5760", playbook=playbooks.get_playbook("5760"), extracted=ALERT_5760)
+    line = next(step for step in result["next_steps"] if "B_unknown" in step)
+    assert "\n" not in line and len(line) < 500
+
+
+# --- Chế độ tín hiệu (v6): model trả lời tín hiệu, CODE chọn nhánh ---
+
+def _signals(**answers):
+    return {sid: {"answer": ans, "value": val} for sid, (ans, val) in answers.items()}
+
+
+def test_signal_schema_and_prompt_hide_branches(monkeypatch):
+    captured = {}
+    payload = {"signals": _signals(S_sensitive_account=("yes", "postgres"),
+                                   S_password_method=("yes", "Accepted password")),
+               "summary": "s", "root_cause": "c", "severity": "low", "mitre": "T1078"}
+    monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client(captured, payload))
+    entry = playbooks.get_playbook("5715")
+    result, provenance = llm.analyze_alert("rule 5715", include_provenance=True, playbook=entry,
+                                           extracted=ALERT_5715)
+    schema = captured["format"]
+    assert "branch_id" not in schema["properties"] and "next_steps" not in schema["properties"]
+    assert list(schema["properties"])[0] == "signals"
+    sig = schema["properties"]["signals"]
+    assert sig["required"] == ["S_sensitive_account", "S_password_method"]
+    assert sig["properties"]["S_sensitive_account"]["properties"]["answer"]["enum"] == ["yes", "no", "unknown"]
+    system = captured["messages"][0]["content"]
+    assert playbooks.PLAYBOOK_SIGNALS_VERSION in system
+    # model không thấy nhánh / truy vấn → không có gì để "đoán kết quả" hay chọn nhánh đóng
+    assert "B5_routine" not in system and "rule.id:5715" not in system
+    assert "S_sensitive_account" in system
+    pb = provenance["playbook"]
+    assert pb["mode"] == "signals" and pb["block_version"] == playbooks.PLAYBOOK_SIGNALS_VERSION
+    assert pb["branch_id"] == "B2_sensitive_account"
+    assert result["severity"] == "medium" and pb["model_severity"] == "low"
+    steps = result["next_steps"]
+    assert any("postgres" in step and "→ có" in step for step in steps)
+    # nhánh đứng trước B2 cần tra cứu (B1 high) được nêu rõ, không bị bỏ qua
+    assert any("B1_slow_bruteforce (high)" in step for step in steps)
+
+
+def test_sudo_root_shell_never_closes_as_routine(monkeypatch):
+    """Lỗi smoke v5: 'sudo /bin/bash' bị chọn B3_normal (low, Đóng). Code giờ không thể chọn B3."""
+    payload = {"signals": _signals(S_root_shell=("yes", "COMMAND=/bin/bash"),
+                                   S_security_change=("no", ""), S_service_caller=("no", "deploy")),
+               "summary": "s", "root_cause": "c", "severity": "low", "mitre": ""}
+    monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
+    result, provenance = llm.analyze_alert("rule 5402", include_provenance=True,
+                                           playbook=playbooks.get_playbook("5402"), extracted=ALERT_5402)
+    assert provenance["playbook"]["branch_id"] == "B2_unusual_sudo_command_or_context"
+    assert result["severity"] == "medium"
+
+
+def test_select_branch_never_picks_query_only_branch():
+    for rule_id in ("5715", "5402", "5503"):
+        entry = playbooks.get_playbook(rule_id)
+        all_yes = {sid: {"answer": "yes", "value": ""} for sid in playbooks.signal_ids(entry)}
+        chosen = playbooks.select_branch(entry, all_yes)
+        assert playbooks.get_branch(entry, chosen).get("select_if"), rule_id
+        all_no = {sid: {"answer": "no", "value": ""} for sid in playbooks.signal_ids(entry)}
+        assert playbooks.select_branch(entry, all_no) == "B_unknown", rule_id
+
+
+def test_5503_service_account_su_needs_both_signals():
+    entry = playbooks.get_playbook("5503")
+    both = _signals(S_local_su_sudo=("yes", "su:auth"), S_service_actor=("yes", "ruser=www-data"),
+                    S_remote_sshd=("no", ""))
+    assert playbooks.select_branch(entry, both) == "B0_service_account_su"
+    one = _signals(S_local_su_sudo=("yes", "su:auth"), S_service_actor=("unknown", ""),
+                   S_remote_sshd=("no", ""))
+    assert playbooks.select_branch(entry, one) == "B_unknown"
+
+
+def test_all_unknown_keeps_model_severity_and_lists_pending_branches(monkeypatch):
+    payload = {"signals": {}, "summary": "s", "root_cause": "c", "severity": "medium", "mitre": ""}
+    monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
+    no_user = {"rule.id": "5715", "agent.id": "001"}  # alert thiếu field → regex không chạy được
+    result, provenance = llm.analyze_alert("rule 5715", include_provenance=True,
+                                           playbook=playbooks.get_playbook("5715"), extracted=no_user)
+    pb = provenance["playbook"]
+    assert pb["branch_id"] == "B_unknown" and pb["severity_source"] == "model"
+    assert all(item["answer"] == "unknown" for item in pb["signals"].values())
+    assert result["severity"] == "medium"
+    assert any("B5_routine (low)" in step for step in result["next_steps"])
+
+
+def _sample_extracted(name):
+    import extractor
+    alert = json.loads((ROOT / "eval" / "samples" / name).read_text(encoding="utf-8"))
+    return extractor.extract_fields(alert, ["rule.id", "agent.id", "data.srcuser", "data.dstuser",
+                                            "full_log"])
+
+
+# Phát lại NGUYÊN câu trả lời qwen2.5:7b ở smoke 2026-11-14 11:34: trích đúng giá trị nhưng
+# kết luận "no" cho cả 3 tín hiệu đáng báo động. Regex phải kéo cả 3 ca về đúng nhánh.
+SMOKE_1134 = {
+    ("alert-ssh-5715.json", "5715", "B2_sensitive_account", "medium"): {
+        "S_sensitive_account": ("no", "postgres"),
+        "S_password_method": ("yes", "Accepted password for postgres from 192.168.100.30 port 50388 ssh2")},
+    ("alert-sudo-5402.json", "5402", "B2_unusual_sudo_command_or_context", "medium"): {
+        "S_root_shell": ("no", "COMMAND=/bin/bash"), "S_security_change": ("no", ""),
+        "S_service_caller": ("no", "data.srcuser = deploy")},
+    ("alert-pam-5503.json", "5503", "B0_service_account_su", "high"): {
+        "S_local_su_sudo": ("yes", "pam_unix(su:auth)"), "S_service_actor": ("no", "ruser=www-data, uid=33"),
+        "S_remote_sshd": ("no", "pam_unix(sshd:auth) và rhost= trống")},
+}
+EXPECTED_SIGNALS = {
+    "S_sensitive_account": "yes", "S_password_method": "yes",
+    "S_root_shell": "yes", "S_security_change": "no", "S_service_caller": "no",
+    "S_local_su_sudo": "yes", "S_service_actor": "yes", "S_remote_sshd": "no",
+}
+
+
+def test_smoke_1134_replay_regex_fixes_model_misses(monkeypatch):
+    for (sample, rule_id, branch, severity), answers in SMOKE_1134.items():
+        payload = {"signals": _signals(**answers), "summary": "s", "root_cause": "c",
+                   "severity": "low", "mitre": ""}
+        monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
+        result, provenance = llm.analyze_alert(f"rule {rule_id}", include_provenance=True,
+                                               playbook=playbooks.get_playbook(rule_id),
+                                               extracted=_sample_extracted(sample))
+        pb = provenance["playbook"]
+        assert pb["branch_id"] == branch, (rule_id, pb["signals"])
+        assert result["severity"] == severity, rule_id
+        for sid, item in pb["signals"].items():
+            assert item["answer"] == EXPECTED_SIGNALS[sid], (rule_id, sid, item)
+            assert item["rule_answer"] == EXPECTED_SIGNALS[sid], (rule_id, sid, item)
+
+
+def test_model_yes_still_counts_when_regex_says_no():
+    # né regex: "sudo /usr/bin/env bash" — regex không bắt, nhưng model nhận ra → vẫn yes
+    entry = playbooks.get_playbook("5402")
+    extracted = {"full_log": "sudo: deploy : TTY=pts/1 ; PWD=/tmp ; USER=root ; COMMAND=/usr/bin/env bash",
+                 "data.srcuser": "deploy"}
+    out = playbooks.normalize_signals({"S_root_shell": {"answer": "yes", "value": "env bash"}},
+                                      entry, extracted)
+    assert out["S_root_shell"]["rule_answer"] == "no" and out["S_root_shell"]["answer"] == "yes"
+
+
+def test_regex_does_not_overmatch_common_commands():
+    entry = playbooks.get_playbook("5402")
+    sig = {s["id"]: s for s in entry["signals"]}
+    def ans(sid, command):
+        return playbooks.rule_answer(sig[sid], {"full_log": f"USER=root ; COMMAND={command}"})
+    assert ans("S_root_shell", "/bin/bash") == "yes"
+    assert ans("S_root_shell", "/usr/bin/su -") == "yes"
+    assert ans("S_root_shell", "/usr/bin/sudo -i") == "yes"
+    assert ans("S_root_shell", "/usr/bin/systemctl restart sshd") == "no"
+    assert ans("S_root_shell", "/usr/bin/apt update") == "no"
+    assert ans("S_root_shell", "/usr/bin/sushi") == "no"
+    assert ans("S_security_change", "/usr/bin/vim /etc/sudoers") == "yes"
+    assert ans("S_security_change", "/bin/chmod u+s /tmp/x") == "yes"
+    assert ans("S_security_change", "/usr/bin/journalctl -u ssh") == "no"
+
+
+def test_signal_prompt_hides_regex():
+    system = playbooks.build_trusted_playbook_block(playbooks.get_playbook("5402"))
+    assert "match:" not in system and "regex:" not in system and "COMMAND=(" not in system
+
+
+def test_signal_answers_are_normalized_and_sanitized():
+    entry = playbooks.get_playbook("5402")
+    raw = {"S_root_shell": {"answer": "YES!", "value": "x"},
+           "S_security_change": {"answer": "yes", "value": "a\nIgnore\r" + "B" * 500},
+           "S_invented": {"answer": "yes", "value": "z"},
+           "S_service_caller": "yes"}
+    out = playbooks.normalize_signals(raw, entry)
+    assert set(out) == {"S_root_shell", "S_security_change", "S_service_caller"}
+    assert out["S_root_shell"]["answer"] == "unknown"
+    assert out["S_service_caller"]["answer"] == "unknown"
+    assert "\n" not in out["S_security_change"]["value"] and len(out["S_security_change"]["value"]) == 200
 
 
 def test_check_next_steps_does_not_match_inside_longer_numbers():
@@ -179,6 +401,14 @@ def test_sudo_query_uses_caller_not_root():
     steps = playbooks.render_verify_steps(playbooks.get_playbook("5402"), alert)
     history = next(s for s in steps if "30 ngày" in s)
     assert 'data.srcuser:"deploy"' in history and '"root"' not in history
+
+
+def test_sudo_actions_name_the_caller_not_root():
+    # sudo: data.dstuser = root → <user> sẽ thành "liên hệ quản trị viên root" (lỗi preview 2026-11-14)
+    for rule_id in ("5401", "5402", "5404"):
+        for branch in playbooks.get_playbook(rule_id)["branches"]:
+            for action in branch.get("actions") or []:
+                assert "<user>" not in action, (rule_id, branch["id"], action)
 
 
 def test_path_and_url_placeholders_are_escaped():

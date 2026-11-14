@@ -33,6 +33,12 @@
 #  7. Mỗi branch có: id, when (chỉ nhắc V có thật), severity (low|medium|high|critical|unknown),
 #     actions (danh sách).
 #  8. Có đủ fp_conditions, do_not, sources (không được rỗng).
+#  9. (Chế độ tín hiệu, từ 2026-11-14) Nếu có `signals`: id bắt đầu bằng S_, câu hỏi KHÔNG nhắc
+#     V0/V1... (tín hiệu chỉ đọc từ alert, không cần truy vấn); có ít nhất một nhánh select_if;
+#     select_if chỉ có MỘT khóa any hoặc all, trỏ tới id tín hiệu có thật; B_unknown không có select_if.
+#     Nhánh không có select_if = cần kết quả tra cứu → code không bao giờ tự chọn (đúng ý đồ).
+#     match (tùy chọn): {fields: [...], regex: '...'} — regex phải compile được; viết test nhỏ
+#     cho lệnh bình thường để chắc nó không bắt nhầm (xem test_regex_does_not_overmatch_common_commands).
 #
 # Trường code KHÔNG đọc (đừng dùng): summary, level, default_severity, name, condition, action.
 
@@ -74,6 +80,16 @@
         query: 'agent.id:"<agent_id>" and rule.id:(5402 or 5902 or 550 or 554) and timestamp >= "<t_success>"'
         time_range: "từ lần đăng nhập thành công đến now"
         interpret: "TODO"
+
+    # TÙY CHỌN (khuyên dùng): câu có/không đọc được NGAY TỪ ALERT. Model chỉ trả lời yes/no/unknown,
+    # code chọn nhánh. Hỏi điều alert ghi trực tiếp (tài khoản, lệnh, phương thức, dịch vụ trong full_log),
+    # không hỏi điều phải tra cứu mới biết (có chuỗi thất bại trước không, đã từng đăng nhập chưa).
+    signals:
+      - id: S_TODO
+        question: "TODO: trường nào trong alert, giá trị nào thì trả lời có?"
+        # code chạy regex (không phân biệt hoa thường) trên từng field; yes nếu regex HOẶC model nói yes.
+        # Bỏ dòng match nếu điều kiện không viết được thành regex (khi đó chỉ dùng câu trả lời của model).
+        match: {fields: [full_log], regex: 'TODO'}
 
     branches:                            # xét theo thứ tự; nhánh đầu tiên khớp được áp dụng
       - id: B1_TODO                      # nặng nhất trước

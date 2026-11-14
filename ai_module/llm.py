@@ -14,7 +14,9 @@ from pathlib import Path
 import ollama as ollama_sdk
 
 from playbooks import (
-    PLAYBOOK_PROMPT_VERSION, build_trusted_playbook_block, check_next_steps, playbook_sha256,
+    SIGNAL_ANSWERS, UNKNOWN_BRANCH, block_version, branch_ids, build_trusted_playbook_block,
+    get_branch, has_signals, normalize_signals, playbook_sha256, render_next_steps,
+    render_signal_next_steps, select_branch, signal_ids,
 )
 from reader import validate_ollama_base_url
 
@@ -843,15 +845,93 @@ def _trusted_wazuh_evidence_reminder(value, language: str) -> tuple[str, dict | 
     return reminder, evidence
 
 
+def playbook_output_schema(entry: dict) -> dict:
+    """Schema khi có playbook: model không viết next_steps.
+
+    - Playbook có `signals` (v6): model trả lời từng tín hiệu yes/no/unknown + giá trị trích;
+      code chọn nhánh. `signals` đứng đầu để model đọc alert trước khi viết summary.
+    - Không có (v5): model chọn nhánh (enum) và nêu căn cứ.
+    """
+    base = {key: value for key, value in OUTPUT_SCHEMA["properties"].items() if key != "next_steps"}
+    if has_signals(entry):
+        ids = signal_ids(entry)
+        signal_item = {
+            "type": "object",
+            "properties": {"answer": {"type": "string", "enum": list(SIGNAL_ANSWERS)},
+                           "value": {"type": "string", "maxLength": 200}},
+            "required": ["answer", "value"],
+            "additionalProperties": False,
+        }
+        properties = {"signals": {"type": "object",
+                                  "properties": {sid: signal_item for sid in ids},
+                                  "required": ids, "additionalProperties": False},
+                      **base}
+        return {"type": "object", "properties": properties,
+                "required": ["signals", "summary", "root_cause", "severity", "mitre"],
+                "additionalProperties": False}
+    properties = base
+    properties["branch_id"] = {"type": "string", "enum": branch_ids(entry)}
+    properties["branch_evidence"] = {"type": "string", "maxLength": 600}
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": ["summary", "root_cause", "severity", "mitre", "branch_id", "branch_evidence"],
+        "additionalProperties": False,
+    }
+
+
+def _parse_playbook_payload(raw: str, entry: dict, extracted: dict, language: str):
+    """Ghép: next_steps do code dựng; severity lấy theo nhánh model chọn (nếu nhánh có severity)."""
+    info = {"branch_id": UNKNOWN_BRANCH, "branch_valid": False, "branch_evidence": "",
+            "severity_source": "model"}
+    try:
+        payload = json.loads(_clean_payload_text(raw))
+    except json.JSONDecodeError:
+        payload = None
+    if not isinstance(payload, dict):
+        return _fallback_result("invalid_json", raw, language), "local_fallback", info
+    payload.pop("next_steps", None)  # bước tra cứu không lấy từ model
+    if has_signals(entry):
+        answers = normalize_signals(payload.pop("signals", None), entry, extracted)
+        info.pop("branch_evidence")
+        info.update(mode="signals", signals=answers,
+                    branch_id=select_branch(entry, answers), branch_valid=True)
+        payload["next_steps"] = render_signal_next_steps(
+            entry, extracted, answers, info["branch_id"], language,
+        )
+    else:
+        chosen = payload.pop("branch_id", None)
+        evidence = payload.pop("branch_evidence", "")
+        info["mode"] = "branch"
+        if isinstance(chosen, str) and chosen in branch_ids(entry):
+            info.update(branch_id=chosen, branch_valid=True)
+        info["branch_evidence"] = str(evidence)[:600] if isinstance(evidence, str) else ""
+        payload["next_steps"] = render_next_steps(
+            entry, extracted, info["branch_id"], info["branch_evidence"], language,
+        )
+    result, origin = _parse_alert_payload(json.dumps(payload, ensure_ascii=False), language)
+    if origin != "ollama_model":
+        return result, origin, info
+    branch_severity = str((get_branch(entry, info["branch_id"]) or {}).get("severity", ""))
+    if info["branch_id"] != UNKNOWN_BRANCH and branch_severity in OUTPUT_SEVERITIES - {"unknown"}:
+        info["model_severity"] = result["severity"]
+        result["severity"] = branch_severity
+        info["severity_source"] = "branch"
+    return result, origin, info
+
+
 def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:3b",
                   base_url: str = "http://localhost:11434", timeout: float = 120,
                   language: str = "vi", include_provenance: bool = False,
-                  allow_remote: bool = False, llm_parameters=None, playbook: dict | None = None):
+                  allow_remote: bool = False, llm_parameters=None, playbook: dict | None = None,
+                  extracted: dict | None = None):
     """Analyze one alert. Default return preserves the historical dict contract.
 
     playbook: entry from playbooks.get_playbook(rule_id). It comes from an internal file,
     so it is appended to the system prompt as trusted guidance, never mixed into the
-    untrusted RAG_CONTEXT block.
+    untrusted RAG_CONTEXT block. With a playbook the model only picks a branch (enum) and
+    cites evidence; next_steps are built by code from the playbook and `extracted` (the
+    extractor's field dict, used to fill query placeholders).
     """
     _assert_language(language)
     validate_ollama_base_url(base_url, allow_remote=allow_remote)
@@ -867,15 +947,19 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
         request_data += "\n\n" + _untrusted_message("RAG_CONTEXT", rag_context)
     user_msg = request_data + "\n\n" + _trusted_language_reminder(language)
     client = ollama_sdk.Client(host=base_url, timeout=timeout)
+    schema = playbook_output_schema(playbook) if playbook else OUTPUT_SCHEMA
     response = _safe_chat(client,
         model=model,
         messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_msg}],
-        format=OUTPUT_SCHEMA,
+        format=schema,
         options=options,
     )
     content = _response_content(response)
+    branch_info = None
     if not isinstance(content, str):
         result, origin = _fallback_result("missing_content", language=language), "local_fallback"
+    elif playbook:
+        result, origin, branch_info = _parse_playbook_payload(content, playbook, extracted or {}, language)
     else:
         result, origin = _parse_alert_payload(content, language=language)
     rule_level = extract_rule_level(alert_text)
@@ -886,7 +970,7 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
     )
     provenance = _provenance(
         response, content, requested_model=model, output_origin=origin, prompt=prompt,
-        request_data=request_data, output_schema=OUTPUT_SCHEMA, language=language,
+        request_data=request_data, output_schema=schema, language=language,
         model_digest=digest, model_digest_source=digest_source,
         model_digest_observed_at=digest_observed_at, result=result, options=options,
     )
@@ -896,9 +980,9 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
         provenance["playbook"] = {
             "rule_id": str(playbook.get("rule_id", "")),
             "status": str(playbook.get("status", "draft")),
-            "block_version": PLAYBOOK_PROMPT_VERSION,
+            "block_version": block_version(playbook),
             "sha256": playbook_sha256(playbook),
-            "check": check_next_steps(result.get("next_steps"), playbook),
+            **(branch_info or {}),
         }
     # Alert/eval consumers have a fixed five-field schema. The expanded public
     # trace is used by the dashboard aggregate contract, never by alert evals.

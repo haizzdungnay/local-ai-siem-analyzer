@@ -365,6 +365,18 @@ playbooks:
           Chú ý syscheck.path: ~/.ssh/authorized_keys, /etc/passwd, /etc/shadow, /etc/sudoers*,
           /etc/cron*. 5501/5502 (PAM session) không có srcip: tương quan theo agent.id + user + thời gian.
 
+    # Tín hiệu đọc được ngay từ alert (không cần truy vấn). Model trả lời yes/no/unknown + giá trị;
+    # match (regex, không phân biệt hoa thường, chạy trên từng field) do code chạy.
+    # Kết quả = yes nếu regex HOẶC model nói yes (lệch về phía báo động). Model không thấy match.
+    # Code chọn nhánh theo select_if. Nhánh không có select_if cần kết quả tra cứu → code không tự chọn.
+    signals:
+      - id: S_sensitive_account
+        question: "Tài khoản đăng nhập (data.dstuser hoặc tên sau 'for' trong full_log) là root hoặc tài khoản dịch vụ (www-data, postgres, mysql, nginx, apache, nobody...)?"
+        match: {fields: [data.dstuser, data.srcuser], regex: '^(root|www-data|postgres|mysql|mariadb|nginx|apache|httpd|nobody|daemon|bin|sys|mail|ftp|redis|tomcat)$'}
+      - id: S_password_method
+        question: "full_log ghi đăng nhập bằng mật khẩu ('Accepted password' hoặc 'keyboard-interactive'), không phải 'Accepted publickey'?"
+        match: {fields: [full_log], regex: 'Accepted (password|keyboard-interactive)'}
+
     branches:                            # xét theo thứ tự, nhánh đầu tiên khớp được áp dụng
       - id: B1_slow_bruteforce
         when: "V1 có chuỗi thất bại trước đó, hoặc V4 thấy sudo/tạo user/sửa file nhạy cảm"
@@ -375,6 +387,7 @@ playbooks:
           - "Đề xuất (cần người phê duyệt): kết thúc phiên SSH, đổi mật khẩu đúng tài khoản đó, chặn srcip nếu chủ tài khoản không xác nhận"
       - id: B2_sensitive_account
         when: "V3 là root đăng nhập trực tiếp hoặc tài khoản dịch vụ, BẤT KỂ V2"
+        select_if: {any: [S_sensitive_account]}
         severity: medium
         actions:
           - "Chạy V4; với tài khoản dịch vụ kiểm shell trong /etc/passwd và FIM 550 trên /etc/passwd"
@@ -920,7 +933,26 @@ playbooks:
         time_range: "24 giờ trước thời điểm alert → thời điểm alert"
         interpret: "Nhiều lần qua nhiều dịch vụ/IP (rhost khác nhau) → tài khoản đang bị nhắm; vài lần → gõ nhầm."
 
+    signals:
+      - id: S_local_su_sudo
+        question: "full_log cho thấy dịch vụ là su hoặc sudo (pam_unix(su:auth), pam_unix(su-l:auth), pam_unix(sudo:auth))?"
+        match: {fields: [full_log], regex: 'pam_unix\((su|su-l|sudo):auth\)'}
+      - id: S_service_actor
+        question: "Người đang gõ (ruser=, hoặc uid= khi ruser trống) là tài khoản dịch vụ (www-data hay uid=33, postgres, mysql, nginx, apache...)?"
+        match: {fields: [full_log], regex: '\bruser=(www-data|postgres|mysql|mariadb|nginx|apache|httpd|nobody|daemon|bin|sys|mail|ftp|redis|tomcat)(\s|$)|\buid=33(\s|$)'}   # uid 33 = www-data (Debian/Ubuntu)
+      - id: S_remote_sshd
+        question: "Dịch vụ là sshd (pam_unix(sshd:auth)) và rhost= có địa chỉ từ xa?"
+        match: {fields: [full_log], regex: 'pam_unix\(sshd:auth\).*\brhost=\S'}
+
     branches:
+      - id: B0_service_account_su        # Claude thêm 2026-11-14 (nâng ghi chú cũ ở B3) — chờ Nguyên duyệt
+        when: "V1 là su/sudo và người gõ là tài khoản dịch vụ (www-data, postgres...): tài khoản dịch vụ không có lý do gõ mật khẩu để lên quyền"
+        select_if: {all: [S_local_su_sudo, S_service_actor]}
+        severity: high
+        actions:
+          - "Nghi web shell hoặc dịch vụ bị chiếm đang dò mật khẩu để lên quyền: chạy V3 ngay để xem có su/sudo thành công (5303, 5304, 5402) sau thời điểm alert"
+          - "Tìm dấu vết khai thác ứng dụng chạy dưới tài khoản đó trước thời điểm alert (rule web 31101, 31103, 31105, 31106 trên agent <agent_id>)"
+          - "Đề xuất (cần người phê duyệt): cô lập dịch vụ bị nghi chiếm; nếu V3 có thành công thì xử lý như B1"
       - id: B1_local_privesc_success
         when: "V1 là su/sudo, V3 có thất bại lặp lại rồi thành công (5303/5304 hoặc 5402), người gõ (ruser) không phải admin quen"
         severity: high
@@ -1031,15 +1063,15 @@ playbooks:
         when: "V2 có sudo thành công VÀ (V1 có chuỗi dò mật khẩu nhiều lần hoặc V3 phát hiện phiên xâm nhập/tài khoản dịch vụ hoặc V4 có tạo user/sửa file nhạy cảm)"
         severity: high
         actions:
-          - "Xác minh khẩn với quản trị viên hệ thống và chủ tài khoản <user>"
+          - "Xác minh khẩn với quản trị viên hệ thống và chủ tài khoản <srcuser>"
           - "Kiểm tra toàn bộ lệnh đã chạy trong V2 và các thay đổi ở V4"
-          - "Đề xuất (cần người phê duyệt): thu hồi phiên làm việc trên agent <agent_id>, đổi mật khẩu của <user> và cô lập máy nếu phát hiện webshell"
+          - "Đề xuất (cần người phê duyệt): thu hồi phiên làm việc trên agent <agent_id>, đổi mật khẩu của <srcuser> và cô lập máy nếu phát hiện webshell"
       - id: B2_local_sudo_brute_force
         when: "V2 chưa chạy được sudo thành công, nhưng V1 có chuỗi lỗi lặp lại (5401, 5404, 5405) HOẶC V3 cho thấy tài khoản dịch vụ/phiên SSH lạ đang thử sudo"
         severity: medium
         actions:
           - "Kiểm tra trường data.srcuser và data.tty trong full_log xem lệnh sudo được gọi từ terminal người dùng hay từ tiến trình web/ứng dụng"
-          - "Đề xuất (cần người phê duyệt): khóa tạm thời phiên của tài khoản <user> nếu xác nhận đang bị dò mật khẩu cục bộ"
+          - "Đề xuất (cần người phê duyệt): khóa tạm thời phiên của tài khoản <srcuser> nếu xác nhận đang bị dò mật khẩu cục bộ"
       - id: B3_benign_sudo_typo
         when: "V1 chỉ có 1-2 lần gõ sai, V3 xác nhận phiên đăng nhập SSH hợp lệ của quản trị viên, V2 nhập lại đúng mật khẩu với lệnh quản trị bình thường, không chạy V4"
         severity: low
@@ -1119,19 +1151,31 @@ playbooks:
           Có tạo user mới hoặc thay đổi file cấu hình trọng yếu sau một lệnh sudo đáng nghi: dấu hiệu kẻ tấn
           công đang thiết lập quyền truy cập bền vững (persistence) dưới quyền root.
 
+    signals:
+      - id: S_root_shell
+        question: "Lệnh (data.command hoặc COMMAND= trong full_log) mở shell root tương tác: bash, sh, zsh, dash, su, sudo -i, sudo -s?"
+        match: {fields: [full_log], regex: 'COMMAND=(\S*/)?(bash|sh|zsh|dash|ksh|fish|su)(\s|$)|COMMAND=(\S*/)?sudo\s+-[is](\s|$)'}
+      - id: S_security_change
+        question: "Lệnh sửa cấu hình bảo mật hoặc tạo đường quay lại: /etc/sudoers, /etc/passwd, /etc/shadow, authorized_keys, chmod +s hoặc u+s, useradd, usermod, hoặc tải script từ mạng (curl, wget)?"
+        match: {fields: [full_log], regex: 'COMMAND=.*(/etc/sudoers|/etc/passwd|/etc/shadow|authorized_keys|visudo|chmod\s+\S*\+s|\b[ugo]*\+s\b|\buseradd\b|\busermod\b|\bcurl\b|\bwget\b)'}
+      - id: S_service_caller
+        question: "Người gọi sudo (data.srcuser, tên đứng trước 'TTY=' trong full_log) là tài khoản dịch vụ (www-data, postgres, mysql, nginx, apache...)?"
+        match: {fields: [data.srcuser], regex: '^(www-data|postgres|mysql|mariadb|nginx|apache|httpd|nobody|daemon|bin|sys|mail|ftp|redis|tomcat)$'}
+
     branches:
       - id: B1_malicious_root_execution
         when: "(V1 có chuỗi brute-force hoặc V2 đến từ IP xâm nhập trái phép) VÀ (V3 thực thi lệnh độc hại/mở shell root hoặc V4 phát hiện tạo user/sửa file nhạy cảm)"
         severity: high
         actions:
-          - "Xác minh khẩn với chủ tài khoản <user> về lệnh sudo vừa thực thi"
+          - "Xác minh khẩn với chủ tài khoản <srcuser> về lệnh sudo vừa thực thi"
           - "Kiểm tra chi tiết lệnh trong data.command và các file bị thay đổi ở V4"
           - "Đề xuất (cần người phê duyệt): ngắt phiên kết nối hiện tại trên agent <agent_id>, thu hồi quyền sudo hoặc khóa tạm thời tài khoản bị chiếm quyền"
       - id: B2_unusual_sudo_command_or_context
         when: "V1 sạch, nhưng V3 phát hiện lệnh mở interactive root shell / sửa cấu hình bảo mật ngoài giờ bảo trì HOẶC lần đầu chạy lệnh lạ không thuộc quy trình chuẩn"
+        select_if: {any: [S_root_shell, S_security_change, S_service_caller]}
         severity: medium
         actions:
-          - "Liên hệ quản trị viên <user> để xác nhận mục đích của lệnh sudo (đối chiếu với change ticket nếu có)"
+          - "Liên hệ quản trị viên <srcuser> để xác nhận mục đích của lệnh sudo (đối chiếu với change ticket nếu có)"
           - "Theo dõi kết quả V4 xem có thay đổi hệ thống nào phát sinh ngoài dự kiến không"
       - id: B3_normal_admin_or_automation_sudo
         when: "V1 sạch, V2 từ nguồn quản trị hoặc tác vụ tự động hợp lệ, V3 xác nhận tài khoản và lệnh sudo quen thuộc trong 30 ngày qua, không chạy V4"
@@ -1214,16 +1258,16 @@ playbooks:
         when: "V1 có sudo/PAM thành công VÀ (V2 có nhiều lần dò mật khẩu hoặc V3 xuất phát từ phiên xâm nhập/tài khoản dịch vụ hoặc V4 có tạo user/sửa file)"
         severity: high
         actions:
-          - "Xác minh khẩn với quản trị viên hệ thống và chủ tài khoản <user>"
+          - "Xác minh khẩn với quản trị viên hệ thống và chủ tài khoản <srcuser>"
           - "Kiểm tra lệnh thực thi trong V1 và các thay đổi hệ thống ở V4"
-          - "Đề xuất (cần người phê duyệt): ngắt toàn bộ phiên của <user> trên agent <agent_id>, đặt lại mật khẩu và cô lập máy chủ nếu đã bị cài backdoor"
+          - "Đề xuất (cần người phê duyệt): ngắt toàn bộ phiên của <srcuser> trên agent <agent_id>, đặt lại mật khẩu và cô lập máy chủ nếu đã bị cài backdoor"
       - id: B2_active_local_escalation_attempt
         when: "V1 chưa thành công, nhưng V2 có nhiều lần nổ 5404/5405/5551 HOẶC V3 cho thấy phiên SSH đáng nghi / tài khoản dịch vụ gọi sudo"
         severity: medium
         actions:
           - "Kiểm tra tiến trình cha và terminal (data.tty) của lệnh sudo trên agent <agent_id>"
-          - "Xác minh với chủ tài khoản <user> xem họ có đang thao tác trên máy không"
-          - "Đề xuất (cần người phê duyệt): khóa tạm thời tài khoản <user> và ngắt phiên SSH liên quan nếu người dùng xác nhận không thực hiện"
+          - "Xác minh với chủ tài khoản <srcuser> xem họ có đang thao tác trên máy không"
+          - "Đề xuất (cần người phê duyệt): khóa tạm thời tài khoản <srcuser> và ngắt phiên SSH liên quan nếu người dùng xác nhận không thực hiện"
       - id: B3_user_forgot_password
         when: "V2 chỉ có 1 lần 5404 đơn lẻ, V3 xác nhận phiên SSH hợp lệ từ IP quen thuộc của quản trị viên (V1 nhập đúng ở lần sau hoặc tự dừng), không chạy V4"
         severity: low
