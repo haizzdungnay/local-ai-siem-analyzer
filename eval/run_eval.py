@@ -146,6 +146,7 @@ def main():
                     include_provenance=True,
                     allow_remote=cfg["ollama"].get("allow_remote", False),
                     playbook=get_playbook(extracted.get("rule.id", "")) if args.playbooks else None,
+                    extracted=extracted,
                 )
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"

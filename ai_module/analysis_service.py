@@ -530,6 +530,7 @@ class AnalysisService:
             allow_remote=self.cfg["ollama"].get("allow_remote", False),
             llm_parameters=llm_parameters,
             playbook=playbook_for_config(self.cfg, extracted.get("rule.id", "")),
+            extracted=extracted,
         )
         return {
             "analysis": result,

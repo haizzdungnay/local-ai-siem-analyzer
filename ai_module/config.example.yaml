@@ -53,6 +53,9 @@ extractor:
     - "data.srcip"
     - "data.srcuser"                   # user do kẻ tấn công nhập: chỉ trích dẫn
     - "data.dstuser"
+    - "syscheck.path"                  # FIM: điền <path> cho playbook 550/553/554
+    - "data.url"                       # web: điền <url>; chuỗi do client gửi (không tin cậy)
+    - "data.id"                        # web: mã HTTP
     - "full_log"
 
 # Playbook Tầng 3 (rag_data/playbooks.yaml): tra chính xác theo rule.id, đưa vào system prompt

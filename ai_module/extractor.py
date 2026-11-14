@@ -61,6 +61,9 @@ _LABELS = {
     "timestamp": "Alert time (timestamp)",
     "data.srcuser": "Source user (data.srcuser)",
     "data.dstuser": "Target user (data.dstuser)",
+    "syscheck.path": "File path (syscheck.path)",
+    "data.url": "URL (data.url)",
+    "data.id": "HTTP status (data.id)",
     "data.srcip": "Source IP",
     "full_log": "Log",
 }
@@ -145,7 +148,7 @@ def format_for_llm(extracted: dict) -> str:
                "data.dstuser", "full_log"}
     for key, val in extracted.items():
         if key not in handled:
-            clean_val = str(val).replace("\x00", "")
+            clean_val = str(val).replace("\x00", "")[:500]
             lines.append(f"{_LABELS.get(key, key)}: {clean_val}")
 
     return "\n".join(lines).replace("\x00", "")

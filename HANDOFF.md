@@ -17,6 +17,7 @@ Ngày cập nhật: 2026-10-27
 - **Smoke v6.1 (11:43): 3/3 đúng nhánh** — 5715 → B2_sensitive_account (medium), 5402 → B2_unusual (medium), 5503 → B0_service_account_su (high). Câu trả lời model y hệt 11:34 (temp 0, seed 42): model 5/8, regex 8/8, kết hợp 8/8. Cả 3 lần regex sửa đều là model "no" → regex "yes".
 - **Cảnh báo khi viết báo cáo:** regex 8/8 KHÔNG phải bằng chứng — regex viết ra khi đã nhìn đúng 3 alert này (overfit). Cần bộ alert giữ riêng (held-out) do người khác tạo/nhãn trước khi đo; thêm ca âm tính (sudo systemctl, publickey vào tài khoản cá nhân, admin gõ nhầm su).
 - Lặt vặt thấy trong output: hành động nhánh ghi "Chạy V4" nhưng next_steps đánh số 1–4, không có nhãn V → analyst phải tự đếm; 5503 query lọc `data.dstuser:"root"` (tài khoản đích) chứ không theo người gõ www-data (decoder không tách ruser) — chấp nhận, ghi chú.
+- 12:40: commit `31eae5c` sót 5 file của đợt v5 (main, analysis_service, run_eval, extractor, config.example) → commit bổ sung. Bài học: `git status` + `git diff --stat`, không dùng danh sách file viết tay.
 - Next: Nguyên commit; viết signals + match cho 25 playbook còn lại (ưu tiên rule có hành động "Đóng"/low); tạo alert held-out; rồi nối `analyze_window` (dashboard).
 
 ## Ghép template với LLM — block v5 (2026-11-14)

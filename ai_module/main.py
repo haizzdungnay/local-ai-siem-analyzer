@@ -210,6 +210,7 @@ def main():
                 include_provenance=True,
                 allow_remote=cfg["ollama"].get("allow_remote", False),
                 playbook=playbook_for_config(cfg, extracted.get("rule.id", "")),
+                extracted=extracted,
             )
             safe_provenance = dict(provenance) if isinstance(provenance, dict) else {}
             safe_provenance["rag"] = alert_rag_provenance

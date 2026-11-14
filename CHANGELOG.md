@@ -71,6 +71,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
+- Commit bổ sung cho `31eae5c` (bị sót khi commit): `main.py`, `analysis_service.py`, `run_eval.py` truyền `extracted=` vào `analyze_alert`; extractor/config.example thêm `agent.id`, `timestamp`, `syscheck.path`, `data.url`, `data.id`. Không có commit này thì `llm.py` trên GitHub chạy playbook với placeholder rỗng.
 - Hành động nhánh của playbook sudo 5401, 5402, 5404 dùng `<srcuser>` (người gọi sudo) thay vì `<user>` (= data.dstuser = root → "liên hệ quản trị viên root"). Test chặn tái phạm.
 - Template `render_verify_steps`: tách `<alert_time>` (giờ của alert, điền từ `timestamp`) khỏi `<t_success>` (giờ đăng nhập thành công tìm được khi điều tra — không điền). Trước đó `<t_success>` luôn bị điền giờ alert, sai với 5712/5763 (alert là lúc đang dò, chưa có thành công). 40112/5715 (alert chính là lần thành công) đổi sang `<alert_time>`. Bỏ nhãn V trong `question`/`time_range` của 5712, 40112, 5715.
 - `playbook-block-v4` (thử 11:2x, RÚT LẠI cùng ngày): chỉ dẫn mô tả khuôn `Tra [query] trong [time_range]: [question]` → model chép nguyên văn khuôn (cả ngoặc vuông), rồi lẫn tiếng Trung + JSON hỏng vào next_steps. `ai_module/playbooks.py` và `tests/test_playbook_trusted.py` trở về v3.
