@@ -70,6 +70,6 @@ Tài liệu triển khai chi tiết: [Hybrid AI Model Gateway](hybrid-ai-gateway
 
 ## Mở rộng đã thống nhất ngày 2026-11-16: khắc phục có phê duyệt
 
-[Kế hoạch agent điều tra và khắc phục](approval-remediation-agent-roadmap.md) chốt R0–R6: agent chỉ đọc → approval core/dry-run → Telegram hai bước → một action containment lab có kiểm chứng/hoàn tác → email/trang duyệt → đánh giá. Trạng thái **ĐÃ THỐNG NHẤT HƯỚNG THIẾT KẾ / CHƯA TRIỂN KHAI**.
+[Kế hoạch agent điều tra và khắc phục](approval-remediation-agent-roadmap.md) chốt R0–R6: Hermes/MCP với tool đọc cố định ở R1; R2 bổ sung identity, client cấp/deny/revoke tool trong catalog, pause/refresh/resume và duyệt plan với fake executor; R3 bot approval riêng; R4 một action containment lab có kiểm chứng/hoàn tác; R5 email/web; R6 đánh giá. Tool ghi cần grant đúng plan và final confirm, không có quyền terminal tổng quát. Trạng thái **ĐÃ THỐNG NHẤT HƯỚNG THIẾT KẾ / CHƯA TRIỂN KHAI**.
 
 Runtime hiện tại vẫn là analyst-assist. Giai đoạn tương lai chỉ cho executor chạy capability cố định sau khi server xác minh operator, plan version/hash và phạm vi; thay đổi lớn phải duyệt lại. Tự thực thi không người duyệt và shell do LLM sinh nằm ngoài phạm vi. Quyết định mới bổ sung hướng phát triển, không đánh dấu các gate cũ hoặc chức năng mới là hoàn tất.

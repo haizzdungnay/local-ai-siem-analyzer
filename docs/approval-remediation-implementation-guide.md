@@ -1,6 +1,8 @@
 # Hướng dẫn giải quyết issue: agent điều tra và khắc phục có phê duyệt
 
-Ngày đối chiếu: **16/11/2026, Asia/Saigon**. Mã nguồn: [`main@fa923e8`](https://github.com/haizzdungnay/local-ai-siem-analyzer/commit/fa923e8736a16684c7079cfa0ae4d8581e4e10ff). Phạm vi: [Epic #10](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/10), 17 issue triển khai R0–R6 và hai issue phối hợp/review #23, #29.
+Ngày đối chiếu: **16/11/2026, Asia/Saigon**. Mã nguồn: [`main@baa7192`](https://github.com/haizzdungnay/local-ai-siem-analyzer/commit/baa7192704a0d127b7d75aeb8ad53f4c47af0dd2). Phạm vi: [Epic #10](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/10), 17 issue triển khai R0–R6 và hai issue phối hợp/review #23, #29.
+
+**Điều chỉnh đã chốt:** Hermes Agent điều phối qua MCP server SIEM; tool có handler trong catalog được cấp thêm theo xác nhận client. Backend giữ identity/grant/approval/executor; quyền động chỉ bật sau #18, R1 vẫn dùng tool đọc cố định. Đây là cập nhật thiết kế, chưa cài Hermes hoặc bổ sung tool runtime.
 
 **Đây là hướng dẫn triển khai, không phải báo cáo đã hoàn thành.** Khi đối chiếu, các issue trên đều đang mở; runtime approval/executor chưa có. Tên module, trường dữ liệu và test mới dưới đây là đề xuất cho người triển khai. Đọc lại HEAD và issue trước khi bắt đầu vì người khác có thể đã sửa một phần.
 
@@ -13,9 +15,9 @@ Ngày đối chiếu: **16/11/2026, Asia/Saigon**. Mã nguồn: [`main@fa923e8`]
 | Mốc | Kết quả bàn giao | Điều kiện chuyển tiếp |
 |---|---|---|
 | R0 | Nguồn dữ liệu trung thực, nhánh playbook không giả bằng chứng, baseline có version | #11, #12, #13 được nghiệm thu; protocol #27 đã chuẩn bị |
-| R1 | Điều tra chỉ đọc có receipt và hoạt động trong dashboard | #14, #15; kiểm truy vấn trên field lab thật cho pilot |
-| R2 | Plan bất biến, operator identity và duyệt hai bước với fake executor | #16, #17, #18; không có quyền ghi thật |
-| R3 | Duyệt bằng bot Telegram test, trạng thái lưu bền vững | #19, #20; integration bot được phân biệt với mock |
+| R1 | Hermes gọi tool đọc qua MCP, có receipt và tích hợp dashboard | #14, #15; fixed allowlist, model tool-call và field lab pilot |
+| R2 | Auth, grant tool, pause/resume và duyệt plan với fake executor | #16, #17, #18; client host xác nhận, không có quyền ghi thật |
+| R3 | Client Telegram duyệt grant/plan bằng bot approval riêng | #19, #20; integration bot và Hermes được phân biệt với mock |
 | R4 | Một action block IP tạm trên một victim Linux lab | #21, #22; chứng minh cả tác động và tự gỡ |
 | R5 | Email dẫn đến web approval có xác thực | #24, #25; nghiệm thu riêng, không chặn bản Telegram-only |
 | R6 | Bộ kiểm thử xuyên suốt, đo lường thật và runbook | #26, #27, #28; reviewer độc lập replay được |
@@ -26,11 +28,11 @@ Ngày đối chiếu: **16/11/2026, Asia/Saigon**. Mã nguồn: [`main@fa923e8`]
 |---|---|---|---|
 | 0 | [#23](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/23), [#29](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/29) | Chốt điểm giao schema/người tích hợp; dựng protocol #27 sớm | Biên bản quyết định, danh sách file chung, bộ development tách held-out |
 | 1 | [#11](#issue-11), [#12](#issue-12), [#13](#issue-13) | Có thể phát triển độc lập; ưu tiên chặn partial và nhánh chưa xác minh trước | Regression lỗi hiện tại, contract dữ liệu, baseline mới |
-| 2 | [#14](#issue-14) | Sau #11 + #12 + #13 | Tool chỉ đọc, receipt, budget, scope |
+| 2 | [#14](#issue-14) | Sau #11 + #12 + #13; không chờ #18 | Hermes/MCP chỉ đọc, catalog cố định, receipt/budget/scope |
 | 3 | [#15](#issue-15) | Sau #14; nhận phần window/playbook đã thống nhất ở #23 | Dashboard dùng đúng evidence/playbook, có provenance |
 | 4 | [#16](#issue-16), [#17](#issue-17) | Cùng sau #15; auth và plan có thể phát triển độc lập khi đã chốt contract | Identity/role/session; schema/hash/policy |
-| 5 | [#18](#issue-18) | Sau #16 + #17 | Approval transaction và migration, fake executor |
-| 6 | [#19](#issue-19) → [#20](#issue-20) | Telegram; #24 có thể bắt đầu sau #18 | Pairing, poller và callback hai bước |
+| 5 | [#18](#issue-18) | Sau #16 + #17; dùng adapter #14 | Grant/approval transaction, client host, refresh/resume và fake executor |
+| 6 | [#19](#issue-19) → [#20](#issue-20) | Bot approval riêng; #24 có thể bắt đầu sau #18 | Pairing, poller và callback cấp tool/duyệt plan |
 | 7 | [#21](#issue-21) → [#22](#issue-22) | Worker fake trước, adapter/lab sau | Journal/reconcile; block và cleanup đã kiểm chứng |
 | Nhánh email | [#24](#issue-24) → [#25](#issue-25) | #24 cần #18; #25 cần cả #24 và #20 | Web/email dùng chung approval core |
 | 8 | [#26](#issue-26), [#27](#issue-27) | Viết test/protocol từ sớm; đóng #26 sau #22, kết quả C của #27 cũng chờ #22 | Fault injection, regression lab, study thật |
@@ -40,9 +42,9 @@ Với một người làm chính, đi theo đợt 1–9; tạm để R5 sau MVP 
 
 ```mermaid
 flowchart TD
-    R0["R0: correctness và baseline"] --> R1["R1: điều tra chỉ đọc"]
-    R1 --> R2["R2: auth, plan, approval"]
-    R2 --> R3["R3: Telegram"]
+    R0["R0: correctness và baseline"] --> R1["R1: Hermes/MCP, tool đọc cố định"]
+    R1 --> R2["R2: auth, grant, plan; refresh/resume"]
+    R2 --> R3["R3: bot approval riêng"]
     R3 --> R4["R4: executor lab"]
     R2 --> WEB["R5.1: web approval"]
     WEB --> MAIL["R5.2: email"]
@@ -67,7 +69,33 @@ flowchart TD
 | `ai_module/telegram_notifier.py`, `gmail_notifier.py` | Outbound hiện tại; tái dùng redaction/transport, không gộp quyền vào notifier | #19, #20, #25 |
 | `tests/`, `eval/`, `.github/workflows/python-tests.yml` | Regression, protocol, provenance và CI matrix | Tất cả |
 
-**Module mới đề xuất:** `investigation_service.py`, `remediation_planner.py`, `approval_service.py`, `remediation_store.py`, `remediation_worker.py`, `telegram_approval.py`, `remediation_actions/`, `blueprints/approvals.py`, đặt dưới `ai_module/`. Có thể tách auth ra module riêng sau #16. Giữ adapter kênh mỏng: chỉ xác minh input kênh và gọi service; không viết một bộ logic duyệt riêng cho Telegram, một bộ cho web.
+**Module mới đề xuất:** `siem_mcp.py`, `investigation_service.py`, `remediation_planner.py`, `approval_service.py`, `remediation_store.py`, `remediation_worker.py`, `telegram_approval.py`, `remediation_actions/`, `blueprints/approvals.py`, đặt dưới `ai_module/`. Hermes chạy bằng profile/version đã pin; chỉ thêm adapter MCP, không viết lại vòng điều phối agent trong `llm.py`. Catalog nằm trong registry code; grant dùng service/store đã có kế hoạch, chưa cần plugin manager hoặc DB riêng. Có thể tách auth sau #16. Adapter kênh chỉ xác minh input và gọi cùng service.
+
+### Hermes/MCP và quyền tool theo yêu cầu
+
+Contract quyền chi tiết ở [roadmap](approval-remediation-agent-roadmap.md#hermes-mcp-và-cấp-quyền-tool). Chia triển khai để không tạo dependency vòng:
+
+- **#14/R1:** Hermes profile giới hạn, MCP stdio local, context/service identity chỉ đọc do host cấu hình, catalog/schema/version và adapter vào reader/playbook. Giữ luồng JSON phân tích cũ; model phải sinh tool call hợp lệ theo giao thức Hermes/endpoint, không suy ra lệnh từ văn bản tự do. Không expose credential hay cổng MCP công khai, terminal/file write/code execution tổng quát hoặc công cụ tự cài plugin/server.
+- **#16–#18/R2:** gắn context operator/request tin cậy vào kết nối; bật `list_available_tools`, `request_tool_access`, `propose_remediation` (chỉ tạo draft), `get_request_status` và client host đã xác thực để cấp/từ chối/thu hồi. Trước đó tool động disabled. #24 hoàn thiện web/email/mobile sau; panel cơ bản R2 đủ kiểm grant bằng fake executor.
+- **#19–#20/R3:** đưa cùng quyết định lên bot approval SIEM riêng. Hermes gateway dùng bot/token khác nếu bật; cùng bot không có hai poller. Model không được gọi endpoint cấp grant/confirm hoặc nhận credential của operator.
+- **#21–#22/R4:** action tool gọi cùng service/queue; final confirm đã tạo execution thì trả lại ID đó, không tạo lần dispatch khác. Worker mới gọi adapter có quyền ghi thật sau toàn bộ gate.
+
+| Record đề xuất | Nội dung tối thiểu |
+|---|---|
+| Catalog entry | Tool ID/version, schema/handler/policy digest, loại đọc/ghi, handler đã review và scope được phép xin |
+| Access request | ID/idempotency key, operator/request/run binding từ context backend, tool/version, scope/tham số giới hạn, lý do/evidence refs, expiry và state |
+| Grant | ID, access request, actor/request binding, tool/version/digests, scope, max uses/deadline, plan hash nếu ghi, revision và state |
+| Resume event | Event ID/revision, request/grant refs và trạng thái đã commit; không chứa bearer secret, command hoặc credential |
+
+Access request: `pending → granted|denied|expired|cancelled`; grant: `active → exhausted|revoked|expired`. Task chờ ở `awaiting_tool_approval`; `needs_tool_development` khi yêu cầu khả năng chưa có handler, ngoài policy thì deny. Cấp quyền không tự cài mã; handler mới cần PR/test/đăng ký catalog trước khi xin quyền. Repeated denied request cùng tool/scope phải trả quyết định hiện có, không spam card hoặc lặp vô hạn.
+
+Backend kiểm context/role/grant/version/scope/deadline/lượt dùng tại mọi call và trước worker dispatch; không tin `operator_id` model tự khai hoặc schema đang hiện trong Hermes. `notifications/tools/list_changed`/reload chỉ cập nhật khả năng nhìn thấy, không cấp quyền. Filter theo caller/request; registry Hermes toàn process không được trở thành grant cho chat khác. Claim budget/use bằng CAS với invocation ID; grant/retry/refresh không reset request budget/deadline. Worker tiêu thụ write usage khi ghi dispatch intent; facade/status không trừ lượt hoặc tạo execution khác. Số lượt điều phối/control cũng có trần; chờ bằng event/status có backoff, không poll hoặc xin quyền vô hạn. Grant ID nằm ngoài canonical plan và trỏ đến plan hash, tránh hash tự tham chiếu.
+
+MVP một operator/một request chủ động trong profile Hermes riêng. Host launcher gắn context bất biến cho kết nối MCP stdio; chat/tool arguments không đổi binding, yêu cầu concurrent khác bị từ chối. Mở nhiều request chỉ sau test isolation/transport xác thực từng request. Read grant nằm trong query budget/hạn request; write grant cho một execution và không vượt execution deadline. Không dùng TTL firewall làm hạn grant.
+
+Card client cần tool/chức năng, victim và IP nguồn hoặc miền truy vấn, lý do/evidence, số lần, expiry, tác động và rollback. Mutation cần auth/role/CSRF hoặc Telegram binding đã xác minh. Quyền đọc chỉ được cấp trong scope request; quyền ghi gắn plan hash và được ghi cùng review/confirm kế hoạch, không có endpoint grant-only cho phép dispatch. Xin tool ghi chưa có plan trả `needs_plan`; dùng `propose_remediation` gọi planner tạo draft trước khi xác nhận. Revoke/expiry dừng call mới, giữ cleanup đã được duyệt. Tool lỗi/uncertain không bị model thử lại bằng shell hay handler khác.
+
+Lưu grant và sự kiện resume qua transaction/outbox. Chỉ sau commit mới refresh schema/resume; event trùng/trễ phải idempotent và kiểm lại state hiện tại. Nếu Hermes đã mất phiên, UI giữ kết quả/pending để operator tiếp tục phiên được xác thực. Grant hết hạn, đổi handler hoặc model restart không tự tạo quyền lại. Pin và kiểm integration bản Hermes với cơ chế refresh/resume thực sự dùng; chưa test thì không báo hot reload đã hoạt động.
 
 ### Evidence và signals
 
@@ -83,6 +111,7 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 |---|---|
 | Scope | Một target từ inventory, tối đa 3 bước ghi; MVP chỉ `block_source_ip_temporary` |
 | Budget đọc | Mặc định tối đa 6 query/request, 30 giây/query; thêm deadline toàn request và giới hạn kích thước kết quả |
+| Tool grant | Gắn actor/request/tool version/digests/scope/max uses và expiry; write grant gắn plan hash, không cấp quyền shell chung |
 | Plan bất biến | Version/hash bao gồm action, target identity, tham số, evidence refs, policy/script digest, preconditions, verifier, retry, rollback và thời hạn có ý nghĩa |
 | Chuẩn hóa | Dùng một serializer server-side, định dạng UTC và IP nhất quán, số nguyên cho TTL, thứ tự step có ý nghĩa; từ chối NaN, unknown field và boolean giả số nguyên |
 | Review/confirm | Hai thao tác khác nhau; cùng operator đã xác thực, cùng version/hash. Lượt review chưa enqueue executor |
@@ -93,7 +122,7 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 
 **Điểm cần thiết kế rõ ở #17/#21:** evidence đã dùng để duyệt là snapshot bất biến. Receipt preflight mới chỉ xác nhận lại các điều kiện đã ghi, được lưu trong execution journal; không âm thầm sửa snapshot trong plan. Nếu kết quả mới đổi target, lý do hành động, phạm vi hoặc điều kiện quan trọng, phải supersede và duyệt lại. Nếu policy yêu cầu thay evidence trong plan, cũng phải tạo version mới.
 
-**Transaction xác nhận cuối đề xuất:** xác thực actor → bắt đầu transaction ghi → đọc và kiểm plan/challenge/binding/role/deadline → CAS trạng thái → consume challenge → ghi approval, audit và execution/outbox duy nhất → commit. Không gọi Telegram/Wazuh trong transaction. Worker chỉ nhận record đã commit. Unique constraint gắn approval với execution; mỗi step có idempotency key. Không coi unique row trong SQLite là bảo đảm tác động bên ngoài chỉ chạy một lần.
+**Transaction xác nhận cuối đề xuất:** xác thực actor → bắt đầu transaction ghi → đọc và kiểm plan/challenge/binding/role/deadline/tool versions → CAS trạng thái → consume challenge → ghi hoặc kiểm grant đúng plan, approval, audit và execution/outbox duy nhất → commit. Không gọi Hermes/MCP discovery/Telegram/Wazuh trong transaction. Worker chỉ nhận record đã commit. Unique constraint gắn approval với execution; action tool gọi lại sau resume chỉ trả execution đó. Mỗi step có idempotency key; unique row không bảo đảm tác động bên ngoài chỉ chạy một lần.
 
 ## 3. Hướng xử lý từng issue
 
@@ -142,17 +171,18 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 
 ### Issue 14
 
-**[#14 — R1.1: Tool điều tra chỉ đọc](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/14)**. Cần #11 + #12 + #13. Module mới đề xuất: `investigation_service.py`; tái dùng reader và contract ở mục 2.
+**[#14 — R1.1: Tool điều tra chỉ đọc](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/14)**. Cần #11 + #12 + #13; không phụ thuộc #18. Module mới đề xuất: `investigation_service.py`, `siem_mcp.py`; Hermes profile chỉ có tool đọc do host cấu hình.
 
 1. Bắt đầu bằng một workflow SSH pilot, ví dụ query thất bại cùng nguồn, đăng nhập thành công liên quan, và lịch sử cùng agent/user trong scope. Mỗi tool có ID/version, input schema, field allowlist, builder DSL, timeout và parser; đối chiếu rule/field thực trước khi dùng.
 2. Request giữ immutable scope agent identity và time range; mọi query là tập con của quyền đó. Việc tra 24 giờ/30 ngày phải nằm trong scope đã cho phép; nếu không, trả `needs_evidence`, không tự mở rộng. Không nhận URL/index, raw DQL/DSL hoặc tên tool tùy ý từ LLM.
-3. Áp budget 6 query, 30 giây/query và trần kết quả; retry cũng tiêu thụ ngân sách. Deadline toàn request/cancel phải dừng query tiếp theo. Chưa cần framework agent tổng quát; một vòng điều phối hữu hạn dễ kiểm thử hơn.
+3. Áp budget 6 query, 30 giây/query và trần kết quả; retry cũng tiêu thụ ngân sách. Deadline toàn request/cancel phải dừng query tiếp theo. Dùng Hermes làm vòng điều phối bị giới hạn bởi service; không viết vòng agent tổng quát thứ hai. MCP không nhận endpoint/query string tùy ý hoặc tự suy lệnh từ model text.
 4. Lưu receipt trước khi kết quả được dùng để chọn nhánh. Query rỗng có coverage đủ khác với nguồn chỉ giữ 7 ngày trong yêu cầu 30 ngày. Kết quả không hoàn chỉnh không được chứng minh điều kiện “không có sự kiện”.
 5. Query-derived signal được code tính từ receipt theo evaluator đã review. LLM chỉ tóm tắt và đề xuất hướng hỏi tiếp. Credential công cụ này chỉ đọc Indexer `:9200`; không truyền credential Manager/executor vào service hoặc prompt.
+6. Đăng ký schema/handler/digest trong catalog; chỉ expose subset đọc cố định qua MCP stdio. Pin Hermes/profile và kiểm đường Ollama tool call với model baseline hiện tại; sai protocol/JSON/schema thì trả lỗi có loại hoặc abstain. Thử bằng fixture trước, sau đó truy vấn pilot đã được phép; giữ proof end-to-end riêng với test helper. Grant động chỉ kích hoạt ở #18.
 
-**Kiểm thử:** đề xuất `tests/test_investigation_service.py`: tool lạ, target khác, thời gian ngoài scope, ký tự chèn query, budget/retry/cancel, timeout, source partial, ID giả và replay receipt thuộc request khác. Thêm fixture kết quả có/không có dữ liệu đúng schema.
+**Kiểm thử:** đề xuất `tests/test_investigation_service.py`, `tests/test_siem_mcp.py`: tool lạ, target khác, thời gian ngoài scope, ký tự chèn query, budget/retry/cancel, timeout, source partial, ID giả và replay receipt thuộc request khác. Thêm fixture đúng schema; integration Hermes → MCP → handler → tool result kiểm lựa chọn tool, tham số, receipt và dừng đúng budget, không chỉ đọc chuỗi model trả.
 
-**Đóng issue khi:** truy được từng kết luận về receipt đúng scope; ca thiếu bằng chứng abstain; không có đường ghi hoặc shell. Lab smoke chỉ đọc cần ghi riêng field/version đã đối chiếu.
+**Đóng issue khi:** truy được từng kết luận về receipt đúng scope; ca thiếu bằng chứng abstain; không có đường ghi hoặc shell. Có integration đúng Hermes/model/profile version và lab smoke chỉ đọc ghi riêng; không dùng mock để khẳng định tool-call/transport thật đã chạy.
 
 ### Issue 15
 
@@ -161,6 +191,7 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 1. Định nghĩa group key có rule, agent và phạm vi thời gian; source/user khi cần phải có nguồn. Không lấy một sample log đại diện làm bằng chứng cho mọi alert trong bucket.
 2. Chọn các nhóm ưu tiên trong budget đã cấu hình; exact lookup playbook cho từng nhóm. Ghi số nhóm/alert được bao phủ và bị cắt, không nạp cả 28 playbook vào mỗi prompt.
 3. Nối vào `analyze_aggregate` → `analyze_window` bằng contract có cấu trúc. Nếu bên playbook đã merge phần dựng bước, dùng hàm đó và thêm evidence adapter; không viết một pipeline cạnh tranh.
+   Request điều tra theo Hermes dùng cùng service/receipt; phân tích JSON cũ vẫn hoạt động. UI hiển thị task đang chạy/chờ tool/kết thúc theo state backend, không dựng quyền từ lời model.
 4. Hiển thị “đề xuất query”, “query đã chạy”, “nhánh chưa xác minh” riêng. Trên lần phân tích thường chỉ dựng gợi ý; query bổ sung chạy qua request điều tra rõ scope/budget. Giữ hành vi khi playbook/remediation disabled.
 5. Thêm VI/EN cho nội dung do code dựng, không chỉ nhãn nút; bản dịch thiếu phải được báo đúng. Report/export giữ provenance, không để UI hiện cảnh báo partial nhưng PDF/JSON lại báo hoàn chỉnh.
 
@@ -177,10 +208,11 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 3. Ưu tiên session có thể thu hồi trên server; đổi role/logout/revoke phải ảnh hưởng cả challenge và các bước chưa dispatch. Thiết lập expiry, xoay session sau đăng nhập, chống dò mật khẩu và audit không chứa password/token.
 4. Thêm CSRF cho mutation từ browser và giữ Host/Origin checks như lớp bổ sung. Cookie HttpOnly, SameSite và Secure theo transport; truy cập ngoài loopback cần TLS và chính sách endpoint đầy đủ. Origin/Host hợp lệ không thay danh tính operator.
 5. Chốt step-up/re-authentication theo risk policy. Nếu chưa có khả năng step-up, action đòi nó phải bị từ chối, không chuyển về hai lần bấm Telegram. Action rủi ro cao vẫn ngoài MVP.
+6. Quyền request/grant/deny/revoke tool tách rõ theo role. Backend tạo binding operator/request cho transport MCP từ phiên đã xác thực; actor/run ID trong tool arguments không có giá trị cấp quyền. Grant UI ban đầu trên host thuộc #18; chưa bật từ #14. Bảo vệ cả endpoint cấu hình bot/catalog/grant đang dùng khi activation, không chỉ nút approve mới.
 
 **Kiểm thử:** đề xuất `tests/test_operator_auth.py`, thêm test vào `tests/test_dashboard_api.py`: sai role, session hết hạn/đã revoke, CSRF, fixation, session cũ sau logout, quyền bị hạ giữa review và confirm. Disabled mode giữ tương thích ứng dụng cũ trên loopback; không vì vậy được mở từ xa khi endpoint cũ chưa được bảo vệ.
 
-**Đóng issue khi:** API không thể review/confirm bằng một biến `confirm:true`; có bootstrap/recovery được tài liệu hóa, quyền/expiry được thực thi server-side. Không cần bật truy cập mobile để hoàn thành nền auth.
+**Đóng issue khi:** API không thể review/confirm/grant chỉ nhờ biến client hoặc actor model tự khai; có bootstrap/recovery được tài liệu hóa, quyền/expiry được thực thi server-side. Không cần bật truy cập mobile để hoàn thành nền auth.
 
 ### Issue 17
 
@@ -192,6 +224,7 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 4. Tạo canonical bytes một lần cho plan, hash toàn bộ nội dung có quyền. Tách presentation VI/EN khỏi canonical execution payload; hiển thị phải được dựng từ payload đó. Thay target, TTL, script, policy, evidence quan trọng hoặc bước → version mới và invalidate approval cũ.
 5. Nếu thêm mapping vào playbook theo #23, dùng trường tùy chọn riêng như `remediation`; giữ `branches[].actions` là hướng dẫn văn bản. Mapping chưa đủ evidence/policy chỉ tạo candidate, không tự enqueue và không biến draft playbook thành quyền ghi.
 6. Return lỗi có mã lý do, ví dụ thiếu evidence/target protected/action không hỗ trợ; UI giải thích điều cần bổ sung. Không âm thầm thay action nguy hiểm bằng action khác rồi giữ hash/approval cũ.
+7. Catalog gồm tool đọc đã review và action facade MVP; schema/handler/policy digest có trong plan canonical. `request_tool_access` chỉ cấp quyền tool trong catalog được policy cho phép; mô tả khả năng chưa có handler trả `needs_tool_development`, không tạo quyền chạy mã. Action tool chỉ nhận plan ID/expected hash và trỏ execution được duyệt; không nhận shell hoặc tự thay target/TTL. Grant ghi gắn một plan, không mở quyền cho các plan tương lai.
 
 **Kiểm thử:** đề xuất `tests/test_remediation_planner.py`: round-trip canonicalization, đổi mọi field có ý nghĩa phải đổi hash, khác thứ tự key không đổi hash, thứ tự step có thay đổi hash, malformed/extra field, TTL sai kiểu/vượt trần, target ngoài inventory, model trả shell, prompt injection trong alert.
 
@@ -207,17 +240,20 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 4. Reject, expire, supersede, revoke vô hiệu các challenge còn lại. `GET` chỉ đọc; job nền hoặc mutation xử lý expiry, không để mở link gây transition. Clock lùi/bất thường phải chặn dispatch mới và yêu cầu xử lý, không làm token sống lâu hơn.
 5. Fake executor ghi nhận invocation trong bộ nhớ/journal test. R2 không khởi tạo adapter có credential live. Tách approval state khỏi delivery state: SMTP/Telegram thành công không phải approved.
 6. Backup/restore cần một recovery mode: invalidation pending challenge/session, reconcile execution chưa rõ và ownership cleanup trước khi cho ghi lại. Bản DB cũ không được hồi sinh quyền đã dùng hoặc chạy lại action. Retention giữ mọi record đang có cleanup/chưa terminal.
+   Restore vô hiệu grant active cũ trước khi mở call mới; cấp lại cần request/operator hiện tại, không dựa vào schema còn trong cache. Cleanup đã được duyệt và journal vẫn phải reconcile, không xóa theo grant.
+7. Thêm `tool_access_requests`, `tool_grants` và checkpoint `awaiting_tool_approval` trong cùng lifecycle; access request có idempotency key và deadline. Duyệt grant đọc bằng panel host có auth/CSRF/revision; grant ghi chỉ tạo hoặc kiểm tại confirm plan cùng transaction enqueue. Action tool gọi sau confirm trả execution đã có, không enqueue lần hai. Thu hồi grant được worker recheck trước dispatch, cleanup vẫn giữ quyền riêng.
+8. Mở grant động trong Hermes/MCP sau auth: ghi decision + audit + resume outbox rồi commit; refresh/list-changed trước khi resume đúng request. Lưu grant usage nguyên tử; denied/exhausted/expired, event trùng, phiên Hermes mất hoặc restore DB không được cấp lại/quên budget. Test cross-request và transport identity; không coi tool list/cache toàn Hermes là authorization.
 
-**Kiểm thử:** đề xuất `tests/test_approval_service.py`, `tests/test_remediation_store.py`; dùng SQLite file tạm và hai connection/worker để tạo race thật. Thử crash trước commit, DB busy, duplicate/out-of-order, role đổi, plan đổi giữa hai lượt, deadline đúng biên, restore snapshot cũ. Khẳng định cả số execution row và số fake dispatch.
+**Kiểm thử:** đề xuất `tests/test_approval_service.py`, `tests/test_remediation_store.py`, mở rộng `tests/test_siem_mcp.py`; dùng SQLite file tạm và hai connection/worker để tạo race thật. Thử crash trước commit, DB busy, duplicate/out-of-order, role/plan/tool version đổi, deadline đúng biên, restore snapshot cũ; deny/revoke với schema cache cũ, grant usage race và đồng thời confirm/tool-call không enqueue hai lần. Integration Hermes refresh/resume phải được ghi riêng. Khẳng định cả số execution row và số fake dispatch.
 
-**Đóng issue khi:** mọi ca trước confirm hoặc sau deny/expiry/revoke có **0 dispatch**; một approval hợp lệ chỉ có một execution record; migration/restore không mất job cũ hoặc tạo quyền mới. Ghi rõ giới hạn fake adapter.
+**Đóng issue khi:** mọi ca trước confirm hoặc sau deny/expiry/revoke có **0 dispatch**; một approval hợp lệ chỉ có một execution record; migration/restore không mất job cũ hoặc tạo quyền mới. Client host cấp/deny/revoke quyền tool, Hermes refresh/resume đúng request và cache cũ bị chặn có integration evidence; ghi riêng giới hạn fake executor và phần Hermes thực sự đã chạy.
 
 ### Issue 19
 
 **[#19 — R3.1: Telegram pairing và poller](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/19)**. Cần #18. Module mới: `telegram_approval.py`; notifier gửi report hiện tại vẫn độc lập với inbox quyết định.
 
 1. Operator đăng nhập trên host để tạo pairing request ngắn hạn; Telegram gửi mã về bot; host hiển thị numeric user ID/private chat và xác nhận binding. Mã một mình không kích hoạt quyền. Chặn group và không dùng username/display name làm khóa danh tính.
-2. Ưu tiên bot riêng cho approval. Kiểm webhook trước khi dùng outbound long polling; nếu đang có webhook/consumer khác, báo xung đột cấu hình và dừng, không tự xóa hoặc chiếm bot. Một lease xác định consumer chủ động.
+2. MVP dùng bot riêng cho approval do service SIEM sở hữu; Hermes gateway nếu bật dùng bot/token khác. Kiểm webhook trước khi dùng outbound long polling; nếu đang có webhook/consumer khác, báo xung đột và dừng, không tự xóa hoặc chiếm bot. Một lease xác định consumer chủ động. Callback cấp tool/plan đi thẳng service, không qua model để nhận diện đồng ý.
 3. Với một batch updates, transaction lưu inbox đã deduplicate cùng offset kế tiếp; chỉ dùng offset cao hơn ở lần poll sau khi đã commit. Worker xử lý inbox có trạng thái/retry; poller crash giữa các bước phải replay an toàn, không mất quyết định.
 4. Callback data là opaque handle ngắn; giữ trong giới hạn Bot API, tra plan/message/actor/deadline ở server. Provider event ID dùng để deduplicate; không tin callback data là quyền đã xác thực.
 5. Thêm backoff/rate limit, metrics poll lag/inbox age và revoke binding. Audit chỉ lưu identity cần thiết theo chính sách; token bot và raw callback/challenge không xuất hiện trong log công khai.
@@ -235,17 +271,18 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 3. Ở cả hai lượt kiểm `from.id`, binding private chat, message, handle, plan version/hash, role và expiry. Handle của lượt một không dùng cho lượt hai. Quay lại/hủy phải vô hiệu challenge cũ theo state machine.
 4. Acknowledge callback và cập nhật message dựa trên kết quả đã commit. Chỉnh message thất bại không rollback approval và không làm nút cũ có hiệu lực. Trường hợp retry phải hiển thị trạng thái hiện tại một cách idempotent.
 5. Dùng fake executor để walkthrough đủ flow. Policy cần step-up thì chuyển tới web đã có cơ chế đó; nếu chưa có #24 thì hiển thị không hỗ trợ, không giảm yêu cầu. MVP block vẫn phải qua policy của #17.
+6. Card xin tool thể hiện tool/version, scope/usage/expiry và ảnh hưởng; quyền đọc dùng grant decision, quyền ghi dùng cùng review/confirm plan. Phân biệt callback purpose, access-request ID và plan hash; bot chat Hermes hoặc text “đồng ý” không thay numeric identity/binding. Sau commit mới thông báo Hermes resume; lỗi gửi/refresh không tự cấp lại.
 
 **Kiểm thử:** mở rộng test Telegram với confirm trực tiếp, message cũ, superseded plan, callback trùng, mạng mất sau commit, request reject cạnh tranh confirm và binding bị revoke. Thử một lượt Telegram, lượt kia qua service web với cùng identity: vẫn cùng state và chỉ một execution.
 
-**Đóng issue khi:** mock walkthrough và integration bot test đều có evidence; lần bấm một chưa enqueue, lần hai đúng scope mới enqueue. Không có báo cáo “đã block” khi chỉ fake dispatch.
+**Đóng issue khi:** mock walkthrough và integration bot test cho cả grant/plan đều có evidence; lần bấm review plan chưa enqueue, confirm đúng scope mới enqueue một lần. Hermes resume sau quyết định đã commit, deny/revoke không cấp quyền mới. Không có báo cáo “đã block” khi chỉ fake dispatch.
 
 ### Issue 21
 
 **[#21 — R4.1: Worker, journal và reconcile](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/21)**. Cần #20. Module mới: `remediation_worker.py`; chạy với fake adapter trước khi làm #22.
 
 1. Định nghĩa adapter contract `preflight`, `dispatch`, `observe/reconcile`, `verify`, `cleanup` và kết quả có loại: chưa gửi, đã nhận, tác động xác minh, thất bại xác định, hoặc uncertain. Lỗi mạng sau khi gửi không đồng nghĩa chưa chạy.
-2. Worker claim bằng transaction/lease, khóa theo target và resource. Kiểm lại enabled mode, approval/hash, actor role/binding còn hiệu lực, deadline, target generation, policy/script version và evidence freshness trước mỗi lần bắt đầu tác động.
+2. Worker claim bằng transaction/lease, khóa theo target và resource. Kiểm lại enabled mode, approval/hash, actor role/binding, grant/tool/handler version còn hiệu lực, deadline, target generation, policy/script version và evidence freshness trước mỗi lần bắt đầu tác động. Action facade MCP chỉ trả execution ID/status; không mở đường dispatch trực tiếp thứ hai từ Hermes.
 3. Ghi durable dispatch intent rồi gọi adapter ngoài DB transaction; sau response ghi receipt. Crash trong khoảng này phải chuyển uncertain và reconcile. Chỉ retry khi chứng minh chưa có tác động hoặc adapter bảo đảm idempotency cho cùng operation key trong policy đã duyệt.
 4. Lease hết hạn không đủ chứng minh worker cũ đã chết. Dùng fencing/generation token nếu endpoint hỗ trợ; nếu không, không chuyển quyền dispatch mù sang worker khác cho cùng resource. Reconcile hoặc chờ xử lý thủ công trước khi tạo tác động tiếp.
 5. Stop/revoke được tuần tự hóa với việc bắt đầu dispatch; thắng trước dispatch thì chặn, sau dispatch thì ghi in-flight và xử lý theo verifier/cleanup. Không hứa dừng tức thì một request đã rời process. Phương án mới hoặc state drift → pause và plan mới, không nhờ LLM tự tìm lệnh khác.
@@ -279,6 +316,7 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 3. Step-up proof gắn actor, session, plan hash, mức xác thực và hạn ngắn. Thay risk/target phải invalidate proof; client không được tự báo `step_up=true`. Chọn và kiểm cơ chế re-auth/MFA cụ thể trước khi nhận action yêu cầu nó.
 4. Hiển thị reject/revoke/stop/rollback theo quyền và state thật. Nếu worker/adapter tương ứng chưa có thì không hiển thị nút như đã hoạt động; có thể kiểm UI với fake service và ghi rõ phạm vi.
 5. Giữ loopback cho baseline. Muốn dùng link trên điện thoại cần một phương án truy cập riêng được cấu hình, auth/TLS và bảo vệ toàn bộ route nhạy cảm cũ. Không đổi bind thành public để làm demo link. Email-only có thể nghiệm thu tại host; mobile là gate riêng.
+6. Tái dùng panel cấp tool tối thiểu đã có ở #18, bổ sung view grant/request, deny/revoke/expiry và trạng thái Hermes đang chờ/resume; không dựng authority riêng trong frontend. Read grant không vượt scope request; write grant không được cấp từ endpoint grant-only mà bỏ review/confirm plan.
 
 **Kiểm thử:** đề xuất `tests/test_approval_web.py` và test UI: GET/link scanner không consume challenge, direct confirm, sai người, CSRF, session revoke, step-up hết hạn, stale plan, VI/EN, keyboard/focus và mobile layout. API test không chứng minh layout đã dùng được; cần kiểm giao diện bằng trình duyệt.
 
@@ -306,6 +344,7 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 2. Dùng fake clock, transport và endpoint-state độc lập để chèn lỗi có kiểm soát. Test concurrency bằng connection/process độc lập khi cần; một mock lock trong cùng thread không chứng minh chống race giữa worker.
 3. Kết hợp unit/integration với các cut point: trước commit approval, sau commit trước enqueue consumer, trước gửi adapter, sau effect trước receipt, trước cleanup, sau cleanup trước journal. Mỗi cut point phải có expected recovery cụ thể.
 4. Thêm regression khi feature disabled: không có poller/dispatch mới; job, schedule, report, export, Telegram/Gmail report cũ vẫn hoạt động. Không thay contract dữ liệu lịch sử để test mới dễ pass.
+   Tách fixture R1 fixed-read với R2 dynamic-grant; chưa có #18 không được bật tool xin quyền. Test Hermes không có terminal/plugin-install đi vòng qua MCP policy.
 5. Sau #22, chạy tập fault lab có giới hạn và đối chiếu fake với quan sát endpoint. Nếu có R5, thêm browser/cross-channel matrix; nếu không thì ghi email chưa nghiệm thu.
 
 | Nhóm ca | Bằng chứng tối thiểu |
@@ -317,6 +356,10 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 | Partial evidence, target drift, protected IP, injection | Chặn trước write; dữ liệu không thành quyền |
 | Kill switch, TTL, restore DB cũ, cleanup collision | Không có tác động mới ngoài quyền; cleanup đúng ownership hoặc lỗi trung thực |
 | Outbound/URL/error/export | Không lộ credential/raw log/challenge |
+| Grant tool lạ/sai scope, actor giả, write grant chưa confirm | 0 unauthorized dispatch; `needs_tool_development`/`needs_plan` hoặc denial đúng nghĩa |
+| Hai chat, grant exhausted/revoked/expired, tool/schema/handler đổi | MCP và worker chặn dù tool còn trong cache; usage claim không race |
+| Access/confirm/action-call/event trùng hoặc đến trễ | Một decision và execution, không nhân đôi card/effect, không reset deadline/budget |
+| Hermes crash, refresh lỗi, client offline/deny, restore DB | Giữ checkpoint, không auto-grant/replay; chỉ resume request còn hạn, cleanup độc lập |
 
 **Đóng issue khi:** ma trận có kết quả và artifact cho đúng SHA; mọi ca bị từ chối có 0 unauthorized dispatch; R4 lab regression pass. “0 lỗi trong N ca” phải ghi N, không biến thành cam kết không bao giờ có lỗi.
 
@@ -326,9 +369,9 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 
 1. Chốt câu hỏi nghiên cứu trước: hệ thống giúp đề xuất đúng/nhanh hơn đến mức nào, thêm execution có duyệt giảm thao tác thủ công ra sao và chi phí chờ duyệt là bao nhiêu. Phân biệt đánh giá signals/RAG với hiệu quả workflow tổng thể.
 2. Tách development và held-out theo scenario/campaign, chống trùng biến thể cùng sự kiện. Người không viết regex tạo/gán nhãn held-out và ca benign. Có nhãn kỳ vọng về evidence, hành động được phép, target, severity và tình huống cần abstain; bất đồng được adjudicate.
-3. Freeze một manifest cho SHA, corpus/playbook/model/prompt digest, config, action catalog, dữ liệu/nhãn/protocol và môi trường. Chốt rubric trước khi xem test output. Nếu đã dùng một ca để sửa hệ thống thì chuyển nó thành development; không tiếp tục gọi nó là held-out.
+3. Freeze một manifest cho SHA, corpus/playbook/model/prompt digest, Hermes version/profile/toolset, MCP catalog/schema/handler/policy digests, config, dữ liệu/nhãn/protocol và môi trường. Chốt rubric trước khi xem test output. Nếu đã dùng một ca để sửa hệ thống thì chuyển nó thành development; không tiếp tục gọi nó là held-out.
 4. So sánh A manual, B AI chỉ đề xuất, C AI điều tra + thực thi có duyệt trên cùng họ kịch bản và action catalog. Cân bằng thứ tự/biến thể để giảm hiệu ứng nhớ bài; giữ điều kiện tài nguyên và cách đo thống nhất. Người tham gia không tự tạo nhãn đúng cho output của mình mà không có review độc lập.
-5. Ghi event timestamp thật cho đọc đề bài, thao tác chủ động, review/confirm, dispatch, effect verified, rollback verified. Tách active analyst time, approval wait, inference, query và execution latency. Không dùng dữ liệu ngẫu nhiên trong `eval/user_study_protocol.py` làm kết quả người dùng.
+5. Ghi event timestamp thật cho đọc đề bài, thao tác chủ động, xin/cấp tool, refresh/resume, review/confirm, dispatch, effect verified, rollback verified. Tách active analyst time, tool-grant wait, plan-approval wait, inference, query và execution latency. Không dùng dữ liệu ngẫu nhiên trong `eval/user_study_protocol.py` làm kết quả người dùng.
 6. Báo correctness/grounding, false positive/negative, abstain/reapproval, wrong target/unauthorized dispatch, effect/rollback success, ảnh hưởng benign; kèm số mẫu/missing/failure, phân bố, p50/p95 và uncertainty phù hợp cỡ mẫu. Báo raw model, regex và kết hợp riêng; tránh suy ra hiệu quả LLM từ bước do template bảo đảm.
 7. Nếu cần đo riêng nhãn TRUSTED trong demo B/C, phải giữ schema và cách dựng `next_steps` như nhau. Thí nghiệm hiện khác cả schema/template chỉ chứng minh khác biệt pipeline tổng thể. QLoRA là nhánh riêng; sửa SFT/test leakage đã ghi HANDOFF trước khi train.
 
@@ -341,15 +384,31 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 **[#28 — R6.3: Runbook và phát hành](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/28)**. Cần #26 + #27; nếu phát hành email thì cần #24 + #25 và regression tương ứng.
 
 1. Viết runbook từ môi trường sạch: cài dependency, cấu hình Indexer/inventory/operator, pairing, dry-run, kiểm capability/script, bật đúng action lab và chạy demo. Dùng alias/placeholder trong tracked files; secret live theo cơ chế local hiện có.
+   Ghi Hermes version/profile, MCP transport/binding, fixed-read trước R2, cách thêm handler qua review và client cấp/deny/revoke tool. Bot approval SIEM và bot Hermes khác token/consumer; không đưa token vào artifact. Chứng minh schema refresh/resume với đúng bản đã pin.
 2. Tách mục vận hành thường ngày với xử lý lỗi: expiry/revoke, mất bot, DB busy/corrupt, target offline, uncertain sau dispatch, kill switch, cleanup fail và khôi phục đúng ownership. Chỉ dẫn cách xác minh phục hồi, không chỉ lệnh gửi đi.
 3. Mô tả backup/restore và rollback phiên bản. Bản app cũ không đọc được schema mới phải bị chặn; không downgrade bằng cách xóa bảng approval/journal. Drain/pause tác động, reconcile cleanup trước khi đổi binary/DB. Khôi phục snapshot cũ không được chạy lại approval đã dùng.
 4. Đóng gói release manifest: SHA, dependency/config versions, model/corpus/policy/script digests, scope action và artifact test. Mặc định `remediation.enabled=false`; không ghi secret hoặc inventory live vào manifest public.
 5. Reviewer độc lập thực hiện happy path và các ca deny/expiry/sai người/đổi plan/duplicate/crash. Ghi thời điểm, môi trường, PASS/FAIL và artifact đã sanitize. CI xanh phải gắn đúng SHA phát hành, không lấy run của commit trước.
+   Bắt buộc một ca thiếu tool đã có trong catalog được client cấp rồi Hermes resume; một ca deny và một ca revoke với schema cache cũ. Tool ghi chỉ tạo effect sau final confirm/preflight, cleanup vẫn chạy khi Hermes/grant hết hạn.
 6. Cập nhật CHANGELOG/HANDOFF và scope trong README: implemented bằng mock, bot integration, lab effect và email acceptance được ghi riêng. Chỉ tick epic theo bằng chứng đã có; issue mở vì scope chưa làm phải tiếp tục mở hoặc có quyết định defer rõ ràng.
 
 **Đóng issue khi:** người khác tự replay được, có runbook recovery đã thử, CI đúng SHA xanh và các giới hạn còn lại được mô tả. Đóng #10 không tự mở thêm action hay bật tự trị.
 
 ## 4. Giải quyết điểm phối hợp ở #23 và review ở #29
+
+### Scope issue cần đồng bộ cho Hermes và cấp tool
+
+Quyết định trong hướng dẫn bổ sung các phần dưới vào kế hoạch. Đây chưa phải log cập nhật issue GitHub; trước PR đóng issue, liên kết quyết định và đồng bộ acceptance trên GitHub, không bỏ tiêu chí cũ hoặc tự tick hoàn tất.
+
+| Issue | Phạm vi bổ sung và gate |
+|---|---|
+| #14, #15 | Hermes/MCP fixed-read, catalog/receipt và cùng service window; chưa cần grant động |
+| #16 | Trusted operator/request binding, role grant/deny/revoke và bảo vệ settings khi activation |
+| #17 | Catalog tool/schema/handler digest, write grant gắn plan; chưa có handler phải yêu cầu phát triển |
+| #18 | Access/grant persistence, panel host, usage CAS, pause/refresh/resume và restore/revoke |
+| #19, #20 | Bot approval riêng, card grant/plan, replay/identity và resume event đã commit |
+| #21, #22, #24, #25 | MCP action facade trả cùng execution ID; worker recheck grant; web/email dùng cùng core |
+| #26, #27, #28 | Ma trận grant/Hermes, đo thời gian chờ riêng, version manifest và replay độc lập |
 
 ### Issue 23: chốt quyền sửa các phần chung
 
@@ -451,7 +510,7 @@ Với PR approval/executor, bổ sung số unauthorized dispatch, wrong-target, 
 1. **#11:** viết fixture HTTP 200 partial và histogram lệch biên, chốt contract lỗi/coverage rồi sửa reader. Đây là việc độc lập, làm rõ chất lượng nguồn cho mọi phần sau.
 2. **#12 + #23/#29:** thống nhất lớp chặn v5/unverified và cách biểu diễn `B_unknown`; tiếp nhận batch signals của bên playbook. Hoàn thành regression trước khi dùng branch làm đầu vào planner.
 3. **#13 + chuẩn bị #27:** bổ sung field RAG theo budget, lập manifest/protocol và freeze đúng scope; giữ held-out riêng. Chưa cần train model để triển khai nền agent.
-4. Khi R0 đạt, chuyển #14 rồi #15. Chỉ sau đó nghiệm thu auth/plan/approval R2; mọi executor ở giai đoạn này là fake.
+4. Khi R0 đạt, chuyển #14 Hermes/MCP fixed-read rồi #15. Chỉ sau đó nghiệm thu auth/catalog/plan ở #16/#17 và grant/approval/panel host ở #18; mọi executor R2 vẫn fake. Bật xin quyền động sau #18, rồi đưa quyết định lên bot approval riêng ở #19/#20.
 
 Không bắt đầu bằng nút Telegram hoặc script block IP trước khi có contract evidence/plan và approval core: các phần đó cần dùng chung trạng thái và quyền đã được kiểm thử.
 
@@ -462,6 +521,7 @@ Không bắt đầu bằng nút Telegram hoặc script block IP trước khi có
 - [OWASP Transaction Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Transaction_Authorization_Cheat_Sheet.html): tham chiếu cho kiểm soát quyền giao dịch trên server và chống hạ mức xác thực giữa các kênh.
 - [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html): tham chiếu cho GET không mutation và bảo vệ yêu cầu đổi trạng thái.
 - [Telegram Bot API](https://core.telegram.org/bots/api): kiểm contract callback, identity, giới hạn payload, offset và xung đột webhook/long polling theo API đang dùng.
+- [Hermes MCP](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp) và [security](https://hermes-agent.nousresearch.com/docs/user-guide/security): kiểm tool filtering/list changes và profile trên version được pin; command approval riêng của Hermes không thay grant/plan policy SIEM.
 - [Wazuh custom Active Response](https://documentation.wazuh.com/current/user-manual/capabilities/active-response/custom-active-response-scripts.html): đối chiếu giao thức script và hành vi stateful với phiên bản lab; tài liệu upstream không thay thử nghiệm rollback/recovery của #22.
 
 Các nguồn kỹ thuật ngoài repo được đối chiếu ngày 16/11/2026. Policy định lượng và cách chia module trong hướng dẫn là thiết kế của dự án; phải version hóa nếu điều chỉnh khi triển khai.
