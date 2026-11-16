@@ -2,6 +2,15 @@
 
 Ngày cập nhật: 2026-11-16
 
+## Hướng dẫn giải quyết issue agent R0–R6 (2026-11-16)
+
+- Trạng thái: ĐÃ SOẠN HƯỚNG DẪN theo yêu cầu commit `main`, baseline `fa923e8736a16684c7079cfa0ae4d8581e4e10ff`. Đối chiếu 17 issue triển khai của Epic #10 và issue phối hợp/review #23, #29; tại thời điểm đọc các issue đều mở. Đây không phải nghiệm thu tính năng hoặc quyết định phân công thay nhóm.
+- File chính: `docs/approval-remediation-implementation-guide.md`; thêm liên kết README và roadmap approval/remediation. Đã cập nhật CHANGELOG trước HANDOFF; không thay đổi mã runtime, trạng thái issue, model, port hay cấu hình lab.
+- Nội dung: hàng đợi dependency R0–R6 và nhánh email; file/hàm cần đọc; đề xuất cho từng issue; contract evidence/signals/plan/approval; DQL hiển thị so với DSL truy vấn; unknown severity, preflight, race/replay/restore/reconcile/cleanup; kiểm thử và bằng chứng mock/bot/lab/human study; phối hợp #23/#29 và mẫu bàn giao PR.
+- Verification: PASS liên kết nội bộ/anchor, code fences, đủ 17 mục issue và dependency, file/lệnh hiện có cùng phân biệt test mới đề xuất; `git diff --cached --check`, secret scan staged và pre-commit ledger hook PASS; đã review staged diff. Hai lượt script kiểm docs tạm báo lỗi do parser chọn nhầm đoạn dependency và cắt đuôi `.json`; đã sửa script kiểm tra và chạy lại PASS, không phải lỗi runtime. Thay đổi chỉ gồm năm file Markdown; không chạy pytest/runtime/lab/model hoặc gửi thông báo. CI của commit tài liệu cần theo dõi riêng sau push.
+- Blocker/giới hạn: các module/test mới trong hướng dẫn là đề xuất, chưa tồn tại ở baseline; auth/executor và capability Wazuh vẫn cần triển khai/nghiệm thu. Phân công window, schema chung và phạm vi đồ án ở #23 chưa được tài liệu này tự chốt.
+- Next action: bắt đầu #11, phối hợp #12 với phần playbook, làm #13 và chuẩn bị protocol #27; chỉ chuyển R1 khi R0 đủ bằng chứng. Mỗi PR đóng issue theo acceptance, không dùng mock thay lab gate.
+
 ## Kế hoạch agent khắc phục có phê duyệt (2026-11-16)
 
 - Trạng thái: ĐÃ VIẾT KẾ HOẠCH theo yêu cầu commit trực tiếp `main`, baseline `7628921f2ba871d9f8b29499f68a293819647a56`. Hướng thiết kế được người dùng thống nhất; toàn bộ R0–R6 CHƯA TRIỂN KHAI/NGHIỆM THU. Commit tài liệu không cấp quyền hành động trên lab.

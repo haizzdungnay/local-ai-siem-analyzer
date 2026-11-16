@@ -12,6 +12,8 @@
 > **Roadmap mới (23/10/2026):** [Hybrid AI Model Gateway — quản lý model local/cloud, API key và định tuyến trên dashboard](docs/hybrid-ai-gateway-roadmap.md). Đây mới là kế hoạch, **chưa triển khai**; cơ chế Ollama hiện tại vẫn đang được sử dụng.
 > **Mở rộng đã thống nhất (16/11/2026):** [Agent điều tra và khắc phục có phê duyệt qua Telegram/email](docs/approval-remediation-agent-roadmap.md). Lộ trình R0–R6 gồm điều tra chỉ đọc, duyệt kế hoạch hai bước, thực thi trong phạm vi được duyệt, kiểm chứng và hoàn tác. **Mới là kế hoạch**; ứng dụng hiện chưa nhận phê duyệt hoặc thực thi khắc phục.
 
+Hướng dẫn thực hiện: [thứ tự, phương án xử lý và tiêu chí nghiệm thu từng issue R0–R6](docs/approval-remediation-implementation-guide.md), gắn với [Epic #10](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/10) và các điểm phối hợp playbook. Bắt đầu từ #11, #12, #13; tài liệu hướng dẫn chưa phải kết quả triển khai.
+
 
 ---
 

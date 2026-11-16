@@ -4,6 +4,8 @@ Ngày chốt: **2026-11-16** (Asia/Saigon). Baseline: `main@7628921f2ba871d9f8b2
 
 Trạng thái: **ĐÃ THỐNG NHẤT HƯỚNG THIẾT KẾ / CHƯA TRIỂN KHAI**. Yêu cầu hiện tại là lập kế hoạch và commit vào `main`; không cấp quyền cho phần mềm thực thi hành động trên lab. Mọi mục R0–R6 bên dưới đều chưa nghiệm thu trong tài liệu này.
 
+Tài liệu triển khai bổ sung: [hướng dẫn giải quyết 17 issue R0–R6](approval-remediation-implementation-guide.md), gồm dependency, điểm sửa trong code, phương án, kiểm thử và điều kiện đóng issue; theo dõi tại [Epic #10](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/10). Hướng dẫn cũng đối chiếu phần phối hợp #23 và review playbook #29.
+
 ## 1. Mục tiêu và quyết định phạm vi
 
 Mở rộng mô-đun AI local thành vòng xử lý: yêu cầu của người vận hành → điều tra có bằng chứng → đề xuất kế hoạch → duyệt hai bước qua Telegram hoặc trang web từ email → thực thi có giới hạn → kiểm chứng → báo cáo và hoàn tác.
