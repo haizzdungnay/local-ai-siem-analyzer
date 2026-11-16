@@ -1,2 +1,4 @@
 # Script shell chạy trên Linux (Kali/Victim): luôn LF kể cả khi checkout trên Windows
 *.sh text eol=lf
+# Lưu Python bằng LF trong Git để kiểm tra whitespace nhất quán trên mọi hệ điều hành.
+*.py text eol=lf

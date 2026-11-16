@@ -1,6 +1,41 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-10-27
+Ngày cập nhật: 2026-11-16
+
+## Sửa whitespace gate CI (2026-11-16)
+
+- Trạng thái: ĐÃ SỬA và VERIFY cục bộ; CHƯA kiểm chứng GitHub Actions mới. Run `43562778639` trên `b59039d` fail duy nhất ở Ubuntu/Python 3.11, bước `git diff --check HEAD^ HEAD`; ba job còn lại pass.
+- Đã sửa: thêm `*.py text eol=lf` vào `.gitattributes`; chuẩn hóa LF cho `ai_module/main.py`, `eval/baseline_check.py`, `eval/rag_retrieval_eval.py`, `eval/run_eval.py`, `tests/test_ip_behavior_profiling.py`; xóa whitespace trên dòng trống trong `eval/baseline_check.py`. Đối chiếu token byte của các file trước/sau xác nhận nội dung thực thi không đổi.
+- Verification: index Git tạm xác nhận cả 5 blob Python có LF và `git diff --cached --check HEAD` pass; `git diff --check`, `compileall`, `node --check`, `bash -n`, kiểm tra credential placeholder, `check_tracked_secrets.py` và tạo SBOM pass. Audit dependency pass với 5 ngoại lệ được ghi nhận. Pytest trên Python 3.13.2: 376 passed, 2 skipped; trên Python 3.11.7/pytest 9.1.1: 376 passed, 2 skipped. Lượt pytest Python 3.11 đầu fail khi collect do môi trường tạm thiếu NumPy; đã cài NumPy và chạy lại pass. Môi trường này vẫn thiếu ChromaDB/Ollama, không thay thế CI matrix đầy đủ. Môi trường tạm được chuyển sang thư mục temp của Windows sau kiểm thử.
+- Blocker/giới hạn: run GitHub hiện tại vẫn fail cho đến khi thay đổi được đẩy lên và chạy CI mới; SFT leakage và sai lệch mô tả demo B/C trong mục review bên dưới chưa được sửa trong hạng mục CI này.
+- Next action: review diff, commit/push thay đổi theo yêu cầu của chủ repo, rồi kiểm tra GitHub Actions chạy trên commit mới.
+
+## Đồng bộ upstream và review thay đổi (2026-11-16)
+
+- Trạng thái: đã fast-forward `main` từ `855accb8061302ae321aa2b06d580f791ece6f82` lên `b59039deb52be474402d2ca580e5f65bff24d01f` bằng `git pull --ff-only origin main` (30 commit, 53 file). Review đã thực hiện; verification tổng thể CHƯA ĐẠT do whitespace gate thất bại. Ba phát hiện bên dưới chưa sửa.
+- Workspace trước pull sạch; `core.hooksPath=.githooks` đã bật. Sau review chỉ cập nhật cục bộ `CHANGELOG.md` và `HANDOFF.md`, chưa commit/push.
+- Thay đổi chính đã rà:
+  - KB production có 4473 rule Wazuh + 607 MITRE technique; thêm script build KB/MITRE mitigation/Elastic playbook; bỏ track Chroma benchmark để sinh lại local.
+  - 28 playbook theo `rule.id`, dựng `next_steps` bằng code. Ba playbook 5715/5402/5503 dùng signals + regex OR model; 25 playbook còn lại vẫn để model chọn nhánh. Tất cả còn `draft`.
+  - `main.py`, `AnalysisService.analyze_one()` và `eval/run_eval.py --playbooks` truyền playbook + extracted fields vào `analyze_alert()`. Dashboard qua `analyze_aggregate()`/`analyze_window()` chưa được nối playbook.
+  - Thêm khóa tập test, builder SFT chia theo kịch bản, pipeline QLoRA/export adapter và demo HTML A/B/C. Đây là review mã; không xác nhận chất lượng model qua huấn luyện hay inference mới.
+- Phát hiện cần xử lý:
+  1. **P1 — whitespace gate CI thất bại:** blob Git của `ai_module/main.py` (232 dòng) và `eval/run_eval.py` (177 dòng) chứa CRLF. `git diff --check HEAD^ HEAD` trả exit 2 tại `ai_module/main.py:213` và `eval/run_eval.py:149`; workflow `.github/workflows/python-tests.yml:71` chạy đúng lệnh này trên Ubuntu/Python 3.11. Toàn bộ range pull báo 409 lỗi whitespace. Cần chuẩn hóa hai file thành LF trong Git và kiểm tra lại diff commit.
+  2. **P1 — SFT vẫn nhận dữ liệu thuộc tập test tracked:** `eval/verify_test_lock.py:34-36` chỉ trả 10 hash của raw export trong `files`, bỏ qua các file thuộc `tracked_eval_sets`. `research/training/build_sft_jsonl.py:62` chỉ so hash nguồn với tập đó. Kiểm tra trực tiếp: mẫu có `window_text` lấy từ một file `eval/cases/*.json`, `source.sha256` đúng SHA-256 của file đó, target hợp lệ và nhãn reviewed vẫn được `validate()` chấp nhận (`None`). Chưa train dữ liệu này. Cần đưa hash nội dung các tập test tracked vào danh sách cấm, bắt buộc provenance nguồn và thêm regression check trước khi train.
+  3. **P2 — demo B/C có biến gây nhiễu:** `eval/demo_lite.py:143` và mô tả `eval/playbook_ab_smoke.py:8-9` nói B/C chỉ khác vị trí/nhãn tin cậy. Thực tế B yêu cầu model tự viết `next_steps`; C dùng schema chọn nhánh/signals rồi code dựng `next_steps`. Kiểm tra bằng mock Client xác nhận schema B/C khác nhau và chỉ schema B có `next_steps`. Số bước có rule ID ở C được bảo đảm bởi template, không chứng minh hiệu quả nhãn TRUSTED. Cần sửa chú thích và tách biến trong thí nghiệm nếu muốn kết luận nhân quả.
+- Verification:
+  - `python -m pytest tests -q -p no:cacheprovider` — **376 passed, 2 skipped**, 37.19 s (Python 3.13.2, pytest 8.3.5).
+  - `python -m compileall -q ai_module eval tests scripts research` — PASS.
+  - `node --check ai_module/web/app.js` — PASS.
+  - `python scripts/check_tracked_secrets.py` — PASS; giới hạn của scanner và credential cũ trong lịch sử đã được ghi ở mục Security của CHANGELOG, chưa xác minh rotation.
+  - `python eval/verify_test_lock.py` — exit 0, ba git tree khớp; 10 raw export local đều MISSING nên không kiểm chứng được hash của chúng.
+  - `git diff --check HEAD^ HEAD` và `git diff --check 855accb..HEAD` — **FAIL (exit 2)** như phát hiện P1; đây là lỗi có sẵn trong upstream vừa pull.
+  - Hai kiểm tra tái hiện SFT/test leakage và schema B/C thực hiện trong bộ nhớ, không sinh dataset, không gọi Ollama.
+- Blocker/giới hạn:
+  - Chưa chạy CI matrix Python 3.11/3.12, dependency audit hay lab Wazuh/Ollama live; hai test phụ thuộc môi trường đã skip.
+  - Chưa chứng minh 25 playbook v5 chọn nhánh an toàn; upstream đã ghi nhận nguy cơ model tự suy diễn kết quả truy vấn. Pilot signals vẫn cần held-out do người khác gán nhãn; smoke 3 ca không phải đánh giá tổng quát.
+  - Không chạy `eval/build_dataset.py`, không thay đổi trạng thái lab/model/port/rule và không sửa mã runtime trong đợt review.
+- Next action: sửa LF trước để qua whitespace gate; bịt test leakage trước mọi lượt train; sửa mô tả/thiết kế B/C; sau đó kiểm thử held-out và nối playbook vào dashboard theo kế hoạch đã ghi.
 
 ## Chế độ tín hiệu — block v6, pilot 5715 / 5402 / 5503 (2026-11-14, chiều)
 
