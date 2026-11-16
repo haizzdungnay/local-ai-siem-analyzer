@@ -72,6 +72,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 - Mở rộng tùy chọn thời gian phân tích và model phân tích cho Threat hunting cục bộ.
 
 ### Fixed
+- CI: GitHub Actions run `43839633809` cho commit `71787ec` pass cả 4 job Ubuntu/Windows với Python 3.11/3.12, bao gồm whitespace gate.
 - CI: Chuẩn hóa 5 file Python còn CRLF trong Git sang LF và thêm `*.py text eol=lf` vào `.gitattributes`, tránh lỗi `git diff --check HEAD^ HEAD` trên Ubuntu khi sửa file bằng Windows; loại khoảng trắng trên các dòng trống của `eval/baseline_check.py`.
 - Commit bổ sung cho `31eae5c` (bị sót khi commit): `main.py`, `analysis_service.py`, `run_eval.py` truyền `extracted=` vào `analyze_alert`; extractor/config.example thêm `agent.id`, `timestamp`, `syscheck.path`, `data.url`, `data.id`. Không có commit này thì `llm.py` trên GitHub chạy playbook với placeholder rỗng.
 - Hành động nhánh của playbook sudo 5401, 5402, 5404 dùng `<srcuser>` (người gọi sudo) thay vì `<user>` (= data.dstuser = root → "liên hệ quản trị viên root"). Test chặn tái phạm.

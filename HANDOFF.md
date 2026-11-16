@@ -4,11 +4,11 @@ Ngày cập nhật: 2026-11-16
 
 ## Sửa whitespace gate CI (2026-11-16)
 
-- Trạng thái: ĐÃ SỬA và VERIFY cục bộ; CHƯA kiểm chứng GitHub Actions mới. Run `43562778639` trên `b59039d` fail duy nhất ở Ubuntu/Python 3.11, bước `git diff --check HEAD^ HEAD`; ba job còn lại pass.
+- Trạng thái: ĐÃ SỬA và VERIFY trên GitHub. Run `43839633809` cho commit `71787ec` pass 4/4 job Ubuntu/Windows, Python 3.11/3.12, bao gồm whitespace gate. Run cũ `43562778639` trên `b59039d` fail ở Ubuntu/Python 3.11 vì `git diff --check HEAD^ HEAD`.
 - Đã sửa: thêm `*.py text eol=lf` vào `.gitattributes`; chuẩn hóa LF cho `ai_module/main.py`, `eval/baseline_check.py`, `eval/rag_retrieval_eval.py`, `eval/run_eval.py`, `tests/test_ip_behavior_profiling.py`; xóa whitespace trên dòng trống trong `eval/baseline_check.py`. Đối chiếu token byte của các file trước/sau xác nhận nội dung thực thi không đổi.
 - Verification: index Git tạm xác nhận cả 5 blob Python có LF và `git diff --cached --check HEAD` pass; `git diff --check`, `compileall`, `node --check`, `bash -n`, kiểm tra credential placeholder, `check_tracked_secrets.py` và tạo SBOM pass. Audit dependency pass với 5 ngoại lệ được ghi nhận. Pytest trên Python 3.13.2: 376 passed, 2 skipped; trên Python 3.11.7/pytest 9.1.1: 376 passed, 2 skipped. Lượt pytest Python 3.11 đầu fail khi collect do môi trường tạm thiếu NumPy; đã cài NumPy và chạy lại pass. Môi trường này vẫn thiếu ChromaDB/Ollama, không thay thế CI matrix đầy đủ. Môi trường tạm được chuyển sang thư mục temp của Windows sau kiểm thử.
-- Blocker/giới hạn: run GitHub hiện tại vẫn fail cho đến khi thay đổi được đẩy lên và chạy CI mới; SFT leakage và sai lệch mô tả demo B/C trong mục review bên dưới chưa được sửa trong hạng mục CI này.
-- Next action: review diff, commit/push thay đổi theo yêu cầu của chủ repo, rồi kiểm tra GitHub Actions chạy trên commit mới.
+- Blocker/giới hạn: SFT leakage và sai lệch mô tả demo B/C trong mục review bên dưới chưa được sửa trong hạng mục CI này.
+- Next action: xử lý SFT leakage trước khi train và sửa mô tả/thiết kế demo B/C.
 
 ## Đồng bộ upstream và review thay đổi (2026-11-16)
 
