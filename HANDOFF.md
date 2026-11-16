@@ -2,6 +2,16 @@
 
 Ngày cập nhật: 2026-11-16
 
+## Kế hoạch agent khắc phục có phê duyệt (2026-11-16)
+
+- Trạng thái: ĐÃ VIẾT KẾ HOẠCH theo yêu cầu commit trực tiếp `main`, baseline `7628921f2ba871d9f8b29499f68a293819647a56`. Hướng thiết kế được người dùng thống nhất; toàn bộ R0–R6 CHƯA TRIỂN KHAI/NGHIỆM THU. Commit tài liệu không cấp quyền hành động trên lab.
+- File chính: `docs/approval-remediation-agent-roadmap.md`; README, product roadmap và research roadmap dẫn tới phạm vi mới. Đã cập nhật CHANGELOG trước HANDOFF; giữ nguyên các phát hiện/nhật ký cũ.
+- Đã đặc tả: agent điều tra trước; plan có bằng chứng và hash bất biến; hai lượt review/confirm; Telegram identity/pairing/polling; email GET chỉ xem và POST có auth/CSRF; reapproval do backend policy; journal, race/replay/expiry/revoke; uncertain/reconcile; executor capability cố định và cleanup bền vững.
+- MVP dự kiến: một action block IP nguồn tạm trên một victim Linux lab, mặc định 300 giây; Telegram trước, email approval nghiệm thu riêng. Tự chạy không người duyệt, shell do LLM sinh, khóa tài khoản/cô lập máy nằm ngoài MVP. Không đổi model, port, rule, cấu hình hoặc trạng thái lab.
+- Verification: PASS liên kết nội bộ của roadmap, nhãn R0–R6, code fences và liên kết từ ba tài liệu đầu vào; `git diff --cached --check` PASS; `python scripts/check_tracked_secrets.py --staged` PASS (bao gồm file mới); staged diff đã được đọc lại. Thay đổi chỉ gồm sáu file Markdown, không chạy lại pytest/runtime/lab/model, không gửi mail/Telegram và không chạy executor. CI của commit mới cần theo dõi riêng sau push.
+- Blocker/giới hạn: approval/auth/executor chưa có; dashboard còn loopback; phải xác minh Wazuh adapter và rollback trên phiên bản lab. Các finding correctness, SFT leakage và demo B/C trước đó vẫn giữ trạng thái riêng, không coi là đã sửa.
+- Next action: R0 xác minh lại baseline/findings; R1 query/tool và evidence contract; R2 approval state/auth với mock executor trước mọi tác động thật.
+
 ## Sửa whitespace gate CI (2026-11-16)
 
 - Trạng thái: ĐÃ SỬA và VERIFY trên GitHub. Run `43839633809` cho commit `71787ec` pass 4/4 job Ubuntu/Windows, Python 3.11/3.12, bao gồm whitespace gate. Run cũ `43562778639` trên `b59039d` fail ở Ubuntu/Python 3.11 vì `git diff --check HEAD^ HEAD`.

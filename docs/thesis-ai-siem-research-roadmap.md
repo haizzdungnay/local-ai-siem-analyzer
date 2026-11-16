@@ -2,6 +2,8 @@
 
 Status: **APPROVED PLAN / NOT IMPLEMENTED**. Owner: project maintainers. Baseline: `main@70562675114d6cab2ba942a31333a41b4df406ce`. Scope: Wazuh-based analyst-assist, *not* a replacement SIEM, not autonomous response.
 
+**Scope addendum — 2026-11-16:** [Approval-gated investigation and remediation roadmap](approval-remediation-agent-roadmap.md) records the agreed next extension, based on `main@7628921`: read-only evidence collection, two-stage operator approval over Telegram/web-from-email, bounded execution, verification and rollback. It is a plan, not an implemented feature. Existing runtime remains advisory; future writes require the roadmap's identity, policy, approval and executor gates. This extension does not authorize autonomous response or change the historical baseline/ablation definitions below. Evaluate it separately as manual versus recommendation-only versus approved execution, using real reviewer/time measurements.
+
 ## Research question and contributions
 Does task-specific QLoRA supervised fine-tuning, separately and in conjunction with local RAG and explainable event correlation, improve evidence-grounded SOC triage over both native Wazuh rules and the same untuned LLM under comparable compute constraints?
 

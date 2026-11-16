@@ -67,3 +67,9 @@ webhook/email, OAuth hoặc remote multi-user.
 ## Hướng mở rộng được lập kế hoạch ngày 2026-10-23: Hybrid AI Model Gateway
 
 Tài liệu triển khai chi tiết: [Hybrid AI Model Gateway](hybrid-ai-gateway-roadmap.md). Trạng thái **PLANNED**, chưa có provider cloud/model manager/vault nào được triển khai trong thay đổi tài liệu này. Các gate G0–G6 bổ sung lớp quản lý model/provider mà không thay thế Wazuh, RAG, SOC contract và human review. Các điều kiện an toàn hiện tại vẫn áp dụng: loopback-only, local-first, cloud egress opt-in, CI xanh trước khi merge tính năng, không auto-remediation.
+
+## Mở rộng đã thống nhất ngày 2026-11-16: khắc phục có phê duyệt
+
+[Kế hoạch agent điều tra và khắc phục](approval-remediation-agent-roadmap.md) chốt R0–R6: agent chỉ đọc → approval core/dry-run → Telegram hai bước → một action containment lab có kiểm chứng/hoàn tác → email/trang duyệt → đánh giá. Trạng thái **ĐÃ THỐNG NHẤT HƯỚNG THIẾT KẾ / CHƯA TRIỂN KHAI**.
+
+Runtime hiện tại vẫn là analyst-assist. Giai đoạn tương lai chỉ cho executor chạy capability cố định sau khi server xác minh operator, plan version/hash và phạm vi; thay đổi lớn phải duyệt lại. Tự thực thi không người duyệt và shell do LLM sinh nằm ngoài phạm vi. Quyết định mới bổ sung hướng phát triển, không đánh dấu các gate cũ hoặc chức năng mới là hoàn tất.
