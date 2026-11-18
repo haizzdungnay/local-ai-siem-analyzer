@@ -2,7 +2,14 @@
 
 Ngày cập nhật: 2026-11-18
 
-## PR #30 / #11: xử lý review độc lập (2026-11-18)
+## Main: PR #30 đã merge (2026-11-18)
+
+- Trạng thái: ĐÃ MERGE [PR #30](https://github.com/haizzdungnay/local-ai-siem-analyzer/pull/30) vào `main` theo yêu cầu người dùng, merge commit `680502b1768d9630868699b4658a3b2a6f55990f`, từ PR HEAD `df4a82ef86bfb2b14362dfc73fdf64dc31526401`. Checkout local đã chuyển về `main` và fast-forward với remote; không xóa nhánh hoặc đóng #11. Mục này thay trạng thái draft/nhánh của các ghi chú lịch sử bên dưới.
+- File/việc hoàn thành: merge toàn bộ bản sửa #11 và bốn nhóm phản hồi review đã kiểm thử. Commit bàn giao sau merge chỉ cập nhật `CHANGELOG.md` và `HANDOFF.md`; CHANGELOG cập nhật trước HANDOFF. Không đổi mã runtime, model, port, rule hoặc lab trong bước hợp nhất.
+- Verification: trước merge, remote `main@866024f`, PR MERGEABLE/CLEAN, working tree sạch và [CI PR HEAD `44271111998`](https://github.com/haizzdungnay/local-ai-siem-analyzer/actions/runs/44271111998) pass 4/4 Ubuntu/Windows × Python 3.11/3.12. GitHub xác nhận PR MERGED; local fast-forward thành công. Bằng chứng test 485 pass/2 skip của bản sửa được giữ bên dưới; chưa tính CI PR là CI push của `main`.
+- Giới hạn/next action: theo dõi CI push đúng HEAD `main` bàn giao, giữ #11 mở; tiếp tục smoke chỉ đọc phiên bản Indexer lab và xác minh retention trước nghiệm thu #11/R1. Không có bằng chứng lab/model/browser mới; các truy vấn độc lập vẫn cần PIT hoặc contract từ chối khi yêu cầu snapshot chung.
+
+## Lịch sử trước merge — PR #30 / #11: xử lý review độc lập (2026-11-18)
 
 - Trạng thái: ĐÃ SỬA, KIỂM THỬ VÀ PUSH code commit `28c615bc5118659ef9c0d821a8b65c3c9deb0597` trên `codex/issue-11-indexer-completeness`, sau baseline review `d498868c`. Bốn nhóm finding được xác minh; active-IP empty-success là tương tác validator mới với caller cũ, ba nhóm snapshot/lộ lỗi/truncation đã có từ base. Giữ [PR #30](https://github.com/haizzdungnay/local-ai-siem-analyzer/pull/30) draft và #11 mở để review/nghiệm thu; không gán các lỗi cũ là regression của diff. Mục này thay trạng thái/giới hạn snapshot của bản đầu bên dưới.
 - File: `ai_module/reader.py`, `ai_module/blueprints/ip_analysis.py`, `ai_module/analysis_service.py`, `ai_module/dashboard_worker.py`; regression trong ba file `tests/test_dashboard_{api,core,store_worker}.py`; đồng bộ contract ở `docs/approval-remediation-implementation-guide.md`. CHANGELOG cập nhật trước HANDOFF; không thêm dependency, migration hoặc sửa dataset/config lab.
