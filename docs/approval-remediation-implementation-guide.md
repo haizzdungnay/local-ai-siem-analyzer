@@ -134,11 +134,15 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 2. Tạo validator dùng chung cho tính hoàn chỉnh của search response. **Đề xuất vòng đầu:** đường dùng làm evidence hành động phải fail closed bằng lỗi có loại/lý do; đường báo cáo có thể giữ partial nếu truyền được lý do đến UI/export. Không để `{hits: []}` sau lỗi thành “không có sự cố”.
 3. Giữ riêng ba khái niệm: Indexer trả thiếu, chọn mẫu do budget, và không đủ lịch sử lưu trữ. Chúng có ảnh hưởng khác nhau; query trả đủ không chứng minh đã có đủ 30 ngày lịch sử.
 4. Với bucket `[b0,b1)`, giữ khi `b0 < end` và `b1 > start`; nhãn hiển thị là `[max(b0,start), min(b1,end))`. Count lấy nguyên từ aggregation đã lọc đúng cửa sổ, không nhân tỷ lệ phút. Ví dụ query 10:03–10:08 phải giữ bucket 10:00–10:05; không lấy count của query rộng hơn rồi tự suy ra phần 10:03–10:05.
-5. Kiểm tra đường full-detail dùng hai request: total thay đổi hoặc một request partial không được tạo báo cáo đầy đủ. Trường hợp không chứng minh snapshot đồng nhất phải ghi hạn chế hoặc từ chối theo contract.
+5. Đường full-detail dùng request đầu để chọn mode theo exact total; request cuối lấy cả hits và aggregation, chỉ dùng response cuối cho alert/timeline/rule buckets. Total thay đổi, partial hoặc response cuối thiếu aggregation phải fail. Không ghép aggregation của request đầu với detail của request sau.
 
 **Kiểm thử:** mở rộng `tests/test_dashboard_core.py`, `tests/test_audit_edge_cases.py`, `tests/test_dashboard_store_worker.py`. Có biên đầu/cuối, cửa sổ đúng biên, lệch biên, rỗng, nhiều bucket; count không bị mất/lặp. Kiểm lan truyền lỗi/partial tới stored job và JSON report.
 
 **Đóng issue khi:** regression thất bại trước sửa, pass sau sửa; không có empty-success giả; UI/report phản ánh coverage. Bằng chứng mock đủ cho parser, nhưng phải ghi rõ chưa xác minh response lab nếu chưa chạy.
+
+**Contract output #11:** `/api/active-ips` trả HTTP 502 khi lỗi nguồn; HTTP 200 với `ips=[]` chỉ dùng khi search hợp lệ không có IP. Coverage giữ `truncated` để tương thích, thêm `source_truncated` (rule buckets/alert nguồn thiếu) và `prompt_truncated` (không đưa hết nhóm đã nhận vào prompt). `total_groups` đếm nhóm đã nhận; cardinality `unique_rules` vẫn xấp xỉ, không dùng để kết luận mất nhóm. Worker/report v1/v2 phân biệt hai warning. Lỗi HTTP/transport từ Indexer chỉ giữ status/loại lỗi; host không chứa userinfo, URL hoặc port, port/protocol nằm ở trường riêng.
+
+**Giới hạn snapshot:** full-detail lấy alert và timeline/rule aggregation từ cùng một search response cuối; request đầu chỉ chọn mode và kiểm total drift. Aggregate-only cũng dùng một response. Chưa có snapshot chung cho các truy vấn độc lập, nhiều trang hoặc attack-chain window khác; R1 phải dùng shared PIT hoặc từ chối nếu receipt yêu cầu chứng minh tính nhất quán giữa các truy vấn. Search hoàn chỉnh không chứng minh đủ lịch sử lưu trữ; vẫn cần smoke phiên bản Indexer lab và contract retention trước nghiệm thu evidence hành động.
 
 ### Issue 12
 

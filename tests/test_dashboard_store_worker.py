@@ -2,11 +2,15 @@ import json
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
 import dashboard_store
 import dashboard_worker
+import dashboard_reports
+import analysis_service
+import reader
 from dashboard_store import DashboardStore
 
 
@@ -666,6 +670,54 @@ def test_worker_empty_window_skips_llm(monkeypatch, tmp_path):
     assert store.get_job_detail(job_id)["results"] == []
 
 
+@pytest.mark.parametrize("stage", ["aggregate", "detail"])
+@pytest.mark.parametrize("problem", ["timed_out", "incomplete_shards"])
+def test_worker_rejects_incomplete_search_in_stored_job_and_report(monkeypatch, tmp_path, stage, problem):
+    complete = {
+        "timed_out": False,
+        "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+        "hits": {"total": {"value": 0, "relation": "eq"}, "hits": []},
+        "aggregations": {
+            "timeline": {"buckets": []},
+            "rules": {"buckets": [], "sum_other_doc_count": 0},
+            "unique_rules": {"value": 0}, "unique_agents": {"value": 0},
+            "unique_source_ips": {"value": 0},
+        },
+    }
+    partial = {**complete, "timed_out": True} if problem == "timed_out" else {
+        **complete, "_shards": {"total": 1, "successful": 0, "skipped": 0, "failed": 1},
+    }
+    calls = []
+
+    def post(*args, **kwargs):
+        calls.append(kwargs["json"])
+        body = complete if stage == "detail" and len(calls) == 1 else partial
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: body)
+
+    monkeypatch.setattr(reader.requests, "post", post)
+    store = DashboardStore(tmp_path / "dashboard.db")
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v3",
+    )
+    runtime = dashboard_worker.DashboardRuntime(store, {
+        "dashboard": {}, "wazuh_indexer": {
+            "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+        },
+    }, SimpleNamespace(analyze_aggregate=lambda *args, **kwargs: pytest.fail("No model call allowed")))
+    runtime._run_job(store.claim_next_job())
+    detail = store.get_job_detail(job_id)
+    assert detail["status"] == "failed"
+    assert problem in detail["error"]
+    assert detail["results"] == []
+    assert len(calls) == (1 if stage == "aggregate" else 2)
+    for schema in ("v1", "v2"):
+        report = dashboard_reports._job_report(detail, schema=schema)
+        assert report["job"]["status"] == "failed"
+        assert problem in report["job"]["error"]
+        assert report["analysis"] is None
+
+
 def test_worker_persists_window_result_and_partial_status(monkeypatch, tmp_path):
     store = DashboardStore(tmp_path / "dashboard.db")
     job_id = store.create_job(
@@ -916,6 +968,42 @@ def test_worker_analyzes_over_cap_window_from_rule_buckets(monkeypatch, tmp_path
     assert detail["alerts"] == []
     assert captured["language"] == "en"
     assert "Aggregate-only" in detail["results"][0]["warnings"][0]
+
+
+@pytest.mark.parametrize("source_truncated,prompt_limit", [(True, 20), (False, 20), (False, 1), (True, 1)])
+def test_worker_reports_source_and_prompt_coverage_separately(monkeypatch, tmp_path, source_truncated, prompt_limit):
+    fetched = {
+        "analysis_mode": "aggregate", "total": 2, "unique_rules": 3,
+        "unique_counts_approximate": True, "rules_truncated": source_truncated,
+        "rule_buckets": [{"rule_id": rule_id, "count": 1} for rule_id in ("5503", "5760")],
+    }
+    monkeypatch.setattr(dashboard_worker, "fetch_alerts_range", lambda *args, **kwargs: fetched)
+
+    def analyze(aggregate, *args):
+        _, coverage = analysis_service.format_window_for_llm(aggregate, max_groups=prompt_limit)
+        return {
+            "analysis": {"summary": "Two alerts", "severity": "medium", "key_findings": [],
+                         "mitre": [], "next_steps": []},
+            "coverage": coverage, "partial": coverage["truncated"],
+            "provenance": {"language_compliance": "full"},
+        }
+
+    store = DashboardStore(tmp_path / "dashboard.db")
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v3",
+    )
+    runtime = dashboard_worker.DashboardRuntime(store, {"dashboard": {}}, SimpleNamespace(analyze_aggregate=analyze))
+    runtime._run_job(store.claim_next_job())
+    job = store.get_job_detail(job_id)
+    prompt_truncated = prompt_limit == 1
+    assert job["status"] == ("partial" if source_truncated or prompt_truncated else "succeeded")
+    for schema in ("v1", "v2"):
+        report = dashboard_reports._job_report(job, schema=schema)
+        assert report["coverage"]["source_truncated"] is source_truncated
+        assert report["coverage"]["prompt_truncated"] is prompt_truncated
+        assert any("Nguồn Indexer" in warning for warning in report["warnings"]) is source_truncated
+        assert any("Prompt coverage" in warning for warning in report["warnings"]) is prompt_truncated
 
 
 def test_worker_marks_language_noncompliance_partial(monkeypatch, tmp_path):

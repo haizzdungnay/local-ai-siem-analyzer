@@ -394,7 +394,11 @@ def test_fetch_alerts_api_uses_configured_timeout(monkeypatch):
             return None
 
         def json(self):
-            return {"hits": {"hits": [{"_source": {"rule": {"id": "5503"}}}]}}
+            return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+                "hits": {"hits": [{"_source": {"rule": {"id": "5503"}}}]},
+            }
 
     def fake_post(url, **kwargs):
         captured["url"] = url
@@ -429,7 +433,11 @@ def test_fetch_alerts_api_rejects_malformed_hits(monkeypatch):
             return None
 
         def json(self):
-            return {"hits": {"hits": self.hits}}
+            return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+                "hits": {"hits": self.hits},
+            }
 
     cfg = {
         "wazuh_indexer": {
@@ -459,10 +467,14 @@ def test_fetch_alerts_api_preserves_valid_hit_order(monkeypatch):
             return None
 
         def json(self):
-            return {"hits": {"hits": [
-                {"_source": {"rule": {"id": "5503"}}},
-                {"_source": {"rule": {"id": "5760"}}},
-            ]}}
+            return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+                "hits": {"hits": [
+                    {"_source": {"rule": {"id": "5503"}}},
+                    {"_source": {"rule": {"id": "5760"}}},
+                ]},
+            }
 
     monkeypatch.setattr(reader.requests, "post", lambda *args, **kwargs: FakeResponse())
     cfg = {

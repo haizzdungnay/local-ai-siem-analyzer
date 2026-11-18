@@ -109,6 +109,26 @@ def _validate_tls_config(cfg: dict) -> None:
             )
 
 
+def _validate_indexer_config(idx_cfg: dict) -> None:
+    if idx_cfg.get("protocol", "https") not in ("http", "https"):
+        raise ValueError("wazuh_indexer.protocol must be http or https")
+    if "port" in idx_cfg:
+        port = idx_cfg["port"]
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ValueError("wazuh_indexer.port must be an integer in 1..65535")
+    if "host" not in idx_cfg:
+        return
+    host = idx_cfg["host"]
+    parsed_host = None
+    if isinstance(host, str) and host and not any(char.isspace() or char == "\\" for char in host):
+        try:
+            parsed_host = urlsplit(f"//{host}").hostname
+        except ValueError:
+            pass
+    if not parsed_host or host.lower() not in {parsed_host, f"[{parsed_host}]"}:
+        raise ValueError("wazuh_indexer.host must contain only a hostname or IP address")
+
+
 def load_config(path: str | Path = MODULE_DIR / "config.yaml") -> dict:
     """Load and minimally validate YAML config."""
     with open(path, encoding="utf-8") as f:
@@ -121,6 +141,7 @@ def load_config(path: str | Path = MODULE_DIR / "config.yaml") -> dict:
     if not isinstance(cfg["extractor"].get("fields"), list):
         raise ValueError("extractor.fields phải là list")
     _validate_ollama_config(cfg["ollama"])
+    _validate_indexer_config(cfg["wazuh_indexer"])
     _validate_tls_config(cfg)
     return cfg
 
@@ -130,6 +151,8 @@ def resolve_config_paths(cfg: dict) -> dict:
     ollama_cfg = cfg.get("ollama")
     if isinstance(ollama_cfg, dict):
         _validate_ollama_config(ollama_cfg)
+    if isinstance(cfg.get("wazuh_indexer"), dict):
+        _validate_indexer_config(cfg["wazuh_indexer"])
     rag_cfg = cfg.get("rag")
     if isinstance(rag_cfg, dict) and "data_dir" in rag_cfg:
         data_dir = Path(rag_cfg["data_dir"])
@@ -153,6 +176,7 @@ def get_wazuh_token(cfg: dict) -> str:
 
 def _indexer_base_url(cfg: dict) -> str:
     idx_cfg = cfg["wazuh_indexer"]
+    _validate_indexer_config(idx_cfg)
     protocol = idx_cfg.get("protocol", "https")
     return f"{protocol}://{idx_cfg['host']}:{idx_cfg['port']}"
 
@@ -166,9 +190,55 @@ def _request_kwargs(cfg: dict) -> dict:
     }
 
 
-def _parse_search_response(body, *, require_identity: bool) -> tuple[list[dict], int | None]:
+class IndexerSearchError(ValueError):
+    """Reject unusable search results without exposing upstream failure details."""
+
+
+def _indexer_json(request_fn, cfg: dict, path: str, **kwargs):
+    """Keep transport URLs, userinfo and upstream bodies out of public errors."""
+    url = f"{_indexer_base_url(cfg)}{path}"
+    request_kwargs = _request_kwargs(cfg)
+    try:
+        response = request_fn(url, **kwargs, **request_kwargs)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as exc:
+        reason = f"http_{exc.response.status_code}" if exc.response is not None else type(exc).__name__
+        raise IndexerSearchError(f"Indexer request: {reason}") from None
+    except ValueError:
+        raise IndexerSearchError("Indexer response: invalid_json") from None
+
+
+def _validate_search_completeness(body) -> None:
     if not isinstance(body, dict):
-        raise ValueError("Indexer trả JSON không phải object")
+        raise IndexerSearchError("Indexer search: invalid_response")
+    if "error" in body:
+        raise IndexerSearchError("Indexer search: search_error")
+    if not isinstance(body.get("timed_out"), bool):
+        raise IndexerSearchError("Indexer search: invalid_timed_out")
+    if body["timed_out"]:
+        raise IndexerSearchError("Indexer search: timed_out")
+    terminated = body.get("terminated_early", False)
+    if not isinstance(terminated, bool):
+        raise IndexerSearchError("Indexer search: invalid_terminated_early")
+    if terminated:
+        raise IndexerSearchError("Indexer search: terminated_early")
+    shards = body.get("_shards")
+    if not isinstance(shards, dict) or any(
+        isinstance(shards.get(key), bool)
+        or not isinstance(shards.get(key), int)
+        or shards[key] < 0
+        for key in ("total", "successful", "skipped", "failed")
+    ):
+        raise IndexerSearchError("Indexer search: invalid_shards")
+    if shards["skipped"] > shards["successful"] or shards["successful"] + shards["failed"] > shards["total"]:
+        raise IndexerSearchError("Indexer search: invalid_shards")
+    if shards["failed"] or shards["successful"] != shards["total"]:
+        raise IndexerSearchError("Indexer search: incomplete_shards")
+
+
+def _parse_search_response(body, *, require_identity: bool) -> tuple[list[dict], int | None]:
+    _validate_search_completeness(body)
     hits_object = body.get("hits")
     if not isinstance(hits_object, dict):
         raise ValueError("Indexer response thiếu hits object")
@@ -233,10 +303,8 @@ def fetch_alerts_api(cfg: dict, limit: int = 10) -> list[dict]:
         "sort": [{"timestamp": {"order": "desc"}}],
         "track_total_hits": False,
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    alerts, _ = _parse_search_response(response.json(), require_identity=False)
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
+    alerts, _ = _parse_search_response(body, require_identity=False)
     return alerts
 
 
@@ -269,14 +337,15 @@ def fetch_alerts_range(
         "size": max_alerts + 1,
         "query": _window_query(format_utc(start_utc), format_utc(end_utc), filters),
         "sort": [{"timestamp": {"order": "asc"}}],
-        "track_total_hits": False,
+        "track_total_hits": True,
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    alerts, _ = _parse_search_response(response.json(), require_identity=True)
-    if len(alerts) > max_alerts:
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
+    alerts, _ = _parse_search_response(body, require_identity=True)
+    total = _exact_total(body)
+    if total > max_alerts or len(alerts) > max_alerts:
         raise ValueError(f"Cửa sổ có hơn {max_alerts} alert, vượt giới hạn")
+    if len(alerts) != total:
+        raise IndexerSearchError("Indexer search: incomplete_hits")
     return {
         "start": format_utc(start_utc),
         "end": format_utc(end_utc),
@@ -336,6 +405,7 @@ def _timeline_interval_seconds(start: datetime, end: datetime, max_buckets: int)
 
 
 def _exact_total(body: dict) -> int:
+    _validate_search_completeness(body)
     hits = body.get("hits") if isinstance(body, dict) else None
     total = hits.get("total") if isinstance(hits, dict) else None
     if not isinstance(total, dict) or total.get("relation") != "eq":
@@ -387,12 +457,12 @@ def _parse_window_aggregations(
         if isinstance(count, bool) or not isinstance(count, int) or count < 0:
             raise ValueError(f"Indexer timeline bucket {position} có doc_count sai")
         bucket_start = datetime.fromtimestamp(key / 1000, tz=timezone.utc)
-        if not start <= bucket_start < end:
+        bucket_end = bucket_start + timedelta(seconds=interval_seconds)
+        if bucket_start >= end or bucket_end <= start:
             continue
-        bucket_end = min(bucket_start + timedelta(seconds=interval_seconds), end)
         timeline.append({
-            "start": format_utc(bucket_start),
-            "end": format_utc(bucket_end),
+            "start": format_utc(max(bucket_start, start)),
+            "end": format_utc(min(bucket_end, end)),
             "count": count,
         })
 
@@ -516,11 +586,22 @@ def fetch_alerts_window(
             "unique_source_ips": {"cardinality": {"field": "data.srcip", "precision_threshold": CARDINALITY_PRECISION_THRESHOLD}},
         },
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    body = response.json()
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
     total = _exact_total(body)
+    full_detail = not summary_only and total <= max_alerts
+    alerts = []
+    if full_detail:
+        # ponytail: one final response supplies all full-window evidence;
+        # use PIT when evidence must span multiple searches/pages.
+        query = {**query, "size": max_alerts + 1, "sort": [{"timestamp": {"order": "asc"}}]}
+        body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
+        alerts, _ = _parse_search_response(body, require_identity=True)
+        if _exact_total(body) != total:
+            raise IndexerSearchError("Indexer total thay đổi giữa aggregate và detail query")
+        if len(alerts) > max_alerts:
+            raise IndexerSearchError(f"Cửa sổ có hơn {max_alerts} alert, vượt giới hạn")
+        if len(alerts) != total:
+            raise IndexerSearchError("Indexer search: incomplete_hits")
     summary = _parse_window_aggregations(
         body,
         start=start_utc,
@@ -534,22 +615,7 @@ def fetch_alerts_window(
         "detail_limit": max_alerts,
         **summary,
     }
-    if summary_only or total > max_alerts:
-        return {**common, "analysis_mode": "aggregate", "alerts": []}
-    detailed = fetch_alerts_range(
-        cfg,
-        start_utc,
-        end_utc,
-        max_alerts=max_alerts,
-        max_span=max_span,
-        now=now,
-        source_ip=source_ip,
-        agent_ip=agent_ip,
-        expected_rule_ids=expected_rule_ids,
-    )
-    if detailed["total"] != total:
-        raise ValueError("Indexer total thay đổi giữa aggregate và detail query")
-    return {**common, "analysis_mode": "full", "alerts": detailed["alerts"]}
+    return {**common, "analysis_mode": "full" if full_detail else "aggregate", "alerts": alerts}
 
 
 def fetch_alert_document(cfg: dict, index_name: str, document_id: str) -> dict:
@@ -558,10 +624,9 @@ def fetch_alert_document(cfg: dict, index_name: str, document_id: str) -> dict:
         raise ValueError("index_name không thuộc wazuh-alerts-*")
     if not isinstance(document_id, str) or not document_id:
         raise ValueError("document_id phải là string không rỗng")
-    url = f"{_indexer_base_url(cfg)}/{quote(index_name, safe='')}/_doc/{quote(document_id, safe='')}"
-    response = requests.get(url, **_request_kwargs(cfg))
-    response.raise_for_status()
-    body = response.json()
+    body = _indexer_json(
+        requests.get, cfg, f"/{quote(index_name, safe='')}/_doc/{quote(document_id, safe='')}",
+    )
     if not isinstance(body, dict) or not isinstance(body.get("_source"), dict):
         raise ValueError("Indexer document response thiếu _source object")
     if body.get("found") is False:
@@ -591,14 +656,22 @@ def fetch_active_source_ips(
             }
         },
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    buckets = response.json().get("aggregations", {}).get("top_source_ips", {}).get("buckets", [])
-    return [
-        {"ip": str(b["key"]), "count": int(b["doc_count"])}
-        for b in buckets if b.get("key") and isinstance(b.get("doc_count"), int)
-    ]
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
+    _validate_search_completeness(body)
+    aggregations = body.get("aggregations")
+    sources = aggregations.get("top_source_ips") if isinstance(aggregations, dict) else None
+    buckets = sources.get("buckets") if isinstance(sources, dict) else None
+    if not isinstance(buckets, list):
+        raise IndexerSearchError("Indexer search: invalid_source_buckets")
+    for bucket in buckets:
+        if (
+            not isinstance(bucket, dict)
+            or not isinstance(bucket.get("key"), str) or not bucket["key"]
+            or isinstance(bucket.get("doc_count"), bool)
+            or not isinstance(bucket.get("doc_count"), int) or bucket["doc_count"] < 0
+        ):
+            raise IndexerSearchError("Indexer search: invalid_source_bucket")
+    return [{"ip": bucket["key"], "count": bucket["doc_count"]} for bucket in buckets]
 
 
 def load_sample_alerts(path: str | Path = SAMPLES_DIR) -> list[dict]:
