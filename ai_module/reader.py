@@ -166,9 +166,40 @@ def _request_kwargs(cfg: dict) -> dict:
     }
 
 
-def _parse_search_response(body, *, require_identity: bool) -> tuple[list[dict], int | None]:
+class IndexerSearchError(ValueError):
+    """Reject unusable search results without exposing upstream failure details."""
+
+
+def _validate_search_completeness(body) -> None:
     if not isinstance(body, dict):
-        raise ValueError("Indexer trả JSON không phải object")
+        raise IndexerSearchError("Indexer search: invalid_response")
+    if "error" in body:
+        raise IndexerSearchError("Indexer search: search_error")
+    if not isinstance(body.get("timed_out"), bool):
+        raise IndexerSearchError("Indexer search: invalid_timed_out")
+    if body["timed_out"]:
+        raise IndexerSearchError("Indexer search: timed_out")
+    terminated = body.get("terminated_early", False)
+    if not isinstance(terminated, bool):
+        raise IndexerSearchError("Indexer search: invalid_terminated_early")
+    if terminated:
+        raise IndexerSearchError("Indexer search: terminated_early")
+    shards = body.get("_shards")
+    if not isinstance(shards, dict) or any(
+        isinstance(shards.get(key), bool)
+        or not isinstance(shards.get(key), int)
+        or shards[key] < 0
+        for key in ("total", "successful", "skipped", "failed")
+    ):
+        raise IndexerSearchError("Indexer search: invalid_shards")
+    if shards["skipped"] > shards["successful"] or shards["successful"] + shards["failed"] > shards["total"]:
+        raise IndexerSearchError("Indexer search: invalid_shards")
+    if shards["failed"] or shards["successful"] != shards["total"]:
+        raise IndexerSearchError("Indexer search: incomplete_shards")
+
+
+def _parse_search_response(body, *, require_identity: bool) -> tuple[list[dict], int | None]:
+    _validate_search_completeness(body)
     hits_object = body.get("hits")
     if not isinstance(hits_object, dict):
         raise ValueError("Indexer response thiếu hits object")
@@ -269,14 +300,18 @@ def fetch_alerts_range(
         "size": max_alerts + 1,
         "query": _window_query(format_utc(start_utc), format_utc(end_utc), filters),
         "sort": [{"timestamp": {"order": "asc"}}],
-        "track_total_hits": False,
+        "track_total_hits": True,
     }
     url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
     response = requests.post(url, json=query, **_request_kwargs(cfg))
     response.raise_for_status()
-    alerts, _ = _parse_search_response(response.json(), require_identity=True)
-    if len(alerts) > max_alerts:
+    body = response.json()
+    alerts, _ = _parse_search_response(body, require_identity=True)
+    total = _exact_total(body)
+    if total > max_alerts or len(alerts) > max_alerts:
         raise ValueError(f"Cửa sổ có hơn {max_alerts} alert, vượt giới hạn")
+    if len(alerts) != total:
+        raise IndexerSearchError("Indexer search: incomplete_hits")
     return {
         "start": format_utc(start_utc),
         "end": format_utc(end_utc),
@@ -336,6 +371,7 @@ def _timeline_interval_seconds(start: datetime, end: datetime, max_buckets: int)
 
 
 def _exact_total(body: dict) -> int:
+    _validate_search_completeness(body)
     hits = body.get("hits") if isinstance(body, dict) else None
     total = hits.get("total") if isinstance(hits, dict) else None
     if not isinstance(total, dict) or total.get("relation") != "eq":
@@ -387,12 +423,12 @@ def _parse_window_aggregations(
         if isinstance(count, bool) or not isinstance(count, int) or count < 0:
             raise ValueError(f"Indexer timeline bucket {position} có doc_count sai")
         bucket_start = datetime.fromtimestamp(key / 1000, tz=timezone.utc)
-        if not start <= bucket_start < end:
+        bucket_end = bucket_start + timedelta(seconds=interval_seconds)
+        if bucket_start >= end or bucket_end <= start:
             continue
-        bucket_end = min(bucket_start + timedelta(seconds=interval_seconds), end)
         timeline.append({
-            "start": format_utc(bucket_start),
-            "end": format_utc(bucket_end),
+            "start": format_utc(max(bucket_start, start)),
+            "end": format_utc(min(bucket_end, end)),
             "count": count,
         })
 
@@ -549,6 +585,8 @@ def fetch_alerts_window(
     )
     if detailed["total"] != total:
         raise ValueError("Indexer total thay đổi giữa aggregate và detail query")
+    # ponytail: separate searches do not prove one snapshot even with equal totals;
+    # use a shared PIT before treating aggregate/detail as action evidence.
     return {**common, "analysis_mode": "full", "alerts": detailed["alerts"]}
 
 
@@ -594,11 +632,22 @@ def fetch_active_source_ips(
     url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
     response = requests.post(url, json=query, **_request_kwargs(cfg))
     response.raise_for_status()
-    buckets = response.json().get("aggregations", {}).get("top_source_ips", {}).get("buckets", [])
-    return [
-        {"ip": str(b["key"]), "count": int(b["doc_count"])}
-        for b in buckets if b.get("key") and isinstance(b.get("doc_count"), int)
-    ]
+    body = response.json()
+    _validate_search_completeness(body)
+    aggregations = body.get("aggregations")
+    sources = aggregations.get("top_source_ips") if isinstance(aggregations, dict) else None
+    buckets = sources.get("buckets") if isinstance(sources, dict) else None
+    if not isinstance(buckets, list):
+        raise IndexerSearchError("Indexer search: invalid_source_buckets")
+    for bucket in buckets:
+        if (
+            not isinstance(bucket, dict)
+            or not isinstance(bucket.get("key"), str) or not bucket["key"]
+            or isinstance(bucket.get("doc_count"), bool)
+            or not isinstance(bucket.get("doc_count"), int) or bucket["doc_count"] < 0
+        ):
+            raise IndexerSearchError("Indexer search: invalid_source_bucket")
+    return [{"ip": bucket["key"], "count": bucket["doc_count"]} for bucket in buckets]
 
 
 def load_sample_alerts(path: str | Path = SAMPLES_DIR) -> list[dict]:

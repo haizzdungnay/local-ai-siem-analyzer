@@ -1,5 +1,8 @@
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
 
 import analysis_service
 import llm
@@ -18,6 +21,8 @@ def test_fetch_alerts_range_builds_half_open_query_and_preserves_identity(monkey
 
         def json(self):
             return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
                 "hits": {
                     "total": {"value": 1, "relation": "eq"},
                     "hits": [{
@@ -49,7 +54,7 @@ def test_fetch_alerts_range_builds_half_open_query_and_preserves_identity(monkey
         "lt": "2026-07-30T12:00:00.000Z",
     }
     assert captured["json"]["size"] == 11
-    assert captured["json"]["track_total_hits"] is False
+    assert captured["json"]["track_total_hits"] is True
     assert result["alerts"][0]["_id"] == "abc"
     assert result["alerts"][0]["_source"]["timestamp"].endswith("Z")
 
@@ -148,7 +153,10 @@ def test_fetch_alerts_range_fails_instead_of_silent_truncation(monkeypatch):
             return None
 
         def json(self):
-            return {"hits": {"hits": [
+            return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+                "hits": {"total": {"value": 11, "relation": "eq"}, "hits": [
                 {
                     "_index": "wazuh-alerts-4.x-2026.07.30", "_id": str(index),
                     "_source": {"timestamp": "2026-07-30T11:55:00Z"},
@@ -206,6 +214,8 @@ def _hit(document_id, timestamp, rule_id="5503", level=5, srcip="192.0.2.30"):
 def _aggregate_response(total=5737):
     first = int(datetime(2026, 7, 30, 11, 55, tzinfo=timezone.utc).timestamp() * 1000)
     return {
+        "timed_out": False,
+        "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
         "hits": {"total": {"value": total, "relation": "eq"}, "hits": []},
         "aggregations": {
             "timeline": {"buckets": [
@@ -229,6 +239,154 @@ def _aggregate_response(total=5737):
             "unique_source_ips": {"value": 0},
         },
     }
+
+
+def _mock_search_body(monkeypatch, body):
+    monkeypatch.setattr(reader.requests, "post", lambda *args, **kwargs: SimpleNamespace(
+        raise_for_status=lambda: None, json=lambda: body,
+    ))
+
+
+@pytest.mark.parametrize("kind", ["latest", "detail", "aggregate", "sources"])
+@pytest.mark.parametrize("field,value,reason", [
+    ("timed_out", True, "timed_out"),
+    ("timed_out", "false", "invalid_timed_out"),
+    ("timed_out", None, "invalid_timed_out"),
+    ("_shards", None, "invalid_shards"),
+    ("_shards", {"total": 2, "successful": 1, "skipped": 0, "failed": 1}, "incomplete_shards"),
+    ("_shards", {"total": 2, "successful": 1, "skipped": 0, "failed": 0}, "incomplete_shards"),
+    ("_shards", {"total": 1, "successful": 1, "skipped": 0, "failed": False}, "invalid_shards"),
+    ("_shards", {"total": 1, "successful": 1, "skipped": 2, "failed": 0}, "invalid_shards"),
+    ("_shards", {"total": 1, "successful": 1, "skipped": 0, "failed": -1}, "invalid_shards"),
+    ("_shards", {"total": 1, "successful": 1, "failed": 0}, "invalid_shards"),
+    ("terminated_early", True, "terminated_early"),
+    ("terminated_early", "false", "invalid_terminated_early"),
+    ("error", {"reason": "PRIVATE_UPSTREAM_DETAIL"}, "search_error"),
+])
+def test_search_rejects_incomplete_or_invalid_metadata(monkeypatch, kind, field, value, reason):
+    body = _aggregate_response()
+    if value is None:
+        body.pop(field)
+    else:
+        body[field] = value
+    _mock_search_body(monkeypatch, body)
+    cfg = {"wazuh_indexer": {
+        "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+    }}
+    with pytest.raises(ValueError, match=reason) as caught:
+        if kind == "latest":
+            reader.fetch_alerts_api(cfg)
+        elif kind == "detail":
+            reader.fetch_alerts_range(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)
+        elif kind == "sources":
+            reader.fetch_active_source_ips(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)
+        else:
+            reader.fetch_alerts_window(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)
+    assert "PRIVATE_UPSTREAM_DETAIL" not in str(caught.value)
+
+
+@pytest.mark.parametrize("total,reason", [
+    (None, "exact hits.total"),
+    ({"value": 1, "relation": "gte"}, "exact hits.total"),
+    ({"value": True, "relation": "eq"}, "hits.total"),
+    ({"value": 1, "relation": "eq"}, "incomplete_hits"),
+])
+def test_range_requires_exact_total_matching_returned_hits(monkeypatch, total, reason):
+    body = _aggregate_response()
+    body["hits"]["total"] = total
+    _mock_search_body(monkeypatch, body)
+    cfg = {"wazuh_indexer": {
+        "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+    }}
+    with pytest.raises(ValueError, match=reason):
+        reader.fetch_alerts_range(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)
+
+
+@pytest.mark.parametrize("shards", [
+    {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+    {"total": 2, "successful": 2, "skipped": 1, "failed": 0},
+    {"total": 0, "successful": 0, "skipped": 0, "failed": 0},
+])
+def test_complete_empty_search_and_skipped_shards_are_valid(monkeypatch, shards):
+    body = _aggregate_response(total=0)
+    body.update(_shards=shards, terminated_early=False)
+    body["aggregations"]["rules"]["buckets"] = []
+    body["aggregations"]["top_source_ips"] = {"buckets": []}
+    _mock_search_body(monkeypatch, body)
+    cfg = {"wazuh_indexer": {
+        "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+    }}
+    assert reader.fetch_alerts_api(cfg) == []
+    assert reader.fetch_alerts_range(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)["total"] == 0
+    assert reader.fetch_alerts_window(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)["total"] == 0
+    assert reader.fetch_active_source_ips(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW) == []
+
+
+@pytest.mark.parametrize("total", [None, {"value": 1, "relation": "gte"}])
+def test_aggregate_requires_exact_total(monkeypatch, total):
+    body = _aggregate_response()
+    body["hits"]["total"] = total
+    _mock_search_body(monkeypatch, body)
+    cfg = {"wazuh_indexer": {
+        "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+    }}
+    with pytest.raises(ValueError, match="exact hits.total"):
+        reader.fetch_alerts_window(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)
+
+
+def test_window_rejects_changed_total_between_complete_searches(monkeypatch):
+    bodies = [_aggregate_response(total=1), _aggregate_response(total=2)]
+    bodies[1]["hits"]["hits"] = [
+        _hit(str(index), "2026-07-30T11:55:00Z") for index in range(2)
+    ]
+    monkeypatch.setattr(reader.requests, "post", lambda *args, **kwargs: SimpleNamespace(
+        raise_for_status=lambda: None, json=lambda: bodies.pop(0),
+    ))
+    cfg = {"wazuh_indexer": {
+        "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+    }}
+    with pytest.raises(ValueError, match="total thay đổi"):
+        reader.fetch_alerts_window(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)
+    assert not bodies
+
+
+@pytest.mark.parametrize("sources", [None, {}, {"buckets": None}, {"buckets": [None]},
+    {"buckets": [{"key": "192.0.2.1", "doc_count": True}]},
+])
+def test_active_sources_rejects_malformed_aggregations(monkeypatch, sources):
+    body = _aggregate_response()
+    body["aggregations"]["top_source_ips"] = sources
+    _mock_search_body(monkeypatch, body)
+    cfg = {"wazuh_indexer": {
+        "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+    }}
+    with pytest.raises(reader.IndexerSearchError, match="invalid_source_bucket"):
+        reader.fetch_active_source_ips(cfg, "2026-07-30T11:50:00Z", NOW, now=NOW)
+
+
+@pytest.mark.parametrize("start,end,expected", [
+    ("10:03", "10:08", [("10:03", "10:05", 2), ("10:05", "10:08", 3)]),
+    ("10:00", "10:10", [("10:00", "10:05", 2), ("10:05", "10:10", 3)]),
+    ("10:05", "10:10", [("10:05", "10:10", 3)]),
+    ("10:01", "10:02", [("10:01", "10:02", 2)]),
+    ("10:15", "10:20", []),
+])
+def test_timeline_keeps_overlapping_buckets_without_prorating(start, end, expected):
+    def utc(clock):
+        return datetime.fromisoformat(f"2026-07-30T{clock}:00+00:00")
+
+    body = _aggregate_response(total=5)
+    body["aggregations"]["timeline"]["buckets"] = [
+        {"key": utc(clock).timestamp() * 1000, "doc_count": count}
+        for clock, count in [("09:55", 99), ("10:00", 2), ("10:05", 3), ("10:10", 99)]
+    ]
+    result = reader._parse_window_aggregations(
+        body, start=utc(start), end=utc(end), interval_seconds=300,
+    )
+    assert result["timeline"] == [
+        {"start": reader.format_utc(utc(left)), "end": reader.format_utc(utc(right)), "count": count}
+        for left, right, count in expected
+    ]
 
 
 def test_fetch_alerts_window_switches_to_aggregate_without_bulk_source(monkeypatch):

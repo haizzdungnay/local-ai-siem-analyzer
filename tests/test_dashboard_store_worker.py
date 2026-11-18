@@ -2,11 +2,14 @@ import json
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
 import dashboard_store
 import dashboard_worker
+import dashboard_reports
+import reader
 from dashboard_store import DashboardStore
 
 
@@ -664,6 +667,54 @@ def test_worker_empty_window_skips_llm(monkeypatch, tmp_path):
 
     assert store.get_job(job_id)["status"] == "succeeded"
     assert store.get_job_detail(job_id)["results"] == []
+
+
+@pytest.mark.parametrize("stage", ["aggregate", "detail"])
+@pytest.mark.parametrize("problem", ["timed_out", "incomplete_shards"])
+def test_worker_rejects_incomplete_search_in_stored_job_and_report(monkeypatch, tmp_path, stage, problem):
+    complete = {
+        "timed_out": False,
+        "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+        "hits": {"total": {"value": 0, "relation": "eq"}, "hits": []},
+        "aggregations": {
+            "timeline": {"buckets": []},
+            "rules": {"buckets": [], "sum_other_doc_count": 0},
+            "unique_rules": {"value": 0}, "unique_agents": {"value": 0},
+            "unique_source_ips": {"value": 0},
+        },
+    }
+    partial = {**complete, "timed_out": True} if problem == "timed_out" else {
+        **complete, "_shards": {"total": 1, "successful": 0, "skipped": 0, "failed": 1},
+    }
+    calls = []
+
+    def post(*args, **kwargs):
+        calls.append(kwargs["json"])
+        body = complete if stage == "detail" and len(calls) == 1 else partial
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: body)
+
+    monkeypatch.setattr(reader.requests, "post", post)
+    store = DashboardStore(tmp_path / "dashboard.db")
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v3",
+    )
+    runtime = dashboard_worker.DashboardRuntime(store, {
+        "dashboard": {}, "wazuh_indexer": {
+            "host": "siem.invalid", "port": 9200, "user": "reader", "password": "secret",
+        },
+    }, SimpleNamespace(analyze_aggregate=lambda *args, **kwargs: pytest.fail("No model call allowed")))
+    runtime._run_job(store.claim_next_job())
+    detail = store.get_job_detail(job_id)
+    assert detail["status"] == "failed"
+    assert problem in detail["error"]
+    assert detail["results"] == []
+    assert len(calls) == (1 if stage == "aggregate" else 2)
+    for schema in ("v1", "v2"):
+        report = dashboard_reports._job_report(detail, schema=schema)
+        assert report["job"]["status"] == "failed"
+        assert problem in report["job"]["error"]
+        assert report["analysis"] is None
 
 
 def test_worker_persists_window_result_and_partial_status(monkeypatch, tmp_path):

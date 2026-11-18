@@ -140,6 +140,8 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 
 **Đóng issue khi:** regression thất bại trước sửa, pass sau sửa; không có empty-success giả; UI/report phản ánh coverage. Bằng chứng mock đủ cho parser, nhưng phải ghi rõ chưa xác minh response lab nếu chưa chạy.
 
+**Giới hạn snapshot:** aggregate và detail hiện dùng hai search riêng; total bằng nhau không chứng minh cùng snapshot. Kiểm metadata/total chỉ bảo đảm từng response không bị cắt theo các dấu hiệu đã kiểm, không bảo đảm đủ lịch sử lưu trữ. Trước khi dùng cặp kết quả này làm evidence hành động ở R1, cần shared PIT hoặc contract từ chối khi không chứng minh được tính nhất quán; bản sửa parser/timeline không tự nghiệm thu gate đó.
+
 ### Issue 12
 
 **[#12 — R0.2: Nhánh benign và severity](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/12)**. Không có dependency; phối hợp #23/#29 trước khi sửa chung `llm.py`, `playbooks.py`, YAML/template.
