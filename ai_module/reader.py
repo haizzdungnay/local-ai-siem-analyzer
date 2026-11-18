@@ -109,6 +109,26 @@ def _validate_tls_config(cfg: dict) -> None:
             )
 
 
+def _validate_indexer_config(idx_cfg: dict) -> None:
+    if idx_cfg.get("protocol", "https") not in ("http", "https"):
+        raise ValueError("wazuh_indexer.protocol must be http or https")
+    if "port" in idx_cfg:
+        port = idx_cfg["port"]
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ValueError("wazuh_indexer.port must be an integer in 1..65535")
+    if "host" not in idx_cfg:
+        return
+    host = idx_cfg["host"]
+    parsed_host = None
+    if isinstance(host, str) and host and not any(char.isspace() or char == "\\" for char in host):
+        try:
+            parsed_host = urlsplit(f"//{host}").hostname
+        except ValueError:
+            pass
+    if not parsed_host or host.lower() not in {parsed_host, f"[{parsed_host}]"}:
+        raise ValueError("wazuh_indexer.host must contain only a hostname or IP address")
+
+
 def load_config(path: str | Path = MODULE_DIR / "config.yaml") -> dict:
     """Load and minimally validate YAML config."""
     with open(path, encoding="utf-8") as f:
@@ -121,6 +141,7 @@ def load_config(path: str | Path = MODULE_DIR / "config.yaml") -> dict:
     if not isinstance(cfg["extractor"].get("fields"), list):
         raise ValueError("extractor.fields phải là list")
     _validate_ollama_config(cfg["ollama"])
+    _validate_indexer_config(cfg["wazuh_indexer"])
     _validate_tls_config(cfg)
     return cfg
 
@@ -130,6 +151,8 @@ def resolve_config_paths(cfg: dict) -> dict:
     ollama_cfg = cfg.get("ollama")
     if isinstance(ollama_cfg, dict):
         _validate_ollama_config(ollama_cfg)
+    if isinstance(cfg.get("wazuh_indexer"), dict):
+        _validate_indexer_config(cfg["wazuh_indexer"])
     rag_cfg = cfg.get("rag")
     if isinstance(rag_cfg, dict) and "data_dir" in rag_cfg:
         data_dir = Path(rag_cfg["data_dir"])
@@ -153,6 +176,7 @@ def get_wazuh_token(cfg: dict) -> str:
 
 def _indexer_base_url(cfg: dict) -> str:
     idx_cfg = cfg["wazuh_indexer"]
+    _validate_indexer_config(idx_cfg)
     protocol = idx_cfg.get("protocol", "https")
     return f"{protocol}://{idx_cfg['host']}:{idx_cfg['port']}"
 
@@ -168,6 +192,21 @@ def _request_kwargs(cfg: dict) -> dict:
 
 class IndexerSearchError(ValueError):
     """Reject unusable search results without exposing upstream failure details."""
+
+
+def _indexer_json(request_fn, cfg: dict, path: str, **kwargs):
+    """Keep transport URLs, userinfo and upstream bodies out of public errors."""
+    url = f"{_indexer_base_url(cfg)}{path}"
+    request_kwargs = _request_kwargs(cfg)
+    try:
+        response = request_fn(url, **kwargs, **request_kwargs)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as exc:
+        reason = f"http_{exc.response.status_code}" if exc.response is not None else type(exc).__name__
+        raise IndexerSearchError(f"Indexer request: {reason}") from None
+    except ValueError:
+        raise IndexerSearchError("Indexer response: invalid_json") from None
 
 
 def _validate_search_completeness(body) -> None:
@@ -264,10 +303,8 @@ def fetch_alerts_api(cfg: dict, limit: int = 10) -> list[dict]:
         "sort": [{"timestamp": {"order": "desc"}}],
         "track_total_hits": False,
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    alerts, _ = _parse_search_response(response.json(), require_identity=False)
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
+    alerts, _ = _parse_search_response(body, require_identity=False)
     return alerts
 
 
@@ -302,10 +339,7 @@ def fetch_alerts_range(
         "sort": [{"timestamp": {"order": "asc"}}],
         "track_total_hits": True,
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    body = response.json()
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
     alerts, _ = _parse_search_response(body, require_identity=True)
     total = _exact_total(body)
     if total > max_alerts or len(alerts) > max_alerts:
@@ -552,11 +586,22 @@ def fetch_alerts_window(
             "unique_source_ips": {"cardinality": {"field": "data.srcip", "precision_threshold": CARDINALITY_PRECISION_THRESHOLD}},
         },
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    body = response.json()
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
     total = _exact_total(body)
+    full_detail = not summary_only and total <= max_alerts
+    alerts = []
+    if full_detail:
+        # ponytail: one final response supplies all full-window evidence;
+        # use PIT when evidence must span multiple searches/pages.
+        query = {**query, "size": max_alerts + 1, "sort": [{"timestamp": {"order": "asc"}}]}
+        body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
+        alerts, _ = _parse_search_response(body, require_identity=True)
+        if _exact_total(body) != total:
+            raise IndexerSearchError("Indexer total thay đổi giữa aggregate và detail query")
+        if len(alerts) > max_alerts:
+            raise IndexerSearchError(f"Cửa sổ có hơn {max_alerts} alert, vượt giới hạn")
+        if len(alerts) != total:
+            raise IndexerSearchError("Indexer search: incomplete_hits")
     summary = _parse_window_aggregations(
         body,
         start=start_utc,
@@ -570,24 +615,7 @@ def fetch_alerts_window(
         "detail_limit": max_alerts,
         **summary,
     }
-    if summary_only or total > max_alerts:
-        return {**common, "analysis_mode": "aggregate", "alerts": []}
-    detailed = fetch_alerts_range(
-        cfg,
-        start_utc,
-        end_utc,
-        max_alerts=max_alerts,
-        max_span=max_span,
-        now=now,
-        source_ip=source_ip,
-        agent_ip=agent_ip,
-        expected_rule_ids=expected_rule_ids,
-    )
-    if detailed["total"] != total:
-        raise ValueError("Indexer total thay đổi giữa aggregate và detail query")
-    # ponytail: separate searches do not prove one snapshot even with equal totals;
-    # use a shared PIT before treating aggregate/detail as action evidence.
-    return {**common, "analysis_mode": "full", "alerts": detailed["alerts"]}
+    return {**common, "analysis_mode": "full" if full_detail else "aggregate", "alerts": alerts}
 
 
 def fetch_alert_document(cfg: dict, index_name: str, document_id: str) -> dict:
@@ -596,10 +624,9 @@ def fetch_alert_document(cfg: dict, index_name: str, document_id: str) -> dict:
         raise ValueError("index_name không thuộc wazuh-alerts-*")
     if not isinstance(document_id, str) or not document_id:
         raise ValueError("document_id phải là string không rỗng")
-    url = f"{_indexer_base_url(cfg)}/{quote(index_name, safe='')}/_doc/{quote(document_id, safe='')}"
-    response = requests.get(url, **_request_kwargs(cfg))
-    response.raise_for_status()
-    body = response.json()
+    body = _indexer_json(
+        requests.get, cfg, f"/{quote(index_name, safe='')}/_doc/{quote(document_id, safe='')}",
+    )
     if not isinstance(body, dict) or not isinstance(body.get("_source"), dict):
         raise ValueError("Indexer document response thiếu _source object")
     if body.get("found") is False:
@@ -629,10 +656,7 @@ def fetch_active_source_ips(
             }
         },
     }
-    url = f"{_indexer_base_url(cfg)}/{ALERT_INDEX_PATTERN}/_search"
-    response = requests.post(url, json=query, **_request_kwargs(cfg))
-    response.raise_for_status()
-    body = response.json()
+    body = _indexer_json(requests.post, cfg, f"/{ALERT_INDEX_PATTERN}/_search", json=query)
     _validate_search_completeness(body)
     aggregations = body.get("aggregations")
     sources = aggregations.get("top_source_ips") if isinstance(aggregations, dict) else None

@@ -356,7 +356,10 @@ class DashboardRuntime:
                 self.store.complete_job(job["id"], "cancelled")
                 return
             self.store.update_phase(job["id"], "saving_result")
-            warnings = ["Prompt coverage bị rút gọn"] if result["coverage"]["truncated"] else []
+            coverage = result["coverage"]
+            warnings = ["Prompt coverage bị rút gọn"] if coverage.get("prompt_truncated", coverage["truncated"]) else []
+            if coverage.get("source_truncated"):
+                warnings.append("Nguồn Indexer thiếu rule bucket hoặc alert trong aggregation")
             if aggregate.get("analysis_mode") == "aggregate":
                 warnings.append(
                     f"Aggregate-only: {aggregate['total_alerts']} alert vượt detail cap; không tải full log"
@@ -435,7 +438,7 @@ class DashboardRuntime:
             )
             self.store.complete_job(job["id"], "failed", error=error)
             if job["job_type"] == "scheduled_window":
-                self.store.block_schedule(f"{type(exc).__name__}: {exc}")
+                self.store.block_schedule(error)
 
     def _attack_chain_result(self, job):
         """Analyse the busiest source IP of the same window as part of this job.

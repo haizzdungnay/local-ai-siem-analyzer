@@ -164,7 +164,7 @@ def aggregate_rule_buckets(fetched: dict) -> dict:
     groups.sort(key=lambda group: (-group["max_level"], -group["count"], group["rule_id"]))
     return {
         "total_alerts": int(fetched.get("total", 0)),
-        "total_groups": int(fetched.get("unique_rules", len(groups))),
+        "total_groups": len(groups),
         "unique_rules": int(fetched.get("unique_rules", len(groups))),
         "unique_agents": int(fetched.get("unique_agents", 0)),
         "unique_source_ips": int(fetched.get("unique_source_ips", 0)),
@@ -260,12 +260,19 @@ def format_window_for_llm(
         current_chars += 1 + len(block)
         included += 1
         represented += group["count"]
+    prompt_truncated = included < len(groups)
+    source_truncated = (
+        bool(aggregate.get("source_truncated"))
+        or sum(group["count"] for group in groups) < aggregate["total_alerts"]
+    )
     coverage = {
         "included_groups": included,
         "total_groups": aggregate["total_groups"],
         "represented_alerts": represented,
         "total_alerts": aggregate["total_alerts"],
-        "truncated": included < aggregate["total_groups"] or bool(aggregate.get("source_truncated")),
+        "truncated": prompt_truncated or source_truncated,
+        "prompt_truncated": prompt_truncated,
+        "source_truncated": source_truncated,
         "unique_counts_approximate": approximate_counts,
         "cardinality_precision_threshold": aggregate.get("cardinality_precision_threshold"),
     }

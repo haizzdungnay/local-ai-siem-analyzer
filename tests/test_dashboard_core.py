@@ -499,10 +499,58 @@ def test_window_prompt_reports_truncation_coverage():
         "represented_alerts": 1,
         "total_alerts": 2,
         "truncated": True,
+        "prompt_truncated": True,
+        "source_truncated": False,
         "unique_counts_approximate": False,
         "cardinality_precision_threshold": None,
     }
     assert "Coverage:" in prompt
+
+
+@pytest.mark.parametrize("source_truncated,total,unique_rules,prompt_limit,expected_source,expected_prompt", [
+    (True, 7, 3, 20, True, False),
+    (False, 2, 3, 20, False, False),
+    (False, 2, 1, 20, False, False),
+    (False, 3, 2, 20, True, False),
+    (False, 2, 2, 1, False, True),
+    (True, 7, 3, 1, True, True),
+])
+def test_coverage_separates_source_prompt_and_cardinality(
+    source_truncated, total, unique_rules, prompt_limit, expected_source, expected_prompt,
+):
+    fetched = {
+        "total": total, "unique_rules": unique_rules, "unique_counts_approximate": True,
+        "rules_truncated": source_truncated,
+        "rule_buckets": [{"rule_id": rule_id, "count": 1} for rule_id in ("5503", "5760")],
+    }
+    aggregate = analysis_service.aggregate_rule_buckets(fetched)
+    _, coverage = analysis_service.format_window_for_llm(aggregate, max_groups=prompt_limit)
+    assert aggregate["total_groups"] == 2
+    assert aggregate["unique_rules"] == unique_rules
+    assert coverage["source_truncated"] is expected_source
+    assert coverage["prompt_truncated"] is expected_prompt
+    assert coverage["truncated"] is (expected_source or expected_prompt)
+    assert coverage["unique_counts_approximate"] is True
+
+
+@pytest.mark.parametrize("host", [
+    "user:pass@siem.invalid", "https://siem.invalid", "siem.invalid:9200",
+    "siem.invalid/path", "siem.invalid?key=value", "siem.invalid#fragment", " siem.invalid",
+])
+def test_indexer_rejects_host_with_url_components_before_network(monkeypatch, host):
+    monkeypatch.setattr(reader.requests, "post", lambda *args, **kwargs: pytest.fail("No request allowed"))
+    cfg = {"wazuh_indexer": {"host": host, "port": 9200, "user": "reader", "password": "secret"}}
+    with pytest.raises(ValueError, match="wazuh_indexer.host") as caught:
+        reader.fetch_alerts_api(cfg)
+    assert host not in str(caught.value)
+
+
+@pytest.mark.parametrize("field,value", [("port", True), ("port", "9200@siem.invalid"), ("port", 0), ("protocol", "ftp")])
+def test_indexer_rejects_invalid_endpoint_config_before_network(monkeypatch, field, value):
+    monkeypatch.setattr(reader.requests, "post", lambda *args, **kwargs: pytest.fail("No request allowed"))
+    cfg = {"wazuh_indexer": {"host": "siem.invalid", "port": 9200, field: value}}
+    with pytest.raises(ValueError, match=f"wazuh_indexer.{field}"):
+        reader.fetch_alerts_api(cfg)
 
 
 def test_parse_window_response_is_strict():

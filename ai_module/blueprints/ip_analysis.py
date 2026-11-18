@@ -116,7 +116,7 @@ def get_active_ips():
     try:
         ips = dashboard.fetch_active_source_ips(cfg, start=start, end=now, limit=50)
     except Exception:
-        ips = []
+        return jsonify({"error": "Không thể tải danh sách IP từ Indexer"}), 502
     return jsonify({"ips": ips, "lookback_seconds": lookback_seconds})
 
 

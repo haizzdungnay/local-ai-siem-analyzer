@@ -1,8 +1,12 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 import dashboard
 import dashboard_store
+import reader
 
 
 def make_cfg(tmp_path):
@@ -1397,6 +1401,159 @@ def test_active_ips_endpoint_aggregates_top_source_ips(tmp_path, monkeypatch):
     assert data["lookback_seconds"] == 86400
     assert len(data["ips"]) == 2
     assert data["ips"][0]["ip"] == "192.168.100.30"
+
+
+@pytest.mark.parametrize("problem", ["timed_out", "incomplete_shards", "http", "connection", "empty"])
+def test_active_ips_distinguishes_indexer_failure_from_empty(tmp_path, monkeypatch, problem):
+    body = {
+        "timed_out": problem == "timed_out",
+        "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+        "aggregations": {"top_source_ips": {"buckets": []}},
+    }
+    if problem == "incomplete_shards":
+        body["_shards"].update(successful=0, failed=1)
+
+    def post(*args, **kwargs):
+        if problem == "connection":
+            raise reader.requests.ConnectionError("PRIVATE_INDEXER_URL")
+        response = reader.requests.Response()
+        response.status_code = 400 if problem == "http" else 200
+        response.url = "https://siem.invalid:9200/PRIVATE_INDEXER_URL"
+        response._content = json.dumps(body).encode()
+        return response
+
+    monkeypatch.setattr(reader.requests, "post", post)
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    response = app.test_client().get("/api/active-ips")
+    if problem == "empty":
+        assert response.status_code == 200
+        assert response.json["ips"] == []
+    else:
+        assert response.status_code == 502
+        assert response.json["error"]
+        assert "ips" not in response.json
+        assert "PRIVATE_INDEXER_URL" not in response.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("problem", ["http", "connection", "timeout"])
+def test_indexer_transport_errors_are_safe_in_job_schedule_and_export(tmp_path, monkeypatch, problem):
+    def post(*args, **kwargs):
+        if problem != "http":
+            error = reader.requests.Timeout if problem == "timeout" else reader.requests.ConnectionError
+            raise error("https://PRIVATE_USER:PRIVATE_PASS@private-indexer.invalid:9200")
+        response = reader.requests.Response()
+        response.status_code = 400
+        response.url = "https://PRIVATE_USER:PRIVATE_PASS@private-indexer.invalid:9200/_search"
+        response._content = b'{"error":"PRIVATE_BODY"}'
+        return response
+
+    monkeypatch.setattr(reader.requests, "post", post)
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    store = app.config["DASHBOARD_STORE"]
+    job_id = store.create_job(
+        "scheduled_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v3", schedule_generation=1,
+    )
+    app.config["DASHBOARD_RUNTIME"]._run_job(store.claim_next_job())
+    job = store.get_job(job_id)
+    schedule = store.get_schedule()
+    assert job["status"] == "failed"
+    assert schedule["state"] == "blocked"
+    assert job["error"] == schedule["error"]
+    if problem == "http":
+        assert "400" in job["error"]
+    else:
+        assert problem in job["error"].lower()
+    public = [job, schedule]
+    for schema in ("v1", "v2"):
+        response = app.test_client().get(f"/api/jobs/{job_id}/export?schema={schema}")
+        assert response.status_code == 200
+        assert response.json["job"]["status"] == "failed"
+        assert response.json["analysis"] is None
+        public.append(response.json)
+    encoded = json.dumps(public)
+    for private in ("PRIVATE_USER", "PRIVATE_PASS", "private-indexer.invalid", "PRIVATE_BODY"):
+        assert private not in encoded
+
+
+@pytest.mark.parametrize("problem", [None, "missing_aggregations", "incomplete_hits", "inexact_total"])
+def test_full_window_uses_one_response_for_alerts_and_timeline(tmp_path, monkeypatch, problem):
+    calls = []
+
+    def post(*args, **kwargs):
+        calls.append(kwargs["json"])
+        detail = len(calls) == 2
+        rule_id = "5760" if detail else "5503"
+        timestamp = "2026-07-30T11:55:00Z" if detail else "2026-07-30T11:05:00Z"
+        key = reader.parse_utc(timestamp).timestamp() * 1000
+        source = {"timestamp": timestamp, "rule": {"id": rule_id, "level": 5}}
+        body = {
+            "timed_out": False,
+            "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+            "hits": {"total": {"value": 2, "relation": "eq"}, "hits": [
+                {"_index": "wazuh-alerts-test", "_id": str(i), "_source": source}
+                for i in range(2)
+            ] if detail else []},
+            "aggregations": {
+                "timeline": {"buckets": [{"key": key, "doc_count": 2}]},
+                "rules": {"sum_other_doc_count": 0, "buckets": [{
+                    "key": rule_id, "doc_count": 2, "max_level": {"value": 5},
+                    "first_seen": {"value": key}, "last_seen": {"value": key},
+                    "sample": {"hits": {"hits": [{"_source": source}]}},
+                }]},
+                "unique_rules": {"value": 1}, "unique_agents": {"value": 0},
+                "unique_source_ips": {"value": 0},
+            },
+        }
+        if detail and problem == "missing_aggregations":
+            body.pop("aggregations")
+        if detail and problem == "incomplete_hits":
+            body["hits"]["hits"].pop()
+        if detail and problem == "inexact_total":
+            body["hits"]["total"]["relation"] = "gte"
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: body)
+
+    model_calls = []
+
+    def analyze(aggregate, *args, **kwargs):
+        model_calls.append(aggregate)
+        return {
+            "analysis": {"summary": "Two alerts", "severity": "medium", "key_findings": [],
+                         "mitre": [], "next_steps": []},
+            "coverage": {"truncated": False}, "partial": False,
+            "provenance": {"language_compliance": "full"},
+        }
+
+    monkeypatch.setattr(reader.requests, "post", post)
+    app = dashboard.create_app(cfg=make_cfg(tmp_path), start_runtime=False)
+    runtime = app.config["DASHBOARD_RUNTIME"]
+    runtime.analysis_service = SimpleNamespace(analyze_aggregate=analyze)
+    store = app.config["DASHBOARD_STORE"]
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v3",
+    )
+    runtime._run_job(store.claim_next_job())
+    job = store.get_job_detail(job_id)
+    assert len(calls) == 2
+    if problem:
+        assert job["status"] == "failed"
+        assert model_calls == []
+    else:
+        assert job["status"] == "succeeded"
+        assert model_calls[0]["rule_counts"] == {"5760": 2}
+    for schema in ("v1", "v2"):
+        response = app.test_client().get(f"/api/jobs/{job_id}/export?schema={schema}")
+        assert response.status_code == 200
+        if problem:
+            assert response.json["job"]["status"] == "failed"
+            assert response.json["analysis"] is None
+        else:
+            assert response.json["timeline"][0]["start"] == "2026-07-30T11:55:00.000Z"
+            assert response.json["timeline"][0]["count"] == 2
+            assert {group["rule_id"] for group in response.json["groups"]} == {"5760"}
+    if not problem:
+        assert calls[1]["aggs"] == calls[0]["aggs"]
 
 
 def test_ip_analysis_auto_mode_selects_top_active_ip(tmp_path, monkeypatch):
