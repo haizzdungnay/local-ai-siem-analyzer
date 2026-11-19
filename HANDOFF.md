@@ -2,12 +2,13 @@
 
 Ngày cập nhật: 2026-11-19
 
-## #12: chuẩn bị xuất bản GitHub (2026-11-19)
+## #12: đã push GitHub, draft PR #31 (2026-11-19)
 
-- Trạng thái: người dùng yêu cầu cập nhật GitHub; chuẩn bị commit/push `codex/issue-12-playbook-evidence` và PR vào main. Fetch xác nhận base `0489e1a` bằng `origin/main`, chưa có PR cho nhánh tại thời điểm kiểm tra. Chưa merge hoặc đóng #12; các trạng thái chưa commit bên dưới là ghi chép lịch sử trước bước xuất bản này.
+- Trạng thái: theo yêu cầu người dùng, đã commit/push `147095c565b6127c3b07f6c13e814aa487073929` lên `codex/issue-12-playbook-evidence` và mở [draft PR #31](https://github.com/haizzdungnay/local-ai-siem-analyzer/pull/31) vào main. Remote SHA kiểm bằng `git ls-remote` khớp local và PR head; worktree sạch sau push code. Fetch xác nhận base `0489e1a` bằng `origin/main`. Chưa merge hoặc đóng #12; trạng thái chưa commit bên dưới là ghi chép lịch sử. Commit bàn giao kế tiếp chỉ cập nhật hai ledger, không đổi runtime.
 - Phạm vi: 10 file của #12 và review fix; giữ nguyên YAML playbook, dataset/held-out, model/port, notifier và lab. CHANGELOG cập nhật trước HANDOFF; stage hai ledger cùng diff và review staged trước commit, hook `.githooks` vẫn bật.
 - Verification vừa chạy lại: `python -m pytest tests -q -p no:cacheprovider --tb=short -rs` → **571 passed, 2 skipped** trong 19.39 giây, Windows/Python 3.13.2; hai skip do Ollama không chạy. Compileall, tracked secret scan, `node --check ai_module/web/app.js`, `git diff --check` pass; sáu Python file sửa đều LF.
-- Next action: commit/push, mở PR ghi đúng giới hạn narrative/evidence, kiểm remote SHA và CI trên PR. CI chưa chạy cho bản sửa tại thời điểm ghi mục này; không dùng mock để nhận đã nghiệm thu model/Indexer thật.
+- CI tại thời điểm ghi nhận: workflow [44447068940](https://github.com/haizzdungnay/local-ai-siem-analyzer/actions/runs/44447068940) cho code commit `147095c` đang chạy bốn job Ubuntu/Windows × Python 3.11/3.12; chưa có kết luận pass lúc tạo commit bàn giao này. Trạng thái CI commit cuối cập nhật tại [checks của PR #31](https://github.com/haizzdungnay/local-ai-siem-analyzer/pull/31/checks); không suy ra lab acceptance từ CI/mock.
+- Next action sau CI: review/acceptance #12 và trao đổi giới hạn narrative với bên playbook; chuẩn bị #13 và protocol #27. #11/#12 vẫn cần nghiệm thu trước #14; không tự merge PR hoặc đóng issue từ kết quả unit/mock.
 
 ## #12: xử lý review độc lập — đã sửa, kiểm thử cục bộ (2026-11-19)
 
