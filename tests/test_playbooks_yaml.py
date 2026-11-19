@@ -58,7 +58,7 @@ def test_signals_and_select_if_are_consistent():
             if rule is None:
                 continue
             assert sids, (pb["rule_id"], br["id"], "select_if mà playbook không có signals")
-            assert br["id"] != "B_unknown" and br["severity"] != "unknown", (pb["rule_id"], br["id"])
+            assert br["id"] != "B_unknown" and br["severity"] in {"medium", "high", "critical"}, (pb["rule_id"], br["id"])
             assert set(rule) <= {"any", "all"} and len(rule) == 1, (pb["rule_id"], br["id"])
             refs = next(iter(rule.values()))
             assert refs and set(refs) <= set(sids), (pb["rule_id"], br["id"], refs)
