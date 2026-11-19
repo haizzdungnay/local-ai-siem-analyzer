@@ -14,7 +14,8 @@ from pathlib import Path
 import ollama as ollama_sdk
 
 from playbooks import (
-    SIGNAL_ANSWERS, UNKNOWN_BRANCH, block_version, branch_ids, build_trusted_playbook_block,
+    PLAYBOOK_POLICY_VERSION, SEVERITY_RANK, SIGNAL_ANSWERS, UNKNOWN_BRANCH, block_version,
+    branch_ids, build_trusted_playbook_block,
     get_branch, has_signals, normalize_signals, playbook_sha256, render_next_steps,
     render_signal_next_steps, select_branch, signal_ids,
 )
@@ -881,42 +882,59 @@ def playbook_output_schema(entry: dict) -> dict:
 
 
 def _parse_playbook_payload(raw: str, entry: dict, extracted: dict, language: str):
-    """Ghép: next_steps do code dựng; severity lấy theo nhánh model chọn (nếu nhánh có severity)."""
+    """Gate v5 và OR tín hiệu chỉ phục vụ điều tra; chưa có evaluator xác minh nhánh."""
     info = {"branch_id": UNKNOWN_BRANCH, "branch_valid": False, "branch_evidence": "",
-            "severity_source": "model"}
-    try:
-        payload = json.loads(_clean_payload_text(raw))
-    except json.JSONDecodeError:
-        payload = None
+            "branch_verified": False, "verification_status": "needs_evidence",
+            "model_severity": None, "severity_source": "local_fallback"}
+    payload = None
+    if isinstance(raw, str):
+        try:
+            payload = json.loads(_clean_payload_text(raw))
+        except json.JSONDecodeError:
+            pass
+    raw_signals = None
     if not isinstance(payload, dict):
-        return _fallback_result("invalid_json", raw, language), "local_fallback", info
-    payload.pop("next_steps", None)  # bước tra cứu không lấy từ model
-    if has_signals(entry):
-        answers = normalize_signals(payload.pop("signals", None), entry, extracted)
-        info.pop("branch_evidence")
-        info.update(mode="signals", signals=answers,
-                    branch_id=select_branch(entry, answers), branch_valid=True)
-        payload["next_steps"] = render_signal_next_steps(
-            entry, extracted, answers, info["branch_id"], language,
-        )
+        code = "invalid_json" if isinstance(raw, str) else "missing_content"
+        result, origin = _fallback_result(code, language=language), "local_fallback"
     else:
-        chosen = payload.pop("branch_id", None)
-        evidence = payload.pop("branch_evidence", "")
-        info["mode"] = "branch"
-        if isinstance(chosen, str) and chosen in branch_ids(entry):
-            info.update(branch_id=chosen, branch_valid=True)
-        info["branch_evidence"] = str(evidence)[:600] if isinstance(evidence, str) else ""
-        payload["next_steps"] = render_next_steps(
-            entry, extracted, info["branch_id"], info["branch_evidence"], language,
+        if has_signals(entry):
+            raw_signals = payload.pop("signals", None)
+        else:
+            chosen = payload.pop("branch_id", None)
+            evidence = payload.pop("branch_evidence", "")
+            info["mode"] = "branch"
+            # ponytail: v5 không có evaluator; chỉ mở nhánh khi có receipt/evaluator ở R1.
+            info.update(proposed_branch_id=re.sub(r"[\x00-\x1f\x7f]", " ", chosen).strip()[:200]
+                        if isinstance(chosen, str) else "",
+                        branch_valid=isinstance(chosen, str) and chosen in branch_ids(entry))
+            info["branch_evidence"] = re.sub(r"[\x00-\x1f\x7f]", " ", evidence).strip()[:600] if isinstance(evidence, str) else ""
+        payload["next_steps"] = render_next_steps(entry, extracted, language)
+        result, origin = _parse_alert_payload(json.dumps(payload, ensure_ascii=False), language)
+    if origin == "ollama_model":
+        info.update(model_severity=result["severity"], severity_source="model")
+        # ponytail: R0 chỉ gắn nhãn suy luận; R1 cần evaluator/receipt để xác minh nội dung.
+        warning = (
+            "Nhận định model chưa xác minh. Không dùng để đóng cảnh báo hoặc hạ severity; "
+            "cần đối chiếu bằng chứng. Nội dung model: " if language == "vi" else
+            "Unverified model assessment. Do not use it to close the alert or lower severity; "
+            "verify the evidence first. Model text: "
         )
-    result, origin = _parse_alert_payload(json.dumps(payload, ensure_ascii=False), language)
-    if origin != "ollama_model":
-        return result, origin, info
+        for field in ("summary", "root_cause"):
+            result[field] = (warning + result[field])[:2000]
+    else:
+        info["branch_valid"] = False
+    # Regex vẫn chạy khi phản hồi model lỗi; không dùng phần model chưa qua validation.
+    if has_signals(entry):
+        answers = normalize_signals(raw_signals if origin == "ollama_model" else None, entry, extracted)
+        info.pop("branch_evidence")
+        info.update(mode="signals", signals=answers, branch_id=select_branch(entry, answers), branch_valid=True)
+        result["next_steps"] = [step[:1000] for step in render_signal_next_steps(
+            entry, extracted, answers, info["branch_id"], language,
+        )[:20]]
     branch_severity = str((get_branch(entry, info["branch_id"]) or {}).get("severity", ""))
-    if info["branch_id"] != UNKNOWN_BRANCH and branch_severity in OUTPUT_SEVERITIES - {"unknown"}:
-        info["model_severity"] = result["severity"]
+    if info["branch_id"] != UNKNOWN_BRANCH and SEVERITY_RANK.get(branch_severity, -1) > SEVERITY_RANK[result["severity"]]:
         result["severity"] = branch_severity
-        info["severity_source"] = "branch"
+        info["severity_source"] = "branch_signal" if origin == "ollama_model" else "branch_regex"
     return result, origin, info
 
 
@@ -929,9 +947,9 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
 
     playbook: entry from playbooks.get_playbook(rule_id). It comes from an internal file,
     so it is appended to the system prompt as trusted guidance, never mixed into the
-    untrusted RAG_CONTEXT block. With a playbook the model only picks a branch (enum) and
-    cites evidence; next_steps are built by code from the playbook and `extracted` (the
-    extractor's field dict, used to fill query placeholders).
+    untrusted RAG_CONTEXT block. v5 branch proposals stay B_unknown until a trusted
+    evaluator exists. Signals can raise investigation priority, never lower it or
+    verify a branch. Code builds next_steps and fills queries from `extracted`.
     """
     _assert_language(language)
     validate_ollama_base_url(base_url, allow_remote=allow_remote)
@@ -956,14 +974,18 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
     )
     content = _response_content(response)
     branch_info = None
-    if not isinstance(content, str):
-        result, origin = _fallback_result("missing_content", language=language), "local_fallback"
-    elif playbook:
+    if playbook:
         result, origin, branch_info = _parse_playbook_payload(content, playbook, extracted or {}, language)
+    elif not isinstance(content, str):
+        result, origin = _fallback_result("missing_content", language=language), "local_fallback"
     else:
         result, origin = _parse_alert_payload(content, language=language)
     rule_level = extract_rule_level(alert_text)
     result, elevated_from = apply_severity_floor(result, rule_level)
+    if branch_info is not None:
+        branch_info["effective_severity"] = result["severity"]
+        if elevated_from is not None:
+            branch_info["severity_source"] = "rule_floor"
     digest, digest_source, digest_observed_at = (
         _model_digest_metadata(client, model, _response_field(response, "model"))
         if include_provenance else ("", "", "")
@@ -981,6 +1003,7 @@ def analyze_alert(alert_text: str, rag_context: str = "", model: str = "qwen2.5:
             "rule_id": str(playbook.get("rule_id", "")),
             "status": str(playbook.get("status", "draft")),
             "block_version": block_version(playbook),
+            "policy_version": PLAYBOOK_POLICY_VERSION,
             "sha256": playbook_sha256(playbook),
             **(branch_info or {}),
         }
@@ -1188,7 +1211,7 @@ def _parse_alert_payload(raw: str, language: str = "vi") -> tuple[dict, str]:
         result[key] = result[key].strip()[:2000]
     if not result["summary"] or not result["root_cause"]:
         return _fallback_result("invalid_field", raw, language), "local_fallback"
-    if result["severity"] not in OUTPUT_SEVERITIES:
+    if not isinstance(result["severity"], str) or result["severity"] not in OUTPUT_SEVERITIES:
         return _fallback_result("invalid_field", raw, language), "local_fallback"
     steps = _bounded_strings(result["next_steps"], max_items=20, max_chars=1000, min_items=1)
     if steps is None:

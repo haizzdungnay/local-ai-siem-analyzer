@@ -37,6 +37,17 @@
 #     V0/V1... (tín hiệu chỉ đọc từ alert, không cần truy vấn); có ít nhất một nhánh select_if;
 #     select_if chỉ có MỘT khóa any hoặc all, trỏ tới id tín hiệu có thật; B_unknown không có select_if.
 #     Nhánh không có select_if = cần kết quả tra cứu → code không bao giờ tự chọn (đúng ý đồ).
+#     select_if chỉ cho nhánh medium/high/critical cần điều tra, không cho nhánh low/đóng cảnh báo.
+#     ID nhánh do model đề xuất KHÔNG chứng minh điều kiện when; playbook không có signals
+#     luôn ở B_unknown và chỉ xuất bước tra cứu cho tới khi có evaluator/receipt được review.
+#     OR regex/model chỉ tăng mức cần điều tra, không hạ severity và không xác minh toàn bộ nhánh.
+#     Chọn nhánh select_if khớp có severity cao nhất; cùng severity mới xét thứ tự YAML.
+#     Khi model lỗi/mất JSON, bỏ tín hiệu model nhưng vẫn chạy regex để giữ ưu tiên điều tra.
+#     summary/root_cause luôn gắn nhãn suy luận chưa xác minh; không dùng để đóng/hạ severity.
+#     Regex thiếu field có thể phát hiện yes, nhưng không kết luận no nếu thiếu field còn lại.
+#     Provenance runtime tách model_answer/rule_answer, nguồn alert_field/llm_inference,
+#     verification_status observed/inferred/unknown; evidence_refs là tên field, chưa phải receipt.
+#     Toàn bộ nhánh vẫn branch_verified=false, verification_status=needs_evidence ở R0.
 #     match (tùy chọn): {fields: [...], regex: '...'} — regex phải compile được; viết test nhỏ
 #     cho lệnh bình thường để chắc nó không bắt nhầm (xem test_regex_does_not_overmatch_common_commands).
 #
@@ -91,7 +102,7 @@
         # Bỏ dòng match nếu điều kiện không viết được thành regex (khi đó chỉ dùng câu trả lời của model).
         match: {fields: [full_log], regex: 'TODO'}
 
-    branches:                            # xét theo thứ tự; nhánh đầu tiên khớp được áp dụng
+    branches:                            # select_if: nặng nhất trước; cùng mức giữ thứ tự YAML
       - id: B1_TODO                      # nặng nhất trước
         when: "TODO điều kiện, nhắc tới V1/V2... có thật"
         severity: high

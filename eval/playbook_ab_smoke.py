@@ -4,9 +4,10 @@ eval/playbook_ab_smoke.py — phép thử A/B nhanh cho playbook Tầng 3 (chưa
 Cùng một alert mẫu, gọi LLM ba lần với cấu hình giống hệt nhau:
   A: không có playbook (giống pipeline hiện tại khi RAG không trả về gì)
   B: playbook đi qua rag_context → bị bọc UNTRUSTED_RAG_CONTEXT (cách cũ)
-  C: playbook TRUSTED; model chỉ chọn nhánh (enum), next_steps do code dựng (block v5)
-Cả B và C dùng cùng playbook tra chính xác theo rule.id; khác nhau chỉ ở chỗ đặt và nhãn
-tin cậy. In next_steps cạnh nhau kèm số bước có rule ID (check_next_steps). N=1, chỉ để kiểm tra playbook có được model dùng hay không;
+  C: playbook TRUSTED; code dựng next_steps, gate v5 hoặc chọn hướng điều tra từ signals
+Cả B và C dùng cùng playbook tra chính xác theo rule.id, nhưng khác cả vị trí/nhãn,
+schema và cách dựng output; không suy ra tác động riêng của nhãn TRUSTED từ B/C.
+In next_steps cạnh nhau kèm số bước có rule ID (check_next_steps). N=1, chỉ để kiểm tra pipeline;
 kết luận định lượng phải chờ ablation trên tập test khóa.
 
 Chạy từ thư mục gốc repo (cần Ollama):
@@ -15,7 +16,6 @@ Chạy từ thư mục gốc repo (cần Ollama):
 """
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -99,12 +99,13 @@ def main() -> None:
             for sid, item in (pb.get("signals") or {}).items():
                 print(f"  tín hiệu {sid}: {item['answer']}  (model: {item.get('model_answer')}, "
                       f"regex: {item.get('rule_answer')})  [{item['value']}]")
-            print(f"  nhánh CODE chọn: {pb['branch_id']} | severity theo: {pb.get('severity_source')} "
+            print(f"  nhánh CODE đề xuất điều tra: {pb['branch_id']} (chưa xác minh) | severity theo: {pb.get('severity_source')} "
                   f"(model nói: {pb.get('model_severity', an.get('severity'))})")
         elif pb.get("branch_id"):
-            print(f"  nhánh model chọn: {pb['branch_id']} (hợp lệ: {pb.get('branch_valid')}) | "
+            print(f"  nhánh model đề xuất: {pb.get('proposed_branch_id', '-')} (ID hợp lệ: {pb.get('branch_valid')})")
+            print(f"  nhánh hiệu lực: {pb['branch_id']} (đã xác minh: {pb.get('branch_verified')}) | "
                   f"severity theo: {pb.get('severity_source')} (model nói: {pb.get('model_severity', an.get('severity'))})")
-            print(f"  căn cứ: {pb.get('branch_evidence')}")
+            print(f"  căn cứ model nêu, chưa xác minh: {pb.get('branch_evidence')}")
         print("=" * 78)
         for i, step in enumerate(an.get("next_steps") or [], 1):
             print(f"  {i}. {step}")
@@ -115,7 +116,7 @@ def main() -> None:
                                "playbook_context": context_b,
                                **{key: res for key, (_, res) in arms.items()}},
                               ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nĐã ghi: {os.path.relpath(out, ROOT)}")
+    print(f"\nĐã ghi: {out.resolve()}")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,8 @@ import yaml
 
 PLAYBOOK_PROMPT_VERSION = "playbook-block-v5"  # đổi khi sửa _INSTRUCTIONS
 PLAYBOOK_SIGNALS_VERSION = "playbook-signals-v6"  # v6.1: match chạy bằng code, không đổi prompt  # đổi khi sửa _SIGNAL_INSTRUCTIONS
+PLAYBOOK_POLICY_VERSION = "playbook-evidence-v2"
+SEVERITY_RANK = {"unknown": -1, "low": 0, "medium": 1, "high": 2, "critical": 3}
 PLAYBOOK_PATH = Path(__file__).resolve().parent / "rag_data" / "playbooks.yaml"
 PROMPT_FIELDS = ("rule_id", "title", "mitre", "trigger", "facts", "window", "verify",
                  "signals", "branches", "fp_conditions", "do_not")
@@ -106,8 +108,8 @@ _SIGNAL_LABELS = {
            "The alert alone is not enough to pick a branch; run the lookups above, then match the playbook"),
 }
 _BRANCH_LABELS = {
-    "vi": ("Nhánh dự kiến từ dữ liệu alert", "căn cứ", "Nếu xác minh khớp nhánh này"),
-    "en": ("Branch indicated by alert data", "evidence", "If verification confirms this branch"),
+    "vi": ("Nhánh cần điều tra (chưa xác minh)", "căn cứ", "Nếu xác minh khớp nhánh này"),
+    "en": ("Branch to investigate (unverified)", "evidence", "If verification confirms this branch"),
 }
 UNKNOWN_BRANCH = "B_unknown"
 
@@ -181,8 +183,7 @@ def signal_ids(entry: dict) -> list[str]:
 
 
 def rule_answer(signal: dict, extracted: dict) -> str | None:
-    """Chạy `match` của tín hiệu trên field alert. None = tín hiệu không có match
-    hoặc alert thiếu mọi field cần xem (khi đó chỉ còn câu trả lời của model)."""
+    """Regex trên alert; thiếu field chỉ cho kết luận yes, không chứng minh no."""
     match = signal.get("match")
     if not isinstance(match, dict) or not match.get("regex"):
         return None
@@ -191,7 +192,9 @@ def rule_answer(signal: dict, extracted: dict) -> str | None:
     if not values:
         return None
     pattern = re.compile(str(match["regex"]), re.IGNORECASE)
-    return "yes" if any(pattern.search(value) for value in values) else "no"
+    if any(pattern.search(value) for value in values):
+        return "yes"
+    return "no" if len(values) == len(match.get("fields") or []) else None
 
 
 def combine_answers(model: str, rule: str | None) -> str:
@@ -204,7 +207,7 @@ def combine_answers(model: str, rule: str | None) -> str:
 
 
 def normalize_signals(raw, entry: dict, extracted: dict | None = None) -> dict[str, dict]:
-    """Câu trả lời của model + regex của code → {id: {answer, value, model_answer, rule_answer}}.
+    """OR để điều tra, kèm nguồn và trạng thái quan sát; không xác minh toàn bộ nhánh.
 
     Model thiếu/sai định dạng → model_answer unknown. value là chuỗi trích từ alert (không
     tin cậy): bỏ ký tự điều khiển, cắt 200 ký tự.
@@ -220,8 +223,16 @@ def normalize_signals(raw, entry: dict, extracted: dict | None = None) -> dict[s
         model = model if model in SIGNAL_ANSWERS else "unknown"
         value = _CONTROL_RE.sub(" ", value if isinstance(value, str) else "").strip()[:200]
         rule = rule_answer(signal, extracted)
-        out[sid] = {"answer": combine_answers(model, rule), "value": value,
-                    "model_answer": model, "rule_answer": rule}
+        answer = combine_answers(model, rule)
+        observed = rule is not None and answer == rule
+        out[sid] = {
+            "answer": answer, "value": value, "model_answer": model, "rule_answer": rule,
+            "source_kind": "alert_field" if observed else "llm_inference" if answer != "unknown" else "none",
+            "verification_status": "observed" if observed else "inferred" if answer != "unknown" else "unknown",
+            "evidence_refs": [f for f in (signal.get("match") or {}).get("fields", [])
+                              if observed and extracted.get(f) not in (None, "")],
+            "conflict": rule is not None and model != "unknown" and model != rule,
+        }
     return out
 
 
@@ -237,15 +248,17 @@ def _select_if_matches(rule, answers: dict[str, dict]) -> bool:
 
 
 def select_branch(entry: dict, answers: dict[str, dict]) -> str:
-    """Code chọn nhánh: nhánh ĐẦU TIÊN (theo thứ tự) có select_if thỏa bởi các tín hiệu 'yes'.
+    """Chọn nhánh nặng nhất khớp tín hiệu; cùng severity giữ thứ tự YAML.
 
-    Nhánh không có select_if cần kết quả tra cứu nên không bao giờ được chọn ở đây —
-    đây là chỗ chặn lỗi "model bịa kết quả truy vấn rồi chọn nhánh đóng".
+    Chỉ chọn nhánh cần điều tra (medium trở lên). select_if không chứng minh toàn bộ
+    điều kiện when; nhánh benign/query-only vẫn cần evaluator dựa trên receipt.
     """
-    for branch in entry.get("branches") or []:
-        if branch.get("select_if") and _select_if_matches(branch["select_if"], answers):
-            return str(branch.get("id"))
-    return UNKNOWN_BRANCH
+    branch = max(
+        (b for b in entry.get("branches") or [] if SEVERITY_RANK.get(b.get("severity"), -1) >= 1
+         and b.get("select_if") and _select_if_matches(b["select_if"], answers)),
+        key=lambda b: SEVERITY_RANK[b["severity"]], default=None,
+    )
+    return str(branch["id"]) if branch else UNKNOWN_BRANCH
 
 
 def render_signal_next_steps(entry: dict, extracted: dict, answers: dict[str, dict],
@@ -256,14 +269,16 @@ def render_signal_next_steps(entry: dict, extracted: dict, answers: dict[str, di
     steps = render_verify_steps(entry, extracted, language)
     questions = {str(s.get("id")): str(s.get("question", "")) for s in entry.get("signals") or []}
     for sid, item in answers.items():
-        value = f" [{item['value']}]" if item["value"] else ""
-        steps.append(f"{sig_label}: {questions.get(sid, sid)} → {answer_words[item['answer']]}{value}")
+        value_label = "giá trị model nêu, chưa xác minh" if language == "vi" else "model value, unverified"
+        value = f"; {value_label}: [{item['value']}]" if item["value"] else ""
+        model = answer_words[item["model_answer"]]
+        rule = answer_words.get(item["rule_answer"], answer_words["unknown"])
+        steps.append(f"{sig_label}: {questions.get(sid, sid)} → {answer_words[item['answer']]}"
+                     f"; model: {model}; regex: {rule}{value}")
     pending = []
     for branch in entry.get("branches") or []:
         bid = str(branch.get("id"))
-        if bid == branch_id:
-            break
-        if bid != UNKNOWN_BRANCH:
+        if bid not in {branch_id, UNKNOWN_BRANCH} and (not branch.get("select_if") or branch_id == UNKNOWN_BRANCH):
             pending.append(f"{bid} ({branch.get('severity', 'unknown')})")
     branch = get_branch(entry, branch_id)
     if branch_id == UNKNOWN_BRANCH:
@@ -287,22 +302,11 @@ def get_branch(entry: dict, branch_id: str) -> dict | None:
     return next((b for b in entry.get("branches") or [] if str(b.get("id")) == branch_id), None)
 
 
-def render_next_steps(entry: dict, extracted: dict, branch_id: str, evidence: str,
-                      language: str = "vi") -> list[str]:
-    """next_steps tất định: bước tra cứu (code) + hành động của nhánh model chọn (từ playbook).
-
-    Hành động lấy nguyên văn từ playbook (nguồn tin cậy), chỉ điền placeholder. Căn cứ do
-    model viết được cắt ngắn và làm sạch ký tự điều khiển.
-    """
-    title, evidence_label, if_label = _BRANCH_LABELS[language]
+def render_next_steps(entry: dict, extracted: dict, language: str = "vi") -> list[str]:
+    """v5 chưa có evaluator: chỉ bước tra cứu; không phát hành hành động nhánh model đoán."""
+    title, _, _ = _BRANCH_LABELS[language]
     steps = render_verify_steps(entry, extracted, language)
-    branch = get_branch(entry, branch_id)
-    clean_evidence = _CONTROL_RE.sub(" ", str(evidence or "")).strip()[:300]
-    severity = str((branch or {}).get("severity", "unknown"))
-    steps.append(f"{title}: {branch_id} ({severity}); {evidence_label}: {clean_evidence or '-'}")
-    values = placeholder_values(extracted)
-    for action in (branch or {}).get("actions") or []:
-        steps.append(f"{if_label} ({branch_id}): {render_query(str(action), values)}")
+    steps.append(f"{title}: {UNKNOWN_BRANCH}. {_SIGNAL_LABELS[language][3]}.")
     return steps
 
 
