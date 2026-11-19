@@ -4,7 +4,7 @@ Ngày đối chiếu: **16/11/2026, Asia/Saigon**. Mã nguồn: [`main@baa7192`]
 
 **Điều chỉnh đã chốt:** Hermes Agent điều phối qua MCP server SIEM; tool có handler trong catalog được cấp thêm theo xác nhận client. Backend giữ identity/grant/approval/executor; quyền động chỉ bật sau #18, R1 vẫn dùng tool đọc cố định. Đây là cập nhật thiết kế, chưa cài Hermes hoặc bổ sung tool runtime.
 
-**Đây là hướng dẫn triển khai, không phải báo cáo đã hoàn thành.** Khi đối chiếu, các issue trên đều đang mở; runtime approval/executor chưa có. Tên module, trường dữ liệu và test mới dưới đây là đề xuất cho người triển khai. Đọc lại HEAD và issue trước khi bắt đầu vì người khác có thể đã sửa một phần.
+**Đây là hướng dẫn triển khai, không phải báo cáo đã hoàn thành toàn bộ.** Ở lần đối chiếu 16/11/2026, các issue trên đều đang mở. Cập nhật 19/11: #11/#12 đã được chốt phần code/regression, PR #30/#31 đã merge; phần Indexer/model/browser/SOC thật chuyển sang [nghiệm thu R0 #32](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/32) đang mở. Runtime approval/executor chưa có. Tên module, trường dữ liệu và test mới của các giai đoạn chưa triển khai dưới đây là đề xuất. Đọc lại HEAD và issue trước khi bắt đầu vì người khác có thể đã sửa một phần.
 
 [Roadmap thiết kế](approval-remediation-agent-roadmap.md) quy định phạm vi và quyền; tài liệu này chỉ cách chia việc, sửa ở đâu, kiểm chứng thế nào và khi nào được đóng issue. Tiêu chí nghiệm thu trong issue vẫn áp dụng. Nếu cần đổi phạm vi, ghi quyết định và đồng bộ issue/roadmap trước khi gọi phần bị cắt là hoàn thành.
 
@@ -14,7 +14,7 @@ Ngày đối chiếu: **16/11/2026, Asia/Saigon**. Mã nguồn: [`main@baa7192`]
 
 | Mốc | Kết quả bàn giao | Điều kiện chuyển tiếp |
 |---|---|---|
-| R0 | Nguồn dữ liệu trung thực, nhánh playbook không giả bằng chứng, baseline có version | #11, #12, #13 được nghiệm thu; protocol #27 đã chuẩn bị |
+| R0 | Nguồn dữ liệu trung thực, nhánh playbook không giả bằng chứng, baseline có version | #11/#12 nghiệm thu code/regression; #32 nghiệm thu thực tế; #13 baseline; protocol #27 đã chuẩn bị |
 | R1 | Hermes gọi tool đọc qua MCP, có receipt và tích hợp dashboard | #14, #15; fixed allowlist, model tool-call và field lab pilot |
 | R2 | Auth, grant tool, pause/resume và duyệt plan với fake executor | #16, #17, #18; client host xác nhận, không có quyền ghi thật |
 | R3 | Client Telegram duyệt grant/plan bằng bot approval riêng | #19, #20; integration bot và Hermes được phân biệt với mock |
@@ -28,7 +28,7 @@ Ngày đối chiếu: **16/11/2026, Asia/Saigon**. Mã nguồn: [`main@baa7192`]
 |---|---|---|---|
 | 0 | [#23](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/23), [#29](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/29) | Chốt điểm giao schema/người tích hợp; dựng protocol #27 sớm | Biên bản quyết định, danh sách file chung, bộ development tách held-out |
 | 1 | [#11](#issue-11), [#12](#issue-12), [#13](#issue-13) | Có thể phát triển độc lập; ưu tiên chặn partial và nhánh chưa xác minh trước | Regression lỗi hiện tại, contract dữ liệu, baseline mới |
-| 2 | [#14](#issue-14) | Sau #11 + #12 + #13; không chờ #18 | Hermes/MCP chỉ đọc, catalog cố định, receipt/budget/scope |
+| 2 | [#14](#issue-14) | Sau #11 + #12 (code), #13 và gate thực tế #32; không chờ #18 | Hermes/MCP chỉ đọc, catalog cố định, receipt/budget/scope |
 | 3 | [#15](#issue-15) | Sau #14; nhận phần window/playbook đã thống nhất ở #23 | Dashboard dùng đúng evidence/playbook, có provenance |
 | 4 | [#16](#issue-16), [#17](#issue-17) | Cùng sau #15; auth và plan có thể phát triển độc lập khi đã chốt contract | Identity/role/session; schema/hash/policy |
 | 5 | [#18](#issue-18) | Sau #16 + #17; dùng adapter #14 | Grant/approval transaction, client host, refresh/resume và fake executor |
@@ -130,6 +130,8 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 
 **[#11 — R0.1: Indexer partial và timeline](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/11)**. Không có dependency. Điểm sửa: `reader.py`, rồi nơi truyền kết quả trong `analysis_service.py`, worker/store/report nếu cần.
 
+**Chốt 19/11/2026:** code/regression đã nghiệm thu qua PR #30 và CI; checklist nguồn thật, timeline biên, fault proxy, browser và report chuyển sang #32. Search hoàn chỉnh và mock pass không thay bằng chứng retention/snapshot/lab.
+
 1. Thêm fixture tái hiện HTTP 200 với `timed_out=true`, `_shards.failed>0`, metadata không hợp lệ và `hits.total.relation=gte` trên đường cần tổng chính xác. Test cả aggregate lẫn detail, không chỉ status HTTP.
 2. Tạo validator dùng chung cho tính hoàn chỉnh của search response. **Đề xuất vòng đầu:** đường dùng làm evidence hành động phải fail closed bằng lỗi có loại/lý do; đường báo cáo có thể giữ partial nếu truyền được lý do đến UI/export. Không để `{hits: []}` sau lỗi thành “không có sự cố”.
 3. Giữ riêng ba khái niệm: Indexer trả thiếu, chọn mẫu do budget, và không đủ lịch sử lưu trữ. Chúng có ảnh hưởng khác nhau; query trả đủ không chứng minh đã có đủ 30 ngày lịch sử.
@@ -147,6 +149,8 @@ Các query dùng cho UI hiện là DQL đã render. **DQL hiển thị không ph
 ### Issue 12
 
 **[#12 — R0.2: Nhánh benign và severity](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/12)**. Không có dependency; phối hợp #23/#29 trước khi sửa chung `llm.py`, `playbooks.py`, YAML/template.
+
+**Chốt 19/11/2026:** code/regression cùng giới hạn narrative R0 đã nghiệm thu theo yêu cầu người dùng; PR #31 đã merge vào main tại `910dbc8`. Model thật, ca âm tính/false positive, quyết định SOC về draft 5503 và kiểm khả năng hiểu nhãn chưa xác minh tiếp tục ở #32; không dùng việc #12 đóng để báo 28/28 playbook đã được nghiệm thu.
 
 1. Tái hiện rule 5760 với model chọn một branch ID benign hợp lệ nhưng chưa có kết quả lịch sử. Viết assertion riêng cho `branch_valid`, nguồn severity, nội dung bước “đóng” và trạng thái bằng chứng.
 2. Tách **ID hợp lệ** khỏi **điều kiện đã chứng minh**. Đề xuất hotfix: các playbook v5 chưa có evaluator được đưa về `B_unknown` và chỉ xuất bước điều tra; lời model mô tả query không phải receipt. Có thể merge lớp chặn này trước khi hoàn tất 25 playbook, nhưng không tự đánh dấu toàn bộ nội dung đã review.
@@ -181,7 +185,7 @@ Provenance ghi `model_severity`, `effective_severity` sau severity floor, và `s
 
 ### Issue 14
 
-**[#14 — R1.1: Tool điều tra chỉ đọc](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/14)**. Cần #11 + #12 + #13; không phụ thuộc #18. Module mới đề xuất: `investigation_service.py`, `siem_mcp.py`; Hermes profile chỉ có tool đọc do host cấu hình.
+**[#14 — R1.1: Tool điều tra chỉ đọc](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/14)**. Cần #11 + #12 (code), #13 và nghiệm thu thực tế R0 #32; không phụ thuộc #18. Có thể chuẩn bị thiết kế/fixture nhưng không nghiệm thu R1 hoàn chỉnh khi gate R0 thực tế còn mở. Module mới đề xuất: `investigation_service.py`, `siem_mcp.py`; Hermes profile chỉ có tool đọc do host cấu hình.
 
 1. Bắt đầu bằng một workflow SSH pilot, ví dụ query thất bại cùng nguồn, đăng nhập thành công liên quan, và lịch sử cùng agent/user trong scope. Mỗi tool có ID/version, input schema, field allowlist, builder DSL, timeout và parser; đối chiếu rule/field thực trước khi dùng.
 2. Request giữ immutable scope agent identity và time range; mọi query là tập con của quyền đó. Việc tra 24 giờ/30 ngày phải nằm trong scope đã cho phép; nếu không, trả `needs_evidence`, không tự mở rộng. Không nhận URL/index, raw DQL/DSL hoặc tên tool tùy ý từ LLM.
@@ -517,8 +521,8 @@ Với PR approval/executor, bổ sung số unauthorized dispatch, wrong-target, 
 
 ## 6. Công việc nên bắt đầu ngay
 
-1. **#11:** viết fixture HTTP 200 partial và histogram lệch biên, chốt contract lỗi/coverage rồi sửa reader. Đây là việc độc lập, làm rõ chất lượng nguồn cho mọi phần sau.
-2. **#12 + #23/#29:** thống nhất lớp chặn v5/unverified và cách biểu diễn `B_unknown`; tiếp nhận batch signals của bên playbook. Hoàn thành regression trước khi dùng branch làm đầu vào planner.
+1. **#32:** nghiệm thu nguồn Indexer/model/browser/SOC thật theo checklist mới; #11/#12 đã chốt phần code/regression, không chạy lại sửa lỗi đã hoàn thành chỉ vì acceptance lab đang mở.
+2. **#23/#29:** tiếp nhận batch signals theo invariant #12, review nội dung draft cùng false positives; không coi thay YAML hoặc việc đóng issue code là đã có query receipt/evaluator.
 3. **#13 + chuẩn bị #27:** bổ sung field RAG theo budget, lập manifest/protocol và freeze đúng scope; giữ held-out riêng. Chưa cần train model để triển khai nền agent.
 4. Khi R0 đạt, chuyển #14 Hermes/MCP fixed-read rồi #15. Chỉ sau đó nghiệm thu auth/catalog/plan ở #16/#17 và grant/approval/panel host ở #18; mọi executor R2 vẫn fake. Bật xin quyền động sau #18, rồi đưa quyết định lên bot approval riêng ở #19/#20.
 

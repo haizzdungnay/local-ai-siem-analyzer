@@ -4,7 +4,7 @@ Ngày chốt: **2026-11-16** (Asia/Saigon). Baseline: `main@7628921f2ba871d9f8b2
 
 Điều chỉnh kiến trúc ngày **16/11/2026**, đối chiếu `main@baa7192`: Hermes Agent điều phối qua MCP; backend SIEM quản lý catalog và quyền tool, client xác nhận khi cần cấp thêm khả năng. Không đổi baseline thực nghiệm lịch sử.
 
-Trạng thái: **ĐÃ THỐNG NHẤT HƯỚNG THIẾT KẾ / CHƯA TRIỂN KHAI**. Lượt này cập nhật kế hoạch và scope issue; không cấp quyền cho phần mềm thực thi hành động trên lab. Mọi mục R0–R6 bên dưới đều chưa nghiệm thu trong tài liệu này.
+Trạng thái cập nhật **19/11/2026**: phần sửa code/regression R0.1/R0.2 (#11/#12) đã được chốt theo yêu cầu người dùng, PR #30/#31 đã merge; PR #31 merge tại `910dbc89b296bd62e8ed00358b8eec1ff9ee3409`. Phần kiểm chứng Indexer/model/browser/SOC thật chuyển sang [issue nghiệm thu R0 #32](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/32) đang mở. R0 chưa hoàn tất khi #13 hoặc #32 còn thiếu bằng chứng; Hermes/approval/executor R1–R6 chưa được nghiệm thu. Đóng issue sửa code không cấp quyền thực thi hành động trên lab.
 
 Tài liệu triển khai bổ sung: [hướng dẫn giải quyết 17 issue R0–R6](approval-remediation-implementation-guide.md), gồm dependency, điểm sửa trong code, phương án, kiểm thử và điều kiện đóng issue; theo dõi tại [Epic #10](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/10). Hướng dẫn cũng đối chiếu phần phối hợp #23 và review playbook #29.
 
@@ -216,7 +216,7 @@ Cờ cấu hình tương lai: `remediation.enabled: false` mặc định; tách 
 
 | Giai đoạn | Việc thực hiện | Gate bắt buộc |
 |---|---|---|
-| **R0 — Chốt baseline** | Rà lại CI, lỗi severity/nhánh chưa xác minh, response Indexer partial, timeline và retrieval; review playbook pilot và freeze protocol | CI xanh; correctness findings có regression hoặc quyết định phạm vi rõ; chưa bật executor |
+| **R0 — Chốt baseline** | Rà lại CI, lỗi severity/nhánh chưa xác minh, response Indexer partial, timeline và retrieval; review playbook pilot và freeze protocol | #11/#12 chốt code/regression; #32 nghiệm thu nguồn/model/UI thật và giới hạn narrative; #13 baseline, protocol #27 đã chuẩn bị; chưa bật executor |
 | **R1 — Agent điều tra** | Hermes + MCP với tool đọc cố định, receipt/scope/budget; tích hợp window | Kiểm tool-call thực bằng model hiện tại; không lộ credential, không cần grant động/R2 để nghiệm thu R1 |
 | **R2 — Approval core và dry-run** | Auth/plan/policy, migration, tool access/grant, client host duyệt quyền đọc; hai bước plan với fake executor | Sau #18 mới bật cấp tool động; mock và Hermes integration kiểm pause/refresh/resume/revoke, 0 unauthorized dispatch |
 | **R3 — Telegram tương tác** | Bot approval riêng, pairing/inbox/outbox; grant và plan dùng chung core | Sai user/chat/replay/race, hai bot lẫn sự kiện và hai kênh cạnh tranh đều không vượt quyền |
