@@ -54,6 +54,8 @@ extractor:
     - "data.srcuser"                   # user do kẻ tấn công nhập: chỉ trích dẫn
     - "data.dstuser"
     - "syscheck.path"                  # FIM: điền <path> cho playbook 550/553/554
+    - "syscheck.diff"                  # FIM: nội dung thay đổi cho regex tín hiệu 550 (không tin cậy, chỉ trích dẫn)
+    - "syscheck.perm_after"            # FIM: quyền mới, để regex 550 bắt SUID/SGID
     - "data.url"                       # web: điền <url>; chuỗi do client gửi (không tin cậy)
     - "data.id"                        # web: mã HTTP
     - "full_log"
@@ -86,6 +88,7 @@ dashboard:
   max_groups_in_prompt: 100                # cat prompt lam model tu ha confidence; giu cap tren so group thuc te
   max_sample_log_chars: 1000
   max_window_prompt_chars: 64000
+  max_playbook_groups: 5                # số nhóm đầu cửa sổ được dựng playbook (code-only, không gọi thêm LLM)
   ingest_delay_seconds: 120
   max_catchup_windows: 24
   worker_poll_seconds: 1

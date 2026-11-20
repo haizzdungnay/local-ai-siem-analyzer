@@ -29,6 +29,8 @@ _AGGREGATE_SOURCE_FIELDS = [
     "agent.id",
     "agent.name",
     "data.srcip",
+    "data.srcuser",
+    "data.dstuser",
     "syscheck.path",
 ]
 

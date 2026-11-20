@@ -222,6 +222,8 @@ def normalize_signals(raw, entry: dict, extracted: dict | None = None) -> dict[s
         value = item.get("value") if isinstance(item, dict) else ""
         model = model if model in SIGNAL_ANSWERS else "unknown"
         value = _CONTROL_RE.sub(" ", value if isinstance(value, str) else "").strip()[:200]
+        if value and signal.get("sensitive_value"):
+            value = REDACTED_VALUE
         rule = rule_answer(signal, extracted)
         answer = combine_answers(model, rule)
         observed = rule is not None and answer == rule
@@ -262,7 +264,7 @@ def select_branch(entry: dict, answers: dict[str, dict]) -> str:
 
 
 def render_signal_next_steps(entry: dict, extracted: dict, answers: dict[str, dict],
-                             branch_id: str, language: str = "vi") -> list[str]:
+                             branch_id: str, language: str = "vi", include_model: bool = True) -> list[str]:
     """next_steps chế độ tín hiệu: bước tra cứu + tín hiệu + nhánh code chọn + hành động."""
     sig_label, answer_words, pending_label, unknown_text = _SIGNAL_LABELS[language]
     title, _, if_label = _BRANCH_LABELS[language]
@@ -273,8 +275,9 @@ def render_signal_next_steps(entry: dict, extracted: dict, answers: dict[str, di
         value = f"; {value_label}: [{item['value']}]" if item["value"] else ""
         model = answer_words[item["model_answer"]]
         rule = answer_words.get(item["rule_answer"], answer_words["unknown"])
+        model_part = f"; model: {model}" if include_model else ""
         steps.append(f"{sig_label}: {questions.get(sid, sid)} → {answer_words[item['answer']]}"
-                     f"; model: {model}; regex: {rule}{value}")
+                     f"{model_part}; regex: {rule}{value}")
     pending = []
     for branch in entry.get("branches") or []:
         bid = str(branch.get("id"))
@@ -285,12 +288,77 @@ def render_signal_next_steps(entry: dict, extracted: dict, answers: dict[str, di
         steps.append(f"{title}: {UNKNOWN_BRANCH}. {unknown_text}.")
     else:
         steps.append(f"{title}: {branch_id} ({branch.get('severity', 'unknown')})")
-        values = placeholder_values(extracted)
+        values = entry_placeholder_values(entry, extracted)
         for action in branch.get("actions") or []:
             steps.append(f"{if_label} ({branch_id}): {render_query(str(action), values)}")
     if pending:
         steps.append(f"{pending_label}: {', '.join(pending)}")
     return steps
+
+
+WINDOW_PLAYBOOK_VERSION = "window-playbook-v1"
+_BASIS_NOTE = {
+    "vi": "Theo một alert mẫu của nhóm (nhóm có thể gồm nhiều user/thời điểm khác nhau); tín hiệu chỉ từ regex, không gọi LLM.",
+    "en": "Based on one sample alert of the group (the group may span several users/times); signals from regex only, no LLM call.",
+}
+
+
+def group_extracted(group: dict) -> dict:
+    """Nhóm của dashboard → dict field như extractor, để dùng chung hàm playbook."""
+    mapping = {
+        "rule.id": group.get("rule_id"), "agent.id": group.get("agent_id"),
+        "data.srcip": group.get("source_ip"), "data.srcuser": group.get("srcuser"),
+        "data.dstuser": group.get("dstuser"), "syscheck.path": group.get("syscheck_path"),
+        "timestamp": group.get("sample_timestamp"), "full_log": group.get("sample_log"),
+    }
+    return {key: str(value) for key, value in mapping.items() if value not in (None, "")}
+
+
+def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
+                             max_items: int = 5) -> list[dict]:
+    """Code-only (cách A, 2026-11-20): với các nhóm đứng đầu cửa sổ có playbook, dựng bước
+    tra cứu + chạy regex tín hiệu + chọn nhánh, KHÔNG gọi thêm LLM. Model 7B chỉ đúng 2/6
+    tín hiệu dương ở smoke 14–20/11 nên bỏ phần model gần như không mất gì.
+
+    lookup(rule_id) -> playbook entry hoặc None (vd. partial(playbook_for_config, cfg)).
+    Nhánh vẫn là "cần điều tra (chưa xác minh)", không phải kết luận.
+    """
+    findings: list[dict] = []
+    for group in aggregate.get("groups") or []:
+        if len(findings) >= max_items:
+            break
+        if not isinstance(group, dict):
+            continue
+        entry = lookup(str(group.get("rule_id", "")))
+        if not entry:
+            continue
+        extracted = group_extracted(group)
+        if has_signals(entry):
+            answers = normalize_signals(None, entry, extracted)
+            branch_id = select_branch(entry, answers)
+            steps = render_signal_next_steps(entry, extracted, answers, branch_id, language,
+                                             include_model=False)
+        else:
+            answers, branch_id = {}, UNKNOWN_BRANCH
+            steps = render_next_steps(entry, extracted, language)
+        branch = get_branch(entry, branch_id) or {}
+        findings.append({
+            "rule_id": str(entry.get("rule_id", "")),
+            "title": str(entry.get("title", "")),
+            "group_key": str(group.get("group_key", "")),
+            "group_count": group.get("count", 0),
+            "branch_id": branch_id,
+            "branch_severity": str(branch.get("severity", "unknown")) if branch_id != UNKNOWN_BRANCH else "unknown",
+            "branch_verified": False,
+            "signals": {sid: {"answer": item["answer"], "rule_answer": item["rule_answer"]}
+                        for sid, item in answers.items()},
+            "next_steps": [step[:1000] for step in steps[:20]],
+            "basis": _BASIS_NOTE[language],
+            "status": str(entry.get("status", "draft")),
+            "sha256": playbook_sha256(entry),
+            "version": WINDOW_PLAYBOOK_VERSION,
+        })
+    return findings
 
 
 def branch_ids(entry: dict) -> list[str]:
@@ -393,10 +461,30 @@ def render_query(query: str, values: dict[str, str]) -> str:
     return _PLACEHOLDER_RE.sub(lambda m: values.get(m.group(1), m.group(0)), query)
 
 
+_USER_PLACEHOLDERS = ("user", "srcuser", "dstuser")
+REDACTED_VALUE = "[ẩn]"
+
+
+def has_sensitive_values(entry: dict) -> bool:
+    """Playbook có tín hiệu đánh dấu sensitive_value (vd. 5710: username có thể là mật khẩu)."""
+    return any(s.get("sensitive_value") for s in entry.get("signals") or [])
+
+
+def entry_placeholder_values(entry: dict, extracted: dict) -> dict[str, str]:
+    """Như placeholder_values, nhưng playbook nhạy cảm KHÔNG điền user vào truy vấn/hành động:
+    giữ nguyên <user> để analyst tự điền từ alert gốc, tránh đưa mật khẩu gõ nhầm ra
+    dashboard, báo cáo, Telegram/email."""
+    values = placeholder_values(extracted)
+    if has_sensitive_values(entry):
+        for name in _USER_PLACEHOLDERS:
+            values.pop(name, None)
+    return values
+
+
 def render_verify_steps(entry: dict, extracted: dict, language: str = "vi") -> list[str]:
     """Mỗi câu verify → một bước: câu hỏi, truy vấn đã điền giá trị, khung thời gian."""
     query_label, time_label = _STEP_LABELS[language]
-    values = placeholder_values(extracted)
+    values = entry_placeholder_values(entry, extracted)
     steps = []
     for item in entry.get("verify") or []:
         if not item.get("question") or not item.get("query"):

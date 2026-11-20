@@ -6,7 +6,7 @@ from collections import Counter
 from threading import Lock
 
 from extractor import _get_nested, extract_fields, format_for_llm
-from playbooks import playbook_for_config
+from playbooks import playbook_for_config, window_playbook_findings
 from reader import resolve_config_paths
 from llm import (
     analyze_alert,
@@ -60,6 +60,16 @@ def _group_key(source: dict) -> str:
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:24]
 
 
+def _playbook_sample_fields(source: dict) -> dict:
+    """agent.id (không phải agent.name), user, thời điểm của alert mẫu cho playbook."""
+    return {
+        "agent_id": str(_get_nested(source, "agent.id") or ""),
+        "srcuser": str(_get_nested(source, "data.srcuser") or "")[:200],
+        "dstuser": str(_get_nested(source, "data.dstuser") or "")[:200],
+        "sample_timestamp": str(source.get("timestamp") or ""),
+    }
+
+
 def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
     """Group full Indexer hits deterministically without asking the LLM to count."""
     if isinstance(sample_log_chars, bool) or not isinstance(sample_log_chars, int) or sample_log_chars < 1:
@@ -101,6 +111,8 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
                 "source_ip": source_ip,
                 "syscheck_path": str(_get_nested(source, "syscheck.path") or ""),
                 "sample_log": str(source.get("full_log") or "")[:sample_log_chars],
+                # Field của alert mẫu cho playbook (truy vấn DQL + regex tín hiệu); không vào prompt.
+                **_playbook_sample_fields(source),
             }
         group["count"] += 1
         group["first_seen"] = min(filter(None, [group["first_seen"], timestamp]), default="")
@@ -160,6 +172,7 @@ def aggregate_rule_buckets(fetched: dict) -> dict:
             "source_ip": str(_get_nested(sample, "data.srcip") or ""),
             "syscheck_path": str(_get_nested(sample, "syscheck.path") or ""),
             "sample_log": "",
+            **_playbook_sample_fields(sample),
         })
     groups.sort(key=lambda group: (-group["max_level"], -group["count"], group["rule_id"]))
     return {
@@ -593,6 +606,18 @@ class AnalysisService:
         provenance = dict(provenance)
         provenance["rag"] = rag_provenance
         provenance["redacted_exact_sample_log_echoes"] = echo_redaction_count
+        # Playbook cho các nhóm đứng đầu: code-only, không gọi thêm LLM, không đổi severity
+        # của phân tích cửa sổ (nhánh chỉ là hướng điều tra chưa xác minh).
+        findings = window_playbook_findings(
+            aggregate, lambda rule_id: playbook_for_config(self.cfg, rule_id), language,
+            max_items=int(dashboard_cfg.get("max_playbook_groups", 5)),
+        )
+        if findings:
+            result = {**result, "playbooks": findings}
+        provenance["playbooks"] = [
+            {"rule_id": f["rule_id"], "branch_id": f["branch_id"], "sha256": f["sha256"],
+             "version": f["version"]} for f in findings
+        ]
         warning = result["severity"] == "unknown" or echo_redaction_count > 0
         return {
             "analysis": result,

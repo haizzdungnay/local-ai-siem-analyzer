@@ -449,6 +449,9 @@ dt { color: var(--text); }
 .review-summary { grid-column: 1 / -1; }
 .review-field > span { display: block; color: var(--accent); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; margin-bottom: 6px; }
 .review-field p { margin: 0; color: var(--text); }
+.playbook-finding { margin-top: 8px; }
+.playbook-finding > summary { cursor: pointer; color: var(--text); font-weight: 600; }
+.playbook-finding ol { margin: 6px 0 0; padding-left: 20px; font-size: 12px; overflow-wrap: anywhere; }
 .review-field ol { margin: 0; padding-left: 20px; color: var(--text); }
 .review-field li + li { margin-top: 6px; }
 .case-lite { margin: 18px 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }

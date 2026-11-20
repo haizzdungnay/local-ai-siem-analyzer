@@ -3,6 +3,15 @@
 Ngày cập nhật: 2026-11-19
 
 
+
+## Playbook lên dashboard — code-only (2026-11-20)
+
+- Trạng thái: XONG backend + UI tối thiểu trong repo (chờ Nguyên commit, chạy dashboard thật). Quyết định: cách A — không gọi LLM thêm cho từng nhóm; lý do: smoke 14–20/11 model chỉ đúng 2/6 tín hiệu dương, regex 6/6.
+- Code: `playbooks.window_playbook_findings`, `group_extracted`, `entry_placeholder_values`, `has_sensitive_values`, `REDACTED_VALUE`; `render_signal_next_steps(include_model=False)`; `analysis_service._playbook_sample_fields`; `analyze_aggregate` gắn `result["playbooks"]` + `provenance["playbooks"]`; `reader._AGGREGATE_SOURCE_FIELDS` + data.srcuser/dstuser; `web/index.html`, `app.js` (`renderPlaybookFindings`), `styles.css`.
+- Kiểm thử trên 10 alert mẫu gộp một cửa sổ: 5760 → B3, 5503 → B0, 5715 → B2, 5402 → B2; 6 rule chưa có signals → B_unknown + bước tra cứu. Full suite 580 passed, 2 skipped; `node --check` + `git diff --check` pass. Chưa chạy dashboard thật/Indexer lab.
+- Giới hạn: tín hiệu theo MỘT alert mẫu của nhóm (nhóm có thể nhiều user); chế độ aggregate (vượt `max_alerts_per_job`) không có full_log → 5402/5503 ra B_unknown; `sensitive_value` cần Nguyên thêm vào 5710 khi viết signals; notifier Telegram/Gmail KHÔNG gửi khối playbook (chỉ render các key cố định).
+- Next: Nguyên thêm `syscheck.diff`, `syscheck.perm_after` vào `config.yaml` local; commit; bật dashboard chạy một cửa sổ có alert 5402/5760 trên lab, xem khối Playbook; kiểm 2 giả thuyết DQL (`timestamp >=`, field user SSH) trong Discover; duyệt B0 5503; tiếp signals 5710 (+`sensitive_value: true`) và 550 theo review.
+
 ## Signals 5760 (2026-11-20)
 
 - Trạng thái: XONG trong repo (chờ Nguyên commit). 5760 có `S_sensitive_account` → `B3_guessing_no_success` (medium). Playbook có signals: 5715, 5402, 5503, 5760.

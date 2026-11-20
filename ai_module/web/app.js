@@ -1050,6 +1050,8 @@ function renderAiReview(job, windowResult) {
   const loading = $('ai-loading');
   const steps = $('ai-next-steps');
   steps.replaceChildren();
+  $('ai-playbooks').replaceChildren();
+  $('ai-playbooks-field').classList.add('hidden');
   loading.classList.add('hidden');
   renderProvenance(job, windowResult);
   renderSocTrace(job, windowResult);
@@ -1117,8 +1119,38 @@ function renderAiReview(job, windowResult) {
     text(item, value);
     steps.append(item);
   });
+  renderPlaybookFindings(result.playbooks);
   empty.classList.add('hidden');
   content.classList.remove('hidden');
+}
+
+// Playbook code-only cho các nhóm đầu cửa sổ (analysis_service.window_playbook_findings).
+// Chỉ dùng textContent; nhánh luôn là "cần điều tra", không phải kết luận.
+function renderPlaybookFindings(findings) {
+  const box = $('ai-playbooks');
+  const list = (Array.isArray(findings) ? findings : []).filter(item => item && typeof item === 'object');
+  list.forEach(finding => {
+    const block = document.createElement('details');
+    block.className = 'playbook-finding';
+    const head = document.createElement('summary');
+    const severity = String(finding.branch_severity || 'unknown');
+    const branch = finding.branch_id === 'B_unknown'
+      ? 'chưa đủ dữ kiện để chọn nhánh'
+      : `nhánh cần điều tra: ${finding.branch_id} (${severity})`;
+    text(head, `Rule ${finding.rule_id} · ${finding.title || ''} · ${finding.group_count || 0} alert · ${branch}`);
+    const basis = document.createElement('p');
+    basis.className = 'muted';
+    text(basis, `${finding.basis || ''} Playbook: ${finding.status || 'draft'}.`);
+    const stepsList = document.createElement('ol');
+    (Array.isArray(finding.next_steps) ? finding.next_steps : []).forEach(value => {
+      const item = document.createElement('li');
+      text(item, value);
+      stepsList.append(item);
+    });
+    block.append(head, basis, stepsList);
+    box.append(block);
+  });
+  $('ai-playbooks-field').classList.toggle('hidden', !list.length);
 }
 
 function renderReview(job) {
