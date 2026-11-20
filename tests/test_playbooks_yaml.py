@@ -20,6 +20,38 @@ def _complete(entry):
     return bool(entry.get("branches")) and isinstance(entry["branches"], list)
 
 
+class _NoDuplicateKeys(yaml.SafeLoader):
+    pass
+
+
+def _mapping_without_duplicates(loader, node, deep=False):
+    keys = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in keys:
+            raise yaml.constructor.ConstructorError(
+                None, None, f"khóa trùng {key!r} (dán thừa một khối?)", key_node.start_mark)
+        keys.add(key)
+    return loader.construct_mapping(node, deep)
+
+
+_NoDuplicateKeys.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping_without_duplicates)
+
+
+def test_playbooks_yaml_has_no_duplicate_keys():
+    # yaml.safe_load lặng lẽ lấy giá trị SAU khi khóa trùng: dán nhầm cả khối 5760 vào giữa
+    # 5402 đã ghi đè title/trigger/verify của 5402 mà các test khác không phát hiện (2026-11-20).
+    yaml.load(PLAYBOOKS.read_text(encoding="utf-8"), Loader=_NoDuplicateKeys)
+    ids = [pb["rule_id"] for pb in _load()]
+    assert len(ids) == len(set(ids)), "rule_id trùng"
+
+
+def test_no_trailing_whitespace_in_playbooks():
+    bad = [n for n, line in enumerate(PLAYBOOKS.read_text(encoding="utf-8").splitlines(), 1)
+           if line != line.rstrip()]
+    assert not bad, f"dòng có khoảng trắng cuối: {bad[:10]}"
+
+
 def test_no_live_ip_in_playbooks():
     assert not IPV4.findall(PLAYBOOKS.read_text(encoding="utf-8"))
 

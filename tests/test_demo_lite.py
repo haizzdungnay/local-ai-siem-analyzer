@@ -26,9 +26,23 @@ def test_demo_shows_trusted_arm_when_present():
     assert "C 1/1" in page
 
 
-@pytest.mark.parametrize("rule_id", ["5760", "5503"])
+def _first_v5_rule():
+    """Playbook đầu tiên chưa có signals và nhánh low đầu tiên của nó (không cố định 5760:
+    rule nào được viết signals thì test tự chuyển sang rule khác, 2026-11-20)."""
+    import playbooks
+    for entry in playbooks.load_playbooks().values():
+        if entry.get("branches") and not playbooks.has_signals(entry):
+            low = next(b["id"] for b in entry["branches"] if b.get("severity") == "low")
+            return str(entry["rule_id"]), low
+    raise AssertionError("không còn playbook v5 nào")
+
+
+@pytest.mark.parametrize("rule_id", ["v5", "5503"])
 def test_smoke_cli_distinguishes_proposal_effective_branch_and_fallback(monkeypatch, tmp_path, capsys, rule_id):
     import playbook_ab_smoke as smoke
+    proposed = "B5_typo"
+    if rule_id == "v5":
+        rule_id, proposed = _first_v5_rule()
 
     class Client:
         def __init__(self, **kwargs):
@@ -37,7 +51,7 @@ def test_smoke_cli_distinguishes_proposal_effective_branch_and_fallback(monkeypa
         def chat(self, **kwargs):
             payload = {"summary": "s", "root_cause": "c", "severity": "low", "mitre": ""}
             if "branch_id" in kwargs["format"]["properties"]:
-                payload.update(branch_id="B5_typo", branch_evidence="unverified history")
+                payload.update(branch_id=proposed, branch_evidence="unverified history")
             elif "signals" in kwargs["format"]["properties"]:
                 payload.update(signals={}, severity=None)
             else:
@@ -60,10 +74,10 @@ def test_smoke_cli_distinguishes_proposal_effective_branch_and_fallback(monkeypa
     output = capsys.readouterr().out
     stored = json.loads(out_path.read_text(encoding="utf-8"))["C_trusted_playbook"]
     assert "nhánh model chọn" not in output
-    if rule_id == "5760":
-        assert "nhánh model đề xuất: B5_typo" in output
+    if rule_id != "5503":
+        assert f"nhánh model đề xuất: {proposed}" in output
         assert "nhánh hiệu lực: B_unknown" in output
-        assert stored["playbook"]["proposed_branch_id"] == "B5_typo"
+        assert stored["playbook"]["proposed_branch_id"] == proposed
     else:
         assert "nhánh CODE đề xuất điều tra: B0_service_account_su (chưa xác minh)" in output
         assert "origin=local_fallback" in output

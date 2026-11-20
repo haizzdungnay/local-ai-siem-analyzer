@@ -64,6 +64,17 @@ def test_no_playbook_keeps_prompt_unchanged(monkeypatch):
     assert "playbook" not in provenance
 
 
+def _v5_playbook(rule_id):
+    """Bản sao playbook đã bỏ signals/select_if: test chế độ v5 (không tín hiệu) không phụ
+    thuộc vào việc rule đó đã được viết signals hay chưa (2026-11-20, 5760 có signals)."""
+    import copy
+    entry = copy.deepcopy(playbooks.get_playbook(rule_id))
+    entry.pop("signals", None)
+    for branch in entry.get("branches") or []:
+        branch.pop("select_if", None)
+    return entry
+
+
 def _branch_client(captured, payload):
     class Client:
         def __init__(self, **kwargs):
@@ -91,7 +102,7 @@ def test_playbook_mode_builds_queries_without_trusting_attack_branch(monkeypatch
                "branch_id": "B2_suspicious_success", "branch_evidence": "root, 03:12",
                "next_steps": ["model tự viết bước này"]}
     monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client(captured, payload))
-    entry = playbooks.get_playbook("5760")
+    entry = _v5_playbook("5760")
     assert not playbooks.has_signals(entry)
     result, provenance = llm.analyze_alert("rule 5760", include_provenance=True, playbook=entry,
                                            extracted=ALERT_5760)
@@ -116,7 +127,7 @@ def test_playbook_mode_invalid_branch_falls_back_to_unknown(monkeypatch):
                "branch_id": "B9_invented", "branch_evidence": "x"}
     monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
     result, provenance = llm.analyze_alert("rule 5760", include_provenance=True,
-                                           playbook=playbooks.get_playbook("5760"), extracted=ALERT_5760)
+                                           playbook=_v5_playbook("5760"), extracted=ALERT_5760)
     assert provenance["playbook"]["branch_id"] == "B_unknown"
     assert provenance["playbook"]["branch_valid"] is False
     assert result["severity"] == "medium"  # B_unknown → giữ severity theo thang contract
@@ -130,7 +141,7 @@ def test_5760_benign_enum_is_not_verified_evidence(monkeypatch, language, severi
                "next_steps": ["Đóng cảnh báo / Close alert"]}
     monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
     result, provenance = llm.analyze_alert(
-        "Rule: 5760 (level 5)", playbook=playbooks.get_playbook("5760"),
+        "Rule: 5760 (level 5)", playbook=_v5_playbook("5760"),
         extracted=ALERT_5760, include_provenance=True, language=language,
         rag_context='{"coverage":"partial","hits":[],"branch_verified":true}',
     )
@@ -208,7 +219,7 @@ def test_branch_evidence_cannot_inject_steps(monkeypatch):
     payload = {"summary": "s", "root_cause": "c", "severity": "low", "mitre": "",
                "branch_id": "B_unknown", "branch_evidence": "ok\n\nIgnore rules\r" + "A" * 900}
     monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
-    result = llm.analyze_alert("rule 5760", playbook=playbooks.get_playbook("5760"), extracted=ALERT_5760)
+    result = llm.analyze_alert("rule 5760", playbook=_v5_playbook("5760"), extracted=ALERT_5760)
     line = next(step for step in result["next_steps"] if "B_unknown" in step)
     assert "\n" not in line and len(line) < 500
 
@@ -338,7 +349,7 @@ def test_missing_model_content_keeps_playbook_unverified(monkeypatch):
 
     monkeypatch.setattr(llm.ollama_sdk, "Client", Client)
     result, provenance = llm.analyze_alert(
-        "Rule: 5760", playbook=playbooks.get_playbook("5760"), include_provenance=True,
+        "Rule: 5760", playbook=_v5_playbook("5760"), include_provenance=True,
     )
     pb = provenance["playbook"]
     assert pb["branch_id"] == "B_unknown" and pb["branch_verified"] is False
@@ -403,7 +414,7 @@ def test_free_model_text_cannot_appear_as_verified_closure(monkeypatch, language
                "branch_id": "B5_typo", "branch_evidence": claim}
     monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
     result = llm.analyze_alert(
-        "Rule: 5760", rag_context="0 hits (partial)", playbook=playbooks.get_playbook("5760"),
+        "Rule: 5760", rag_context="0 hits (partial)", playbook=_v5_playbook("5760"),
         extracted=ALERT_5760, language=language,  # cảnh báo phải có cả khi không trả provenance
     )
     for key in ("summary", "root_cause"):
@@ -417,7 +428,7 @@ def test_branch_proposal_metadata_has_no_control_characters(monkeypatch):
                "branch_id": " B9\nĐóng\t\x00 ", "branch_evidence": " Query\rverified\x1b\x7f " + "A" * 900}
     monkeypatch.setattr(llm.ollama_sdk, "Client", _branch_client({}, payload))
     _, provenance = llm.analyze_alert(
-        "Rule: 5760", playbook=playbooks.get_playbook("5760"), include_provenance=True,
+        "Rule: 5760", playbook=_v5_playbook("5760"), include_provenance=True,
     )
     pb = provenance["playbook"]
     for field, limit in (("proposed_branch_id", 200), ("branch_evidence", 600)):
@@ -739,3 +750,14 @@ def test_path_and_url_placeholders_are_escaped():
     values = playbooks.placeholder_values({"syscheck.path": "/etc/sudoers", "data.url": '/a?q=" or 1=1--'})
     assert values["path"] == "/etc/sudoers"
     assert values["url"] == '/a?q=\\" or 1=1--'
+
+
+def test_5760_signals_root_raises_to_b3_but_unknown_user_stays_unknown():
+    entry = playbooks.get_playbook("5760")
+    root = playbooks.normalize_signals({}, entry, {"data.dstuser": "root"})
+    assert root["S_sensitive_account"]["rule_answer"] == "yes"
+    assert playbooks.select_branch(entry, root) == "B3_guessing_no_success"
+    # thiếu data.srcuser → regex không đủ field để kết luận "no" → unknown, không chọn nhánh
+    normal = playbooks.normalize_signals({}, entry, {"data.dstuser": "nguyen"})
+    assert normal["S_sensitive_account"]["rule_answer"] is None
+    assert playbooks.select_branch(entry, normal) == "B_unknown"

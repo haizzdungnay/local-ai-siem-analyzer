@@ -2,6 +2,15 @@
 
 Ngày cập nhật: 2026-11-19
 
+
+## Signals 5760 (2026-11-20)
+
+- Trạng thái: XONG trong repo (chờ Nguyên commit). 5760 có `S_sensitive_account` → `B3_guessing_no_success` (medium). Playbook có signals: 5715, 5402, 5503, 5760.
+- Lần sửa tay đầu trên máy bàn có 3 lỗi: (1) `select_if` đặt vào B2 và đổi severity B2 high → medium; (2) dán thừa nguyên khối 5760 vào giữa signals của 5402 → khóa YAML trùng, 5402 bị ghi đè title/trigger/verify; (3) khoảng trắng cuối dòng. Đã sửa từ bản GitHub sạch.
+- Thêm test: `test_playbooks_yaml_has_no_duplicate_keys`, `test_no_trailing_whitespace_in_playbooks` (đã xác nhận bắt được file lỗi), `test_5760_signals_root_raises_to_b3_but_unknown_user_stays_unknown`. Test v5 trong `test_playbook_trusted.py` dùng `_v5_playbook()` để không vỡ mỗi khi thêm signals cho rule mẫu.
+- Verification: full suite pass (cloud, không Ollama). Chưa chạy smoke model cho 5760.
+- Next: Nguyên chạy smoke `alert-ssh-5760.json`; tiếp 5710 (bẫy B4 không regex được, B6 low không select_if), 550 (chọn B_unknown hay thêm nhánh mới).
+
 ## R0: chốt nghiệm thu code #11/#12, mở nghiệm thu thực tế #32 (2026-11-19)
 
 - Trạng thái: theo yêu cầu người dùng, đã chốt phần sửa code/regression và **đóng #11/#12 với reason COMPLETED**. PR #30 đã merge trước đó; PR #31 chuyển ready và merge tại `910dbc89b296bd62e8ed00358b8eec1ff9ee3409`, pin PR head `89f721bad5031f0a095f4b57b4f4a7da25d36079` khi merge. Checkout local main đã fast-forward, không xóa nhánh. Các trạng thái draft/chưa merge/chưa đóng bên dưới là ghi chép lịch sử.
