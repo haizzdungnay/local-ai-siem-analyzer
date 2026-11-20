@@ -4,6 +4,17 @@ Ngày cập nhật: 2026-11-19
 
 
 
+
+## Kiểm chứng lab + playbook dashboard v2 (2026-11-20 tối)
+
+- Lab: SIEM suspend lâu → container Up nhưng host curl `000`; bên trong container `401` → Docker NAT hỏng, `systemctl restart docker` sửa được (ghi vào `docs/manual-test.md` 2.4). Victim/Kali tắt hẳn nên không lệch giờ.
+- 6 kịch bản (19:14–19:17, agent 001): SSH root sai → 5503+5760; SSH user gõ nhầm tên → 5710×2 (ca B5_typo thật) rồi sai mật khẩu → 5503+5760; `sudo /bin/bash` → 5402; `sudo systemctl status` → 5402; `sudo -u www-data su -` sai → 5407 + 5503 + 5301; SSH đúng → 5715. Thêm 550×2 `/etc/cups/subscriptions.conf` (CUPS ghi lại khi boot — FP thật, ca âm cho regex 550).
+- 3 giả thuyết XÁC NHẬN: username SSH ở `data.dstuser`; 5503 `full_log` có `ruser=www-data uid=33`; DQL `timestamp >= "...+0700"` (ra đúng 2 hit 5402). Dashboard thật: truy vấn có `agent.id:"001"` (không phải tên máy), `<user>` điền đúng.
+- Dashboard v1 thật: 5760 → B3 đúng; ca âm (batch chỉ có 5760 user thường) → B_unknown đúng, trong khi LLM tóm tắt "không phải dấu hiệu tấn công" (LOW) mà chưa xem lịch sử. Lỗi: 5402 bị cắt (top 5 theo level), 5503 dùng alert SSH đầu tiên nên mất B0, tín hiệu user thường "không rõ" do field `data.srcuser` không tồn tại ở SSH.
+- Đã sửa (v2): playbook cho mọi nhóm (≤20), xếp theo nhánh; ≤20 alert mẫu khác nhau/nhóm, nhánh nặng nhất; `S_sensitive_account` 5715/5760 chỉ `data.dstuser`. Tái hiện cửa sổ lab bằng alert tương đương: 5503 → B0 (1/2), 5760 → B3 (1/2), 5402 → B2 (1/2), 550/5710/5715 → B_unknown. Test 583 passed; 3 test hồi quy từ lab trong `tests/test_window_playbooks.py`.
+- **Dashboard v2 trên lab (19:46): ĐẠT.** 5503 B0 (high) → 5760 B3 → 5402 B2 (1/2) đứng đầu; 9 nhóm còn lại chưa đủ dữ kiện (đúng). 5503 thành 2 nhóm do khác srcip (hợp lý). Sửa câu chữ basis; test 584 passed.
+- Next (cũ): nâng 5715/5760/5402/5503 lên `reviewed` sau khi Nguyên chạy thử V1–V3 trong Discover; signals 5710 (+`sensitive_value`) và 550 (regex phải ra "không" với CUPS).
+
 ## Playbook lên dashboard — code-only (2026-11-20)
 
 - Trạng thái: XONG backend + UI tối thiểu trong repo (chờ Nguyên commit, chạy dashboard thật). Quyết định: cách A — không gọi LLM thêm cho từng nhóm; lý do: smoke 14–20/11 model chỉ đúng 2/6 tín hiệu dương, regex 6/6.

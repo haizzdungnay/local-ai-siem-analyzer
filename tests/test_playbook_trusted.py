@@ -757,7 +757,10 @@ def test_5760_signals_root_raises_to_b3_but_unknown_user_stays_unknown():
     root = playbooks.normalize_signals({}, entry, {"data.dstuser": "root"})
     assert root["S_sensitive_account"]["rule_answer"] == "yes"
     assert playbooks.select_branch(entry, root) == "B3_guessing_no_success"
-    # thiếu data.srcuser → regex không đủ field để kết luận "no" → unknown, không chọn nhánh
+    # lab 2026-11-20: username SSH ở data.dstuser → user thường kết luận được "no"
     normal = playbooks.normalize_signals({}, entry, {"data.dstuser": "nguyen"})
-    assert normal["S_sensitive_account"]["rule_answer"] is None
+    assert normal["S_sensitive_account"]["rule_answer"] == "no"
     assert playbooks.select_branch(entry, normal) == "B_unknown"
+    # alert thiếu data.dstuser → không kết luận "no"
+    missing = playbooks.normalize_signals({}, entry, {"data.srcip": "203.0.113.9"})
+    assert missing["S_sensitive_account"]["rule_answer"] is None

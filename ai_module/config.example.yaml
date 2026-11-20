@@ -88,7 +88,7 @@ dashboard:
   max_groups_in_prompt: 100                # cat prompt lam model tu ha confidence; giu cap tren so group thuc te
   max_sample_log_chars: 1000
   max_window_prompt_chars: 64000
-  max_playbook_groups: 5                # số nhóm đầu cửa sổ được dựng playbook (code-only, không gọi thêm LLM)
+  max_playbook_groups: 20               # số nhóm có playbook hiển thị (code-only, không gọi thêm LLM); xếp theo nhánh, không theo rule.level
   ingest_delay_seconds: 120
   max_catchup_windows: 24
   worker_poll_seconds: 1

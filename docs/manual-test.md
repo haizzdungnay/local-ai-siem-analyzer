@@ -176,6 +176,14 @@ docker exec single-node-wazuh.manager-1 sh -c 'du -sh /var/ossec/queue/* 2>/dev/
 
 Nếu disk ≥90% và `vd_updater`/`vd` chiếm bất thường, dừng test và xác nhận trước khi xóa cache. Không chạy wipe Indexer volume trong happy path.
 
+Nếu container `Up` nhưng `curl` từ host SIEM ra `000` (thường gặp sau khi suspend VM lâu), kiểm từ bên trong container:
+
+```bash
+docker exec single-node-wazuh.indexer-1 curl -k -s -o /dev/null -w "%{http_code}\n" https://localhost:9200
+```
+
+Bên trong ra `401` mà bên ngoài `000` → Indexer sống, ánh xạ cổng/NAT của Docker hỏng → `sudo systemctl restart docker` (không mất volume). Đã gặp và xử lý ngày 2026-11-20. Không dùng `docker compose down -v` (xóa dữ liệu Indexer).
+
 Nếu disk ổn nhưng Docker bridge treo:
 
 ```bash

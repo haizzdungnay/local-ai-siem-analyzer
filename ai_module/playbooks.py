@@ -296,15 +296,21 @@ def render_signal_next_steps(entry: dict, extracted: dict, answers: dict[str, di
     return steps
 
 
-WINDOW_PLAYBOOK_VERSION = "window-playbook-v1"
+WINDOW_PLAYBOOK_VERSION = "window-playbook-v2"
 _BASIS_NOTE = {
-    "vi": "Theo một alert mẫu của nhóm (nhóm có thể gồm nhiều user/thời điểm khác nhau); tín hiệu chỉ từ regex, không gọi LLM.",
-    "en": "Based on one sample alert of the group (the group may span several users/times); signals from regex only, no LLM call.",
+    "vi": ("Tín hiệu chỉ từ regex (không gọi LLM), xét {n} alert của nhóm (đã bỏ trùng); "
+           "{m}/{n} alert khớp nhánh này.",
+           "Tín hiệu chỉ từ regex (không gọi LLM), xét {n} alert của nhóm (đã bỏ trùng); "
+           "không alert nào đủ dữ kiện để chọn nhánh."),
+    "en": ("Signals from regex only (no LLM call), {n} deduplicated alerts of the group checked; "
+           "{m}/{n} match this branch.",
+           "Signals from regex only (no LLM call), {n} deduplicated alerts of the group checked; "
+           "none has enough evidence to pick a branch."),
 }
 
 
 def group_extracted(group: dict) -> dict:
-    """Nhóm của dashboard → dict field như extractor, để dùng chung hàm playbook."""
+    """Nhóm (hoặc một alert mẫu của nhóm) → dict field như extractor."""
     mapping = {
         "rule.id": group.get("rule_id"), "agent.id": group.get("agent_id"),
         "data.srcip": group.get("source_ip"), "data.srcuser": group.get("srcuser"),
@@ -314,32 +320,45 @@ def group_extracted(group: dict) -> dict:
     return {key: str(value) for key, value in mapping.items() if value not in (None, "")}
 
 
-def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
-                             max_items: int = 5) -> list[dict]:
-    """Code-only (cách A, 2026-11-20): với các nhóm đứng đầu cửa sổ có playbook, dựng bước
-    tra cứu + chạy regex tín hiệu + chọn nhánh, KHÔNG gọi thêm LLM. Model 7B chỉ đúng 2/6
-    tín hiệu dương ở smoke 14–20/11 nên bỏ phần model gần như không mất gì.
+def _group_samples(group: dict) -> list[dict]:
+    """Các alert mẫu của nhóm; chế độ aggregate (không có danh sách) dùng chính nhóm."""
+    samples = [s for s in group.get("playbook_samples") or [] if isinstance(s, dict)]
+    base = {"rule_id": group.get("rule_id"), "source_ip": group.get("source_ip"),
+            "syscheck_path": group.get("syscheck_path")}
+    return [{**base, **s} for s in samples] or [group]
 
-    lookup(rule_id) -> playbook entry hoặc None (vd. partial(playbook_for_config, cfg)).
+
+def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
+                             max_items: int = 20) -> list[dict]:
+    """Code-only (cách A): với các nhóm có playbook, chạy regex tín hiệu trên TỪNG alert mẫu
+    của nhóm, lấy nhánh nặng nhất, dựng bước tra cứu từ alert khớp nhánh đó. Không gọi LLM.
+
+    Xếp nhóm theo nhánh (critical → medium → chưa chọn được), không theo rule.level: lab
+    2026-11-20, 5402 `sudo /bin/bash` (level 3) bị 550 CUPS (level 7) đẩy ra khỏi top 5.
     Nhánh vẫn là "cần điều tra (chưa xác minh)", không phải kết luận.
     """
     findings: list[dict] = []
-    for group in aggregate.get("groups") or []:
-        if len(findings) >= max_items:
-            break
+    for position, group in enumerate(aggregate.get("groups") or []):
         if not isinstance(group, dict):
             continue
         entry = lookup(str(group.get("rule_id", "")))
         if not entry:
             continue
-        extracted = group_extracted(group)
+        evaluated = []
+        for sample in _group_samples(group):
+            extracted = group_extracted(sample)
+            answers = normalize_signals(None, entry, extracted) if has_signals(entry) else {}
+            branch_id = select_branch(entry, answers) if answers else UNKNOWN_BRANCH
+            rank = SEVERITY_RANK.get((get_branch(entry, branch_id) or {}).get("severity"), -1) \
+                if branch_id != UNKNOWN_BRANCH else -1
+            evaluated.append((rank, branch_id, extracted, answers))
+        best = max(evaluated, key=lambda item: item[0])     # cùng mức: giữ alert đến trước
+        rank, branch_id, extracted, answers = best
+        matched = sum(1 for item in evaluated if item[1] == branch_id)
         if has_signals(entry):
-            answers = normalize_signals(None, entry, extracted)
-            branch_id = select_branch(entry, answers)
             steps = render_signal_next_steps(entry, extracted, answers, branch_id, language,
                                              include_model=False)
         else:
-            answers, branch_id = {}, UNKNOWN_BRANCH
             steps = render_next_steps(entry, extracted, language)
         branch = get_branch(entry, branch_id) or {}
         findings.append({
@@ -350,15 +369,21 @@ def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
             "branch_id": branch_id,
             "branch_severity": str(branch.get("severity", "unknown")) if branch_id != UNKNOWN_BRANCH else "unknown",
             "branch_verified": False,
+            "samples_evaluated": len(evaluated),
+            "samples_matched": matched,
             "signals": {sid: {"answer": item["answer"], "rule_answer": item["rule_answer"]}
                         for sid, item in answers.items()},
             "next_steps": [step[:1000] for step in steps[:20]],
-            "basis": _BASIS_NOTE[language],
+            "basis": _BASIS_NOTE[language][branch_id == UNKNOWN_BRANCH].format(n=len(evaluated), m=matched),
             "status": str(entry.get("status", "draft")),
             "sha256": playbook_sha256(entry),
             "version": WINDOW_PLAYBOOK_VERSION,
+            "_order": (-rank, position),
         })
-    return findings
+    findings.sort(key=lambda item: item["_order"])
+    for item in findings:
+        item.pop("_order")
+    return findings[:max_items]
 
 
 def branch_ids(entry: dict) -> list[str]:

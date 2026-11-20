@@ -370,9 +370,9 @@ playbooks:
     # Kết quả = yes nếu regex HOẶC model nói yes (lệch về phía báo động). Model không thấy match.
     # Code chọn nhánh theo select_if. Nhánh không có select_if cần kết quả tra cứu → code không tự chọn.
     signals:
-      - id: S_sensitive_account
+      - id: S_sensitive_account        # lab 2026-11-20: username SSH (5715/5760) nằm ở data.dstuser; không có data.srcuser
         question: "Tài khoản đăng nhập (data.dstuser hoặc tên sau 'for' trong full_log) là root hoặc tài khoản dịch vụ (www-data, postgres, mysql, nginx, apache, nobody...)?"
-        match: {fields: [data.dstuser, data.srcuser], regex: '^(root|www-data|postgres|mysql|mariadb|nginx|apache|httpd|nobody|daemon|bin|sys|mail|ftp|redis|tomcat)$'}
+        match: {fields: [data.dstuser], regex: '^(root|www-data|postgres|mysql|mariadb|nginx|apache|httpd|nobody|daemon|bin|sys|mail|ftp|redis|tomcat)$'}
       - id: S_password_method
         question: "full_log ghi đăng nhập bằng mật khẩu ('Accepted password' hoặc 'keyboard-interactive'), không phải 'Accepted publickey'?"
         match: {fields: [full_log], regex: 'Accepted (password|keyboard-interactive)'}
@@ -622,9 +622,9 @@ playbooks:
     # Tín hiệu đọc từ alert (Nguyên, 2026-11-20). Chỉ B3 có vế chứng minh được bằng alert:
     # "tài khoản là root/dịch vụ". B2 cần V2 (đăng nhập thành công) nên không có select_if.
     signals:
-      - id: S_sensitive_account
+      - id: S_sensitive_account        # lab 2026-11-20: username SSH (5715/5760) nằm ở data.dstuser; không có data.srcuser
         question: "Tài khoản bị gõ sai (data.dstuser, hoặc tên sau 'Failed password for' trong full_log) là root hoặc tài khoản dịch vụ (www-data, postgres, mysql, nginx, apache, nobody...)?"
-        match: {fields: [data.dstuser, data.srcuser], regex: '^(root|www-data|postgres|mysql|mariadb|nginx|apache|httpd|nobody|daemon|bin|sys|mail|ftp|redis|tomcat)$'}
+        match: {fields: [data.dstuser], regex: '^(root|www-data|postgres|mysql|mariadb|nginx|apache|httpd|nobody|daemon|bin|sys|mail|ftp|redis|tomcat)$'}
 
     branches:
       - id: B1_post_login_activity
@@ -899,7 +899,7 @@ playbooks:
       - "Một lần sai mật khẩu SSH thường sinh HAI dòng log và hai alert: 5503 (từ pam_unix) và 5760 (từ sshd) → không đếm trùng"
       - "IP nằm ở trường rhost= trong full_log; data.srcip thường KHÔNG có → không lọc 5503 theo srcip"
       - "8 lần 5503 trong 180 giây (same_source_ip) → 5551"
-      - "su và sudo còn ghi dòng log riêng → alert riêng: su thất bại 5301/5302, su thành công 5303/5304; sudo thất bại 5401/5404, thành công 5402. Một lần su sai thường ra cả 5503 và 5302"
+      - "su và sudo còn ghi dòng log riêng → alert riêng: su thất bại 5301/5302, su thành công 5303/5304; sudo thất bại 5401/5404, thành công 5402. Một lần su sai ra cả 5503 và 5301 hoặc 5302 (lab 2026-11-20: www-data chạy `su -` gõ sai → 5503 + 5301, không phải 5302)"
     facts:
       - agent.id
       - agent.name, agent.ip

@@ -60,6 +60,9 @@ def _group_key(source: dict) -> str:
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:24]
 
 
+MAX_PLAYBOOK_SAMPLES_PER_GROUP = 20
+
+
 def _playbook_sample_fields(source: dict) -> dict:
     """agent.id (không phải agent.name), user, thời điểm của alert mẫu cho playbook."""
     return {
@@ -76,6 +79,7 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
         raise ValueError("sample_log_chars phải là số nguyên dương")
 
     groups: dict[str, dict] = {}
+    sample_keys: dict[str, set] = {}
     rule_counts: Counter[str] = Counter()
     agents, source_ips = set(), set()
     alert_rows = []
@@ -113,7 +117,20 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
                 "sample_log": str(source.get("full_log") or "")[:sample_log_chars],
                 # Field của alert mẫu cho playbook (truy vấn DQL + regex tín hiệu); không vào prompt.
                 **_playbook_sample_fields(source),
+                "playbook_samples": [],
             }
+        # Giữ tối đa N alert KHÁC NHAU mỗi nhóm cho playbook: chỉ lấy alert đầu tiên thì một ca
+        # nguy hiểm (www-data su) bị che bởi lỗi SSH vô hại đến trước (lab 2026-11-20).
+        # So trùng theo nội dung (bỏ chữ số: giờ, PID, port) để 20 chỗ không bị một đợt
+        # brute-force cùng user chiếm hết.
+        sample = {**_playbook_sample_fields(source),
+                  "sample_log": str(source.get("full_log") or "")[:sample_log_chars]}
+        sample_key = "\x1f".join((sample["agent_id"], sample["srcuser"], sample["dstuser"],
+                                   re.sub(r"\d+", "#", sample["sample_log"])))
+        seen = sample_keys.setdefault(group_key, set())
+        if len(group["playbook_samples"]) < MAX_PLAYBOOK_SAMPLES_PER_GROUP and sample_key not in seen:
+            seen.add(sample_key)
+            group["playbook_samples"].append(sample)
         group["count"] += 1
         group["first_seen"] = min(filter(None, [group["first_seen"], timestamp]), default="")
         group["last_seen"] = max(group["last_seen"], timestamp)
@@ -610,7 +627,7 @@ class AnalysisService:
         # của phân tích cửa sổ (nhánh chỉ là hướng điều tra chưa xác minh).
         findings = window_playbook_findings(
             aggregate, lambda rule_id: playbook_for_config(self.cfg, rule_id), language,
-            max_items=int(dashboard_cfg.get("max_playbook_groups", 5)),
+            max_items=int(dashboard_cfg.get("max_playbook_groups", 20)),
         )
         if findings:
             result = {**result, "playbooks": findings}
