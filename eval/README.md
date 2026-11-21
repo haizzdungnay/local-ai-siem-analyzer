@@ -4,6 +4,14 @@ Corpus hiện có 33 case `sanitized-live` lấy từ Wazuh lab ngày 2026-07-28
 
 ## Thành phần
 
+- R0.3 development retrieval: xem [`../docs/rag-evaluation-protocol.md`](../docs/rag-evaluation-protocol.md).
+  `rag_development_cases.json` là synthetic development, không phải held-out độc lập.
+  `python eval/rag_retrieval_eval.py --freeze-only --output <new-snapshot.json>` tạo snapshot offline;
+  bỏ `--freeze-only` mới dùng embedding thật. Báo retrieval recall và `context_recall` riêng.
+  Benchmark semantic cũ cũng yêu cầu `python eval/rag_benchmark.py --output <new-results.json>`.
+  Cả hai benchmark và `run_eval.py` dùng Chroma trong bộ nhớ và manifest tạm. Integration thật của benchmark cũ
+  cần bật `SIEM_RUN_LIVE_RAG_BENCHMARK=1` và Ollama đã sẵn sàng.
+
 - `cases/*.json`: alert đã bỏ timestamp/ID sự kiện, IP/hostname/user/fingerprint thật.
 - `expected/*.json`: disposition, severity, MITRE, facts bắt buộc, claims cấm và bước xử lý tham chiếu.
 - `rubric.md`: cách hai reviewer chấm độc lập.

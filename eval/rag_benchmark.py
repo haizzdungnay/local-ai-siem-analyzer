@@ -18,12 +18,15 @@ Do luong chat luong truy xuat RAG (Information Retrieval Metrics):
    - Ablation theo nguong khoang cach (Distance Threshold)
 """
 
+import argparse
 import glob
 import json
 import math
 import os
 import sys
 from collections import defaultdict
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 sys.stdout.reconfigure(encoding="utf-8")
 EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -73,14 +76,10 @@ def evaluate_retrieval(rag_instance, cases, k_list=[1, 2, 3, 5, 10], dist_thresh
     
     for case in cases:
         query_text = case["query_text"]
-        q_emb = rag_instance._embed(query_text)
         max_k = max(k_list)
-        results = rag_instance.collection.query(
-            query_embeddings=[q_emb],
-            n_results=min(max_k, rag_instance.collection.count())
-        )
+        results = rag_instance.semantic_query(query_text, min(max_k, rag_instance.collection.count()))
         
-        retrieved_ids = results["ids"][0]
+        retrieved_ids = [document_id.split(":", 1)[0] for document_id in results["ids"][0]]
         distances = results["distances"][0]
         documents = results["documents"][0]
         
@@ -106,7 +105,7 @@ def evaluate_retrieval(rag_instance, cases, k_list=[1, 2, 3, 5, 10], dist_thresh
             valid_cases_count += 1
             
             top_k_ids = item["retrieved_ids"][:k]
-            hits = [doc_id for doc_id in top_k_ids if doc_id in targets]
+            hits = targets.intersection(top_k_ids)
             
             if hits:
                 hit_count += 1
@@ -154,6 +153,11 @@ def evaluate_retrieval(rag_instance, cases, k_list=[1, 2, 3, 5, 10], dist_thresh
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Historical semantic retrieval benchmark")
+    parser.add_argument("--output", required=True, help="New JSON path; existing results are never overwritten")
+    args = parser.parse_args()
+    if os.path.exists(args.output):
+        raise FileExistsError("Output exists; choose a new output path")
     cases = load_eval_cases_and_ground_truth()
     print("=" * 85)
     print("BAO CAO THUC NGHIEM DO LUONG CHAT LUONG TRUY XUAT RAG (IR METRICS & ABLATION)")
@@ -161,20 +165,22 @@ def main():
     print(f"So luong canh bao danh gia: {len(cases)}")
     
     print("\nKhoi tao va danh chi muc 2 kho tri thuc RAG...")
-    rag_19 = RuleRAG(data_dir="ai_module/rag_data", base_url="http://127.0.0.1:11434")
-    rag_19.ensure_indexed()
-    
-    rag_full = RuleRAG(data_dir="ai_module/rag_data_full", base_url="http://127.0.0.1:11434", persist_subdir="chroma_full")
-    rag_full.ensure_indexed()
-    
     k_list = [1, 2, 3, 5, 10]
     # 1.0 = DEFAULT_RELEVANCE_THRESHOLD dang dung trong production (rag.py)
     thresh_list = [1.0, 50, 100, 150, 200, 250, 300, 350, 400, 500]
     
-    metrics_19, thresh_19, results_19 = evaluate_retrieval(rag_19, cases, k_list, thresh_list)
-    metrics_full, thresh_full, results_full = evaluate_retrieval(rag_full, cases, k_list, thresh_list)
-    label_19 = f"Production rag_data ({rag_19.collection.count()} doc)"
-    label_full = f"Benchmark rag_data_full ({rag_full.collection.count()} doc)"
+    with TemporaryDirectory(prefix="siem-rag-legacy-") as store:
+        reports = []
+        for corpus, label in (("rag_data", "Production"), ("rag_data_full", "Benchmark")):
+            rag = RuleRAG(data_dir=Path(ROOT_DIR) / "ai_module" / corpus,
+                          base_url="http://127.0.0.1:11434", persist_dir=Path(store) / corpus, in_memory=True)
+            try:
+                rag.ensure_indexed()
+                reports.append((f"{label} {corpus} ({rag.collection.count()} doc)",
+                                *evaluate_retrieval(rag, cases, k_list, thresh_list)))
+            finally:
+                rag.close()
+        (label_19, metrics_19, thresh_19, results_19), (label_full, metrics_full, thresh_full, _) = reports
     
     print("\n" + "=" * 85)
     print("1. BANG SO SANH CHAT LUONG TRUY XUAT THEO QUY MO KHO VA ABLATION TOP-K")
@@ -211,7 +217,7 @@ def main():
               f"Recall@3 {m[3]['recall']*100:.1f}% | MRR@10 {m[10]['mrr']:.4f} | "
               f"truy van con >=1 doan o nguong 1.0: {t[1.0]['query_pass_rate']*100:.1f}%")
 
-    out_path = os.path.join(EVAL_DIR, "rag-benchmark-results.json")
+    out_path = args.output
     report = {
         "cases": len(cases),
         "k_list": k_list,
@@ -228,7 +234,7 @@ def main():
             for it in results_19
         ],
     }
-    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+    with open(out_path, "x", encoding="utf-8", newline="\n") as f:
         json.dump(report, f, ensure_ascii=False, indent=2, default=str)
         f.write("\n")
     print(f"\nDa ghi: {out_path}")

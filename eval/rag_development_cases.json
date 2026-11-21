@@ -1,0 +1,47 @@
+[
+  {
+    "case_id": "development-5712",
+    "rule_id": "5712",
+    "description": "SSH repeated authentication failures for nonexistent users",
+    "mitre_ids": [],
+    "targets": ["rule-5712", "mitre-T1110"],
+    "source": "synthetic-development-corpus-mapping",
+    "review_status": "development-only-not-independent"
+  },
+  {
+    "case_id": "development-no-rule",
+    "rule_id": "",
+    "description": "Repeated password guessing attempts",
+    "mitre_ids": ["T1110"],
+    "targets": ["mitre-T1110"],
+    "source": "synthetic-development",
+    "review_status": "development-only-not-independent"
+  },
+  {
+    "case_id": "development-unknown-rule",
+    "rule_id": "999999",
+    "description": "Password guessing with a custom rule",
+    "mitre_ids": ["T1110.001"],
+    "targets": ["rule-999999", "mitre-T1110.001"],
+    "source": "synthetic-development-missing-rule-control",
+    "review_status": "development-only-not-independent"
+  },
+  {
+    "case_id": "development-multiple-mitre",
+    "rule_id": "5712",
+    "description": "Repeated password guessing attempts",
+    "mitre_ids": ["T1110", "T1110.001"],
+    "targets": ["rule-5712", "mitre-T1110", "mitre-T1110.001"],
+    "source": "synthetic-development",
+    "review_status": "development-only-not-independent"
+  },
+  {
+    "case_id": "development-no-known-id",
+    "rule_id": "999999",
+    "description": "Unclassified custom behavior",
+    "mitre_ids": [],
+    "targets": ["rule-999999"],
+    "source": "synthetic-development-missing-rule-control",
+    "review_status": "development-only-not-independent"
+  }
+]

@@ -39,7 +39,7 @@ def status():
         # `rag` remains the legacy scalar; the additive reason is safe for
         # operators and lets them diagnose a failed lazy initialization.
         "rag": rag_status,
-        "rag_reason": analysis_service.rag_status_reason if rag_status == "unavailable" else None,
+        "rag_reason": analysis_service.rag_status_reason if rag_status in {"unavailable", "degraded"} else None,
         "queue": stats["queue"]["pending"] + stats["queue"]["running"],
         "database": "ok",
         "database_bytes": stats["database"]["bytes"],

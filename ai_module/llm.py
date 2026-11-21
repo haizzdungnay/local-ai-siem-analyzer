@@ -13,6 +13,7 @@ from pathlib import Path
 
 import ollama as ollama_sdk
 
+from extractor import normalize_mitre_ids
 from playbooks import (
     PLAYBOOK_POLICY_VERSION, SEVERITY_RANK, SIGNAL_ANSWERS, UNKNOWN_BRANCH, block_version,
     branch_ids, build_trusted_playbook_block,
@@ -729,6 +730,18 @@ def verify_mitre_ids(ids: list[str], catalog: frozenset[str] | None = None) -> l
     if catalog is None:
         catalog = get_enterprise_mitre_catalog()
     return [mid for mid in ids if mid not in catalog]
+
+
+def mitre_grounding(result_mitre, observed_mitre, references) -> dict[str, str]:
+    """Label output techniques by supplied support, independently of catalog membership."""
+    observed = set(normalize_mitre_ids(observed_mitre))
+    observed.update(ref["reference_id"] for ref in references if ref.get("lookup_basis") == "alert_annotation")
+    mapped = {ref["reference_id"] for ref in references if ref.get("lookup_basis") == "kb_mapping"}
+    for ref in references:
+        mapped.update(ref.get("mapped_mitre_ids", []))
+    return {mid: "alert_annotation" if mid in observed else
+            "kb_mapping_inference" if mid in mapped else "unconfirmed_inference"
+            for mid in extract_mitre_ids(result_mitre)}
 
 
 def _untrusted_message(label: str, text: str) -> str:

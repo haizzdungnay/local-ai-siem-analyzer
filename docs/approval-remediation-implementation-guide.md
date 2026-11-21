@@ -170,9 +170,9 @@ Provenance ghi `model_severity`, `effective_severity` sau severity floor, và `s
 
 ### Issue 13
 
-**[#13 — R0.3: RAG và baseline](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/13)**. Không có dependency cứng để bắt đầu; phần freeze cuối phải thống nhất với #12/#23 và protocol #27.
+**[R0.3 — RAG và baseline](rag-evaluation-protocol.md)**. Phần freeze cuối cần phối hợp playbook với #23/#29 và held-out với #27.
 
-1. Kiểm tra schema thực của `rag_data/wazuh_rules.json` và `mitre_techniques.json`. Lập bảng field → mục đích → có index không; ưu tiên mô tả, mapping rule/MITRE, detection và mitigation hữu ích. `_load_corpus` hiện chỉ đưa rule description và technique name/description vào document.
+1. Kiểm tra schema thực của `rag_data/wazuh_rules.json` và `mitre_techniques.json`. Ưu tiên mô tả, mapping rule/MITRE, detection và mitigation hữu ích. Bản sửa sau review dùng corpus `rule-mitre-sections-v3` và index schema 3. Bảng field, budget và protocol ở [RAG evaluation protocol](rag-evaluation-protocol.md). Nghiệm thu retrieval thật và freeze held-out còn chờ.
 2. Viết formatter có budget, chunk theo nội dung và ID ổn định; provenance ghi source ID, field/section, corpus version. Không đưa toàn bộ record lớn vào mọi prompt; nội dung truy xuất vẫn là dữ liệu tham khảo, không được cấp quyền tool.
 3. Kết hợp exact lookup `rule.id`/`mitre.id` với semantic fallback; deduplicate và giới hạn context. Đề xuất giữ exact match hợp lệ kể cả semantic score thấp, nhưng gắn nguồn rõ và không tự coi nó phù hợp mọi tình huống.
 4. Đổi manifest/index schema khi đổi cách dựng document; dùng cơ chế generation swap hiện có, rebuild index cũ đúng lúc. Kiểm old generation vẫn phục vụ được nếu rebuild thất bại, tránh xóa index tốt trước khi bản mới sẵn sàng.
@@ -181,11 +181,15 @@ Provenance ghi `model_severity`, `effective_severity` sau severity floor, và `s
 
 **Kiểm thử:** `tests/test_ai_pipeline.py`, `tests/test_rag_benchmark.py`, `tests/test_build_kb.py`, test window RAG trong `tests/test_dashboard_core.py`. Mock kiểm field đi vào corpus/context; lượt embedding/retrieval thật phải ghi model/corpus digest. Đọc cách ghi output của `eval/rag_retrieval_eval.py` trước khi chạy để không ghi đè artifact cũ.
 
-**Đóng issue khi:** formatter/provenance/index invalidation có regression, có số liệu retrieval đúng version và manifest baseline/protocol. Chưa có embedding thật thì chưa tuyên bố retrieval đã tốt hơn.
+**Tiêu chí nghiệm thu** gồm regression cho formatter, provenance và index invalidation, số liệu retrieval đúng version và manifest baseline/protocol. Cần số liệu embedding thật để kết luận chất lượng retrieval.
+
+Code giữ exact rule/MITRE ngoài threshold semantic, khử trùng document ID và ưu tiên chunk đầu của từng section. `query(..., include_provenance=True)` phân biệt `no_match`/`filtered_out`/`partial`, caller ghi `disabled`/`error`. Distance exact là `null`. Provenance đếm chunk đã vào context. Mỗi build có staging riêng, đối chiếu đủ ID và digest rồi mới publish manifest. Lỗi giữ generation tương thích để đọc, và dashboard thử lại sau cooldown.
+
+Tạo snapshot offline bằng `python eval/rag_retrieval_eval.py --freeze-only --output <new-snapshot.json>`. Bỏ `--freeze-only` khi chạy lượt đo embedding thật với Ollama sẵn sàng. Cả runner này và benchmark semantic cũ `python eval/rag_benchmark.py --output <new-results.json>` dùng output mới và store Chroma tạm. Chỉ dùng năm ca synthetic development để tuning.
 
 ### Issue 14
 
-**[#14 — R1.1: Tool điều tra chỉ đọc](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/14)**. Cần #11 + #12 (code), #13 và nghiệm thu thực tế R0 #32; không phụ thuộc #18. Có thể chuẩn bị thiết kế/fixture nhưng không nghiệm thu R1 hoàn chỉnh khi gate R0 thực tế còn mở. Module mới đề xuất: `investigation_service.py`, `siem_mcp.py`; Hermes profile chỉ có tool đọc do host cấu hình.
+**[#14 — R1.1: Tool điều tra chỉ đọc](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/14)**. Nghiệm thu cần #11 + #12 (code), [baseline RAG R0.3](rag-evaluation-protocol.md) và nghiệm thu thực tế R0 #32. Có thể chuẩn bị thiết kế/fixture trước. Module mới đề xuất gồm `investigation_service.py` và `siem_mcp.py`. Hermes profile chỉ có tool đọc do host cấu hình.
 
 1. Bắt đầu bằng một workflow SSH pilot, ví dụ query thất bại cùng nguồn, đăng nhập thành công liên quan, và lịch sử cùng agent/user trong scope. Mỗi tool có ID/version, input schema, field allowlist, builder DSL, timeout và parser; đối chiếu rule/field thực trước khi dùng.
 2. Request giữ immutable scope agent identity và time range; mọi query là tập con của quyền đó. Việc tra 24 giờ/30 ngày phải nằm trong scope đã cho phép; nếu không, trả `needs_evidence`, không tự mở rộng. Không nhận URL/index, raw DQL/DSL hoặc tên tool tùy ý từ LLM.
