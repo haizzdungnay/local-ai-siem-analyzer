@@ -4,8 +4,9 @@ Ngày cập nhật: 2026-11-21
 
 ## Bàn giao code RAG R0.3 (2026-11-21)
 
-- Bản giao trên `codex/issue-13-rag-provenance` lấy nền `origin/main@29825bf`. Khi ghép `ai_module/analysis_service.py`, giữ logic playbook theo alert mẫu của main và tập MITRE theo alert của RAG. Giữ các mục ledger từ cả hai nhánh. [CI của nhánh](https://github.com/haizzdungnay/local-ai-siem-analyzer/actions/workflows/python-tests.yml?query=branch%3Acodex%2Fissue-13-rag-provenance).
-- `python -B -m pytest tests -q -p no:cacheprovider --tb=short -rs --ignore=tests/test_model_provenance_confound.py` với `SIEM_RUN_LIVE_RAG_BENCHMARK=0` đạt **617 passed, 1 skipped**. Compile Python, kiểm cú pháp JavaScript và ba Git tree eval đã khóa đều đạt. Thiếu 10 raw export cục bộ. CI trên `main@29825bf` từng fail vì CRLF trong `docs/manual-test.md`; xem kết quả CI của bản giao trên nhánh.
+- Bản giao `9561b9b` trên `codex/issue-13-rag-provenance`, nền `origin/main@29825bf`. Giữ logic playbook theo alert mẫu của main, tập MITRE theo alert của RAG và các mục ledger từ cả hai nhánh. [Draft PR #33](https://github.com/haizzdungnay/local-ai-siem-analyzer/pull/33).
+- `python -B -m pytest tests -q -p no:cacheprovider --tb=short -rs --ignore=tests/test_model_provenance_confound.py` với `SIEM_RUN_LIVE_RAG_BENCHMARK=0` đạt **617 passed, 1 skipped**. Compile Python, kiểm cú pháp JavaScript và ba Git tree eval đã khóa đều đạt. Thiếu 10 raw export cục bộ. `main@29825bf` từng fail CI vì CRLF trong `docs/manual-test.md`. CI của `9561b9b` đạt 4/4 trên Ubuntu/Windows × Python 3.11/3.12. [CI bản giao](https://github.com/haizzdungnay/local-ai-siem-analyzer/actions/runs/44888809050).
+- Xóa issue #13 theo yêu cầu người dùng, xác nhận qua GitHub API. Các tham chiếu #13 trong lịch sử chỉ công việc RAG R0.3. Checklist bên dưới giữ các mục nghiệm thu còn thiếu.
 - Hai snapshot development 19/11 và 21/11 ghi trạng thái trước khi đồng bộ `main`. Tạo output mới từ SHA đã push khi đo embedding Ollama thật, có ca 5712 và ca thiếu rule, ghi digest và recall/coverage vào artifact. Phối hợp #23/#29 để freeze playbook và #27 để khóa held-out độc lập trước baseline. [Checklist nghiệm thu R0.3](docs/rag-evaluation-protocol.md).
 - #32 theo dõi nghiệm thu Indexer/model/browser/report/SOC. #14 có thể chuẩn bị thiết kế và fixture, còn nghiệm thu R1 cần cả baseline RAG và kết quả #32.
 
