@@ -4,7 +4,7 @@ Cập nhật **21/11/2026, Asia/Saigon**. `HANDOFF.md` giữ lịch sử chi ti�
 
 ## Điểm bắt đầu hiện tại
 
-- Code RAG R0.3 tại `9561b9b` trên `codex/issue-13-rag-provenance`, nền `29825bf`. **617 test offline pass, 1 skip**. [Draft PR #33](https://github.com/haizzdungnay/local-ai-siem-analyzer/pull/33) · [CI 4/4 pass](https://github.com/haizzdungnay/local-ai-siem-analyzer/actions/runs/44888809050). Issue #13 đã xóa theo yêu cầu.
+- RAG R0.3 đã merge vào `main` tại `520aa04`. **617 test offline pass, 1 skip**, CI trên merge commit **4/4 pass**. Issue #13 đã xóa theo yêu cầu. [PR #33](https://github.com/haizzdungnay/local-ai-siem-analyzer/pull/33) · [CI main](https://github.com/haizzdungnay/local-ai-siem-analyzer/actions/runs/44889476107).
 - Việc kế tiếp là đo retrieval bằng Ollama thật trên năm ca development và lưu output mới ghi digest. Hai snapshot development ghi trạng thái trước đồng bộ. Chốt playbook với #23/#29 và held-out độc lập theo #27 trước baseline. [Checklist RAG R0.3](docs/rag-evaluation-protocol.md).
 - #32 giữ nghiệm thu thực tế R0. Sau baseline và #32, chuyển sang nghiệm thu công cụ điều tra chỉ đọc #14.
 
