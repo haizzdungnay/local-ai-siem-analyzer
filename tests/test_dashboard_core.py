@@ -901,12 +901,12 @@ def test_analysis_service_uses_window_rag_with_sanitized_provenance(monkeypatch,
         def ensure_indexed(self):
             return 0
 
-        def query(self, rule_id, description):
+        def query(self, rule_id, description, **kwargs):
             captured["query"] = (rule_id, description)
             return [{
                 "source": "wazuh_rule", "reference_id": "5503",
                 "text": "Local reference for the rule", "distance": 0.25,
-            }]
+            }], {"status": "used"}
 
     monkeypatch.setattr(analysis_service, "RuleRAG", FakeRAG)
     monkeypatch.setattr(
@@ -928,7 +928,7 @@ def test_analysis_service_uses_window_rag_with_sanitized_provenance(monkeypatch,
     rag_provenance = output["provenance"]["rag"]
     assert rag_provenance["status"] == "used"
     assert rag_provenance["references"] == [{
-        "source": "wazuh_rule", "reference_id": "5503", "distance": 0.25,
+        "source": "wazuh_rule", "reference_id": "5503", "distance": 0.25, "rendered_text_chars": 28,
     }]
     assert "PAM failed" not in json.dumps(rag_provenance)
     assert rag_provenance["context_chars"] <= analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS
@@ -995,9 +995,9 @@ def test_analysis_service_bounds_total_window_rag_context(monkeypatch):
         def ensure_indexed(self):
             return 0
 
-        def query(self, rule_id, description):
+        def query(self, rule_id, description, **kwargs):
             return [{"source": "rule", "reference_id": rule_id, "distance": 0.1,
-                     "text": "x" * analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS}]
+                     "text": "x" * analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS}], {"status": "used"}
 
     monkeypatch.setattr(analysis_service, "RuleRAG", FakeRAG)
     monkeypatch.setattr(
@@ -1038,9 +1038,9 @@ def test_analysis_service_bounds_total_window_rag_context(monkeypatch):
         def ensure_indexed(self):
             return 0
 
-        def query(self, rule_id, description):
+        def query(self, rule_id, description, **kwargs):
             return [{"source": "rule", "reference_id": rule_id, "distance": 0.1,
-                     "text": "x" * analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS}]
+                     "text": "x" * analysis_service.MAX_WINDOW_RAG_CONTEXT_CHARS}], {"status": "used"}
 
     monkeypatch.setattr(analysis_service, "RuleRAG", FakeRAG)
     monkeypatch.setattr(

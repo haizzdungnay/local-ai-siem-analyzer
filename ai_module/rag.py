@@ -11,22 +11,36 @@ import hashlib
 import json
 import math
 import re
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from threading import Lock
+from uuid import uuid4
 
 import chromadb
 import ollama as ollama_sdk
 
+from extractor import MITRE_TECHNIQUE_ID, normalize_mitre_ids
+
 
 MODULE_DIR = Path(__file__).resolve().parent
 MAX_TOP_K = 10
-INDEX_SCHEMA_VERSION = 1
+INDEX_SCHEMA_VERSION = 3
+CORPUS_FORMAT_VERSION = "rule-mitre-sections-v3"
+RETRIEVAL_POLICY_VERSION = "exact-semantic-v2"
 MANIFEST_FILENAME = "index_manifest.json"
 DEFAULT_RELEVANCE_THRESHOLD = 1.0
 MAX_CONTEXT_DOCUMENT_CHARS = 2000
-BASE_COLLECTION_NAME = "wazuh_rules_mitre"
+MAX_CONTEXT_CHARS = 12000
+MAX_SECTION_CHUNKS = 3
 MODEL_LIST_LOOKUP_LIMIT = 128
 MODEL_DIGEST_RE = re.compile(r"^[A-Za-z0-9:+._-]{1,256}$")
+VERIFIED_EMBEDDING_SOURCE = "ollama.Client.list.pre_post_index"
+
+
+class EmbeddingIdentityError(RuntimeError):
+    """Ollama could not confirm the embedding model for this generation."""
 
 
 def _canonical_sha256(value: object) -> str:
@@ -54,6 +68,51 @@ def _safe_context_text(value) -> str:
     return text[:MAX_CONTEXT_DOCUMENT_CHARS]
 
 
+def _knowledge_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "; ".join(filter(None, (_knowledge_text(item) for item in value)))
+    if isinstance(value, dict):
+        return "; ".join(f"{key}: {_knowledge_text(item)}" for key, item in value.items() if item)
+    return str(value).strip()
+
+
+def reference_metadata(result: dict) -> dict:
+    """Content-free provenance shared by alert, window and evaluation outputs."""
+    output = {key: _safe_reference_id(result[key]) for key in (
+        "source", "reference_id", "source_file", "section", "record_sha256", "corpus_version",
+        "corpus_digest", "retrieval_method", "lookup_basis",
+    ) if key in result}
+    if "document_id" in result:
+        output["document_id"] = re.sub(r"[^A-Za-z0-9._:-]+", "_", result["document_id"])[:192]
+    if "fields" in result:
+        output["fields"] = re.sub(r"[^A-Za-z0-9._,:-]+", "_", str(result["fields"]))[:256]
+    if "chunk" in result:
+        output["chunk"] = int(result["chunk"])
+    if "section_truncated" in result:
+        output["section_truncated"] = bool(result["section_truncated"])
+    if result.get("mapped_mitre_ids"):
+        output["mapped_mitre_ids"] = result["mapped_mitre_ids"]
+    distance = result.get("distance")
+    output["distance"] = None if distance is None else _validated_distance(distance, "distance")
+    return output
+
+
+def render_reference(result: dict, remaining: int):
+    """Render a complete chunk so its field provenance still describes the prompt."""
+    text = _safe_context_text(result.get("text", "")).strip()
+    if not text:
+        return None
+    metadata = reference_metadata(result)
+    source = metadata.get("source", "unknown")
+    ref_id = metadata.get("reference_id", "")
+    fields = " ".join(f"{key}={value}" for key, value in metadata.items()
+                      if key not in {"source", "reference_id", "mapped_mitre_ids"} and value is not None)
+    row = f"[REFERENCE source={source} id={ref_id} {fields}] {text}"
+    return (row, {**metadata, "rendered_text_chars": len(text)}) if len(row) <= remaining else None
+
+
 def _load_source(path: Path, prefix: str) -> list[tuple[str, dict]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
@@ -67,6 +126,8 @@ def _load_source(path: Path, prefix: str) -> list[tuple[str, dict]]:
         source_id = item.get("id")
         if not isinstance(source_id, str) or not source_id.strip():
             raise ValueError(f"{path}: item[{index}].id phải là string không rỗng")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", source_id.strip()):
+            raise ValueError(f"{path}: item[{index}].id không hợp lệ")
         document_id = f"{prefix}-{source_id.strip()}"
         if document_id in seen_ids:
             raise ValueError(f"{path}: duplicate id {source_id.strip()!r}")
@@ -82,7 +143,10 @@ class RuleRAG:
                  embedding_model: str = "nomic-embed-text",
                  base_url: str = "http://localhost:11434", persist_subdir: str = "chroma",
                  timeout: float = 120,
-                 relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD):
+                 relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD, *,
+                 persist_dir: str | Path | None = None, in_memory: bool = False):
+        if in_memory and persist_dir is None:
+            raise ValueError("An in-memory index requires a separate manifest directory")
         self.data_dir = Path(data_dir).resolve()
         self.embedding_model = embedding_model
         self.relevance_threshold = _validated_distance(
@@ -90,33 +154,70 @@ class RuleRAG:
         )
         self.ollama_client = ollama_sdk.Client(host=base_url, timeout=timeout)
 
-        persist_path = self.data_dir / persist_subdir
+        persist_path = self.data_dir / persist_subdir if persist_dir is None else Path(persist_dir).resolve()
         persist_path.mkdir(parents=True, exist_ok=True)
         self.persist_path = persist_path
         self.manifest_path = persist_path / MANIFEST_FILENAME
-        self.chroma_client = chromadb.PersistentClient(path=str(persist_path))
-        manifest = self._read_manifest()
-        self.collection_name = self._collection_name_from_manifest(manifest)
-        self.collection = self.chroma_client.get_or_create_collection(self.collection_name)
+        self.chroma_client = (chromadb.EphemeralClient() if in_memory else
+                              chromadb.PersistentClient(path=str(persist_path)))
+        self._build_lock = Lock()
+        try:
+            self._generation = self._published_generation()
+        except Exception:
+            with suppress(Exception):
+                self.close()
+            raise
+
+    def close(self) -> None:
+        try:
+            self.chroma_client.close()
+        finally:
+            close_ollama = getattr(self.ollama_client, "close", None)
+            if callable(close_ollama):
+                close_ollama()
+
+    def semantic_query(self, text: str, top_k: int) -> dict:
+        """Return raw Chroma ranks for semantic-only benchmarks."""
+        generation = self._generation
+        if generation is None:
+            raise RuntimeError("No compatible RAG index is available")
+        return self._semantic_query(text, top_k, generation)
+
+    @property
+    def collection(self):
+        generation = self._generation
+        return generation[1] if generation else None
+
+    @property
+    def collection_name(self) -> str:
+        return self.manifest_metadata().get("collection_name", "")
+
+    @property
+    def indexed_document_ids(self) -> tuple[str, ...]:
+        generation = self._generation
+        return tuple(generation[0]["document_ids"]) if generation else ()
 
     def ensure_indexed(self) -> int:
         """Build a new index generation, then atomically activate its manifest."""
+        with self._build_lock:
+            corpus = self._load_build_corpus()
+            generation = self._published_generation()
+            self._generation = generation
+            manifest = self._manifest_for(corpus)
+            if generation and all(generation[0].get(key) == manifest[key] for key in (
+                "schema_version", "corpus_digest", "embedding_schema_digest", "document_ids",
+                "embedding_model_digest_source",
+            )):
+                return 0
+            return self._index_corpus(corpus, manifest)
+
+    def _load_build_corpus(self) -> dict:
         try:
-            corpus = self._load_corpus()
+            return self._load_corpus()
         except FileNotFoundError:
-            # Never serve an old index after all configured source files were removed.
-            self._delete_document_ids(self._known_document_ids())
-            self._remove_manifest()
+            # Do not serve a removed corpus or mutate a generation used by other readers.
+            self._generation = None
             raise
-        previous = self._read_manifest()
-        # Keep index() as the first-build seam used by the CLI and integrations.
-        # It still creates a generation collection before activating its manifest.
-        if previous is None:
-            return self.index()
-        manifest = self._manifest_for(corpus, previous=previous)
-        if self._is_fresh(manifest):
-            return 0
-        return self._index_corpus(corpus, manifest)
 
     def _embed(self, text: str) -> list:
         resp = self.ollama_client.embeddings(model=self.embedding_model, prompt=text)
@@ -129,7 +230,7 @@ class RuleRAG:
                 embedding = getattr(resp, "embedding", None)
         if not isinstance(embedding, list) or not embedding or not all(
             not isinstance(value, bool) and isinstance(value, (int, float))
-            for value in embedding
+            and math.isfinite(value) for value in embedding
         ):
             raise ValueError("Ollama embedding response không hợp lệ")
         return embedding
@@ -142,20 +243,72 @@ class RuleRAG:
         mitre_path = self.data_dir / "mitre_techniques.json"
         techniques = _load_source(mitre_path, "mitre") if mitre_path.exists() else []
 
+        def append_sections(document_id, record, metadata, sections):
+            metadata = {**metadata, "corpus_version": CORPUS_FORMAT_VERSION,
+                        "record_sha256": _canonical_sha256(record)}
+            for section, pieces in sections:
+                content, spans = "", []
+                for field, piece in pieces:
+                    start = len(content)
+                    content += piece
+                    if field and piece:
+                        spans.append((field, start, len(content)))
+                if not content:
+                    continue
+                header = "" if section == "overview" else f"{document_id} {section}: "
+                size = MAX_CONTEXT_DOCUMENT_CHARS - len(header)
+                # ponytail: at most 3 chunks/section; add ranked subchunks if real retrieval needs longer records.
+                for number, start in enumerate(range(0, min(len(content), size * MAX_SECTION_CHUNKS), size)):
+                    chunk_id = document_id if section == "overview" and number == 0 else f"{document_id}:{section}:{number}"
+                    stop = start + size
+                    docs.append(header + _safe_context_text(content[start:stop]))
+                    chunk_meta = {**metadata, "document_id": chunk_id, "section": section,
+                                  "fields": ",".join(field for field, begin, end in spans
+                                                     if begin < stop and end > start),
+                                  "chunk": number, "section_truncated": len(content) > size * MAX_SECTION_CHUNKS}
+                    for field, begin, end in spans:
+                        if field == "mitre" and begin < stop and end > start:
+                            offset = begin
+                            included = []
+                            for value in content[begin:end].split("; "):
+                                if offset >= start and offset + len(value) <= stop and MITRE_TECHNIQUE_ID.fullmatch(value):
+                                    included.append(value)
+                                offset += len(value) + 2
+                            chunk_meta["visible_mitre_ids"] = json.dumps(included)
+                    metadatas.append(chunk_meta)
+                    ids.append(chunk_id)
+
         for document_id, rule in rules:
             rule_id = document_id.removeprefix("rule-")
-            docs.append(f"Rule {rule_id}: {rule.get('description', '')}")
-            metadatas.append({"source": "wazuh_rule", "rule_id": rule_id})
-            ids.append(document_id)
+            mapping = rule.get("mitre")
+            if mapping is not None and (not isinstance(mapping, list) or any(
+                not isinstance(item, str) or not item.strip() for item in mapping
+            )):
+                raise ValueError(f"Rule {rule_id}: mitre must be a list of non-empty strings")
+            overview = [(None, f"Rule {rule_id}: "), ("description", _knowledge_text(rule.get("description")))]
+            for field in ("mitre", "level", "groups", "frequency", "timeframe", "if_sid", "if_matched_sid", "file", "text"):
+                value = _knowledge_text(rule.get(field))
+                if value:
+                    overview.extend([(None, f"\n{field}: "), (field, value)])
+            append_sections(document_id, rule, {
+                "source": "wazuh_rule", "rule_id": rule_id, "source_file": rules_path.name,
+                "mitre_ids": json.dumps(normalize_mitre_ids(mapping)),
+            }, [("overview", overview)])
 
         for document_id, technique in techniques:
             technique_id = document_id.removeprefix("mitre-")
-            docs.append(
-                f"MITRE {technique_id} ({technique.get('name')}): "
-                f"{technique.get('description', '')}"
-            )
-            metadatas.append({"source": "mitre", "technique_id": technique_id})
-            ids.append(document_id)
+            overview = [(None, f"MITRE {technique_id} ("), ("name", _knowledge_text(technique.get("name"))), (None, ")")]
+            for field in ("tactics", "tactic", "subtechnique_of"):
+                value = _knowledge_text(technique.get(field))
+                if value:
+                    overview.extend([(None, f"\n{field}: "), (field, value)])
+            description_field = "description" if technique.get("description") else "text"
+            overview.extend([(None, ": "), (description_field, _knowledge_text(technique.get(description_field)))])
+            mitigation_field = "mitigation_details" if technique.get("mitigation_details") else "mitigations"
+            append_sections(document_id, technique, {
+                "source": "mitre", "technique_id": technique_id, "source_file": mitre_path.name,
+            }, [("overview", overview), ("detection", [("detection", _knowledge_text(technique.get("detection")))]),
+                ("mitigations", [(mitigation_field, _knowledge_text(technique.get(mitigation_field)))])])
 
         if not docs:
             raise FileNotFoundError(
@@ -164,13 +317,16 @@ class RuleRAG:
             )
         return {"ids": ids, "documents": docs, "metadatas": metadatas}
 
-    def _embedding_model_digest_metadata(self) -> tuple[str, str, str]:
-        """Observe the embedding model digest without making indexing depend on it."""
+    def _embedding_model_digest_metadata(self) -> tuple[str, str]:
+        """Look up the configured tag, including Ollama's implicit :latest."""
         try:
             listing = self.ollama_client.list()
             models = listing.get("models", []) if isinstance(listing, dict) else getattr(listing, "models", [])
             if not isinstance(models, (list, tuple)):
-                return "", "", ""
+                return "", ""
+            requested = self.embedding_model
+            if ":" not in requested.rsplit("/", 1)[-1]:
+                requested += ":latest"
             for item in models[:MODEL_LIST_LOOKUP_LIMIT]:
                 if isinstance(item, dict):
                     name = item.get("name") or item.get("model")
@@ -178,14 +334,17 @@ class RuleRAG:
                 else:
                     name = getattr(item, "name", None) or getattr(item, "model", None)
                     digest = getattr(item, "digest", None)
-                if name == self.embedding_model and isinstance(digest, str) and MODEL_DIGEST_RE.fullmatch(digest):
+                if not isinstance(name, str):
+                    continue
+                listed = name if ":" in name.rsplit("/", 1)[-1] else name + ":latest"
+                if listed == requested and isinstance(digest, str) and MODEL_DIGEST_RE.fullmatch(digest):
                     observed_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-                    return digest, "ollama.Client.list.pre_index", observed_at
+                    return digest, observed_at
         except Exception:
             pass
-        return "", "", ""
+        return "", ""
 
-    def _manifest_for(self, corpus: dict, previous: dict | None = None) -> dict:
+    def _manifest_for(self, corpus: dict) -> dict:
         records = sorted(
             (
                 {"id": document_id, "document": document, "metadata": metadata}
@@ -196,31 +355,25 @@ class RuleRAG:
             key=lambda record: record["id"],
         )
         corpus_digest = _canonical_sha256(records)
-        previous = previous if isinstance(previous, dict) else {}
-        model_digest, digest_source, digest_observed_at = self._embedding_model_digest_metadata()
-        # A transient metadata lookup failure must not churn a known-good index.
-        if not model_digest and previous.get("embedding_model") == self.embedding_model:
-            model_digest = previous.get("embedding_model_digest", "")
-            digest_source = previous.get("embedding_model_digest_source", "")
-            digest_observed_at = previous.get("embedding_model_digest_observed_at", "")
-        elif model_digest and model_digest == previous.get("embedding_model_digest"):
-            digest_source = previous.get("embedding_model_digest_source", digest_source)
-            digest_observed_at = previous.get("embedding_model_digest_observed_at", digest_observed_at)
+        model_digest, _ = self._embedding_model_digest_metadata()
+        if not model_digest:
+            raise EmbeddingIdentityError("Embedding model digest unavailable before build")
         embedding_schema_digest = _canonical_sha256({
             "schema_version": INDEX_SCHEMA_VERSION,
+            "corpus_version": CORPUS_FORMAT_VERSION,
+            "document_chars": MAX_CONTEXT_DOCUMENT_CHARS,
+            "section_chunks": MAX_SECTION_CHUNKS,
             "embedding_model": self.embedding_model,
             "embedding_model_digest": model_digest,
         })
-        collection_name = f"wazuh-rag-{corpus_digest[:12]}-{embedding_schema_digest[:12]}"
         return {
             "schema_version": INDEX_SCHEMA_VERSION,
+            "corpus_version": CORPUS_FORMAT_VERSION,
             "embedding_model": self.embedding_model,
             "embedding_model_digest": model_digest,
-            "embedding_model_digest_source": digest_source,
-            "embedding_model_digest_observed_at": digest_observed_at,
+            "embedding_model_digest_source": VERIFIED_EMBEDDING_SOURCE,
             "document_count": len(corpus["ids"]),
-            "document_ids": list(corpus["ids"]),
-            "collection_name": collection_name,
+            "document_ids": [record["id"] for record in records],
             "corpus_digest": corpus_digest,
             "corpus_sha256": corpus_digest,
             "embedding_schema_digest": embedding_schema_digest,
@@ -230,17 +383,21 @@ class RuleRAG:
     def _read_manifest(self) -> dict | None:
         try:
             value = json.loads(self.manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (FileNotFoundError, json.JSONDecodeError):
             return None
         return value if isinstance(value, dict) else None
 
     def manifest_metadata(self) -> dict:
         """Return only non-content index identity needed for analysis provenance."""
-        manifest = self._read_manifest() or {}
+        generation = self._generation
+        return self._index_metadata(generation[0]) if generation else {}
+
+    @staticmethod
+    def _index_metadata(manifest: dict) -> dict:
         return {
             key: manifest.get(key, "")
             for key in (
-                "schema_version", "embedding_model", "document_count",
+                "schema_version", "corpus_version", "embedding_model", "document_count",
                 "embedding_model_digest", "embedding_model_digest_source",
                 "embedding_model_digest_observed_at", "collection_name",
                 "corpus_digest", "embedding_schema_digest",
@@ -248,140 +405,235 @@ class RuleRAG:
         }
 
     def _write_manifest(self, manifest: dict) -> None:
-        temporary_path = self.manifest_path.with_suffix(".tmp")
-        temporary_path.write_text(
-            json.dumps(manifest, ensure_ascii=True, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        # The manifest is the active-generation pointer. Replacing it happens
-        # only after the staging collection contains every document/embedding.
-        temporary_path.replace(self.manifest_path)
-
-    def _remove_manifest(self) -> None:
+        temporary_path = None
         try:
-            self.manifest_path.unlink()
-        except FileNotFoundError:
-            pass
+            with NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", dir=self.persist_path,
+                                    prefix=".manifest-", suffix=".tmp", delete=False) as handle:
+                temporary_path = Path(handle.name)
+                json.dump(manifest, handle, ensure_ascii=True, sort_keys=True, indent=2)
+                handle.write("\n")
+            temporary_path.replace(self.manifest_path)
+        finally:
+            if temporary_path is not None:
+                with suppress(OSError):
+                    temporary_path.unlink(missing_ok=True)
+
+    def _published_generation(self):
+        manifest = self._read_manifest()
+        if not manifest or (manifest.get("schema_version"), manifest.get("corpus_version"),
+                            manifest.get("embedding_model"), manifest.get("embedding_model_digest_source")) != (
+            INDEX_SCHEMA_VERSION, CORPUS_FORMAT_VERSION, self.embedding_model, VERIFIED_EMBEDDING_SOURCE,
+        ):
+            return None
+        name, ids = manifest.get("collection_name"), manifest.get("document_ids")
+        digest = manifest.get("embedding_model_digest")
+        if (not isinstance(name, str) or not re.fullmatch(r"wazuh-rag-[0-9a-f]{32}", name)
+                or not isinstance(digest, str) or not MODEL_DIGEST_RE.fullmatch(digest)
+                or not isinstance(ids, list) or not ids or not all(isinstance(key, str) for key in ids)
+                or len(set(ids)) != manifest.get("document_count") or len(set(ids)) != len(ids)):
+            return None
+        try:
+            collection = self.chroma_client.get_collection(name)
+        except chromadb.errors.NotFoundError:
+            return None
+        if not self._has_ids(collection, ids):
+            return None
+        return manifest, collection
 
     @staticmethod
-    def _collection_name_from_manifest(manifest: dict | None) -> str:
-        name = manifest.get("collection_name") if isinstance(manifest, dict) else None
-        if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_-]{3,128}", name):
-            return name
-        return BASE_COLLECTION_NAME
+    def _has_ids(collection, expected: list[str]) -> bool:
+        stored = collection.get(include=[])["ids"]
+        return isinstance(stored, list) and len(stored) == len(expected) and set(stored) == set(expected)
 
-    def _collection_ids(self, collection=None) -> list[str]:
-        getter = getattr(collection or self.collection, "get", None)
-        if not callable(getter):
-            return []
-        try:
-            result = getter(include=[])
-        except TypeError:
-            result = getter()
-        if not isinstance(result, dict) or not isinstance(result.get("ids"), list):
-            return []
-        return [item for item in result["ids"] if isinstance(item, str)]
+    def _require_embedding_identity(self, expected_digest: str) -> str:
+        digest, observed_at = self._embedding_model_digest_metadata()
+        if not expected_digest or digest != expected_digest:
+            raise EmbeddingIdentityError("Embedding model digest differs or is unavailable")
+        return observed_at
 
-    def _known_document_ids(self) -> list[str]:
-        manifest = self._read_manifest()
-        if manifest and isinstance(manifest.get("document_ids"), list):
-            return [item for item in manifest["document_ids"] if isinstance(item, str)]
-        return self._collection_ids()
-
-    def _delete_document_ids(self, document_ids: list[str], collection=None) -> None:
-        if not document_ids:
-            return
-        deleter = getattr(collection or self.collection, "delete", None)
-        if callable(deleter):
-            deleter(ids=sorted(set(document_ids)))
-
-    def _is_fresh(self, manifest: dict) -> bool:
-        existing = self._read_manifest()
-        if existing != manifest:
-            return False
-        counter = getattr(self.collection, "count", None)
-        return callable(counter) and counter() == manifest["document_count"]
+    def _semantic_query(self, text: str, top_k: int, generation) -> dict:
+        manifest, collection = generation
+        digest = manifest["embedding_model_digest"]
+        self._require_embedding_identity(digest)
+        embedding = self._embed(text)
+        self._require_embedding_identity(digest)
+        return collection.query(query_embeddings=[embedding], n_results=top_k)
 
     def _index_corpus(self, corpus: dict, manifest: dict) -> int:
-        new_ids = set(corpus["ids"])
-        # Generate embeddings before mutating a usable index. A failed embedding
-        # call therefore leaves the active manifest and collection intact.
-        embeddings = [self._embed(document) for document in corpus["documents"]]
-        staging_name = self._collection_name_from_manifest(manifest)
-        staging_collection = self.chroma_client.get_or_create_collection(staging_name)
-        old_staging_ids = set(self._collection_ids(staging_collection))
-        staging_collection.upsert(
-            ids=corpus["ids"],
-            documents=corpus["documents"],
-            embeddings=embeddings,
-            metadatas=corpus["metadatas"],
-        )
-        # Upsert replaces changed IDs; explicit deletion removes stale retries in
-        # the same staging generation. Earlier generations stay inactive.
-        self._delete_document_ids(list(old_staging_ids - new_ids), staging_collection)
-        self._write_manifest(manifest)
-        self.collection_name = staging_name
-        self.collection = staging_collection
-        return len(corpus["documents"])
+        ids = corpus["ids"]
+        batch_size = self.chroma_client.get_max_batch_size()
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+            raise ValueError("Invalid Chroma batch size")
+        digest = manifest["embedding_model_digest"]
+        self._require_embedding_identity(digest)
+        staging_name = f"wazuh-rag-{uuid4().hex}"
+        staging_collection = self.chroma_client.create_collection(staging_name)
+        try:
+            for start in range(0, len(ids), batch_size):
+                stop = start + batch_size
+                documents = corpus["documents"][start:stop]
+                embeddings = []
+                for document in documents:
+                    embeddings.append(self._embed(document))
+                    self._require_embedding_identity(digest)
+                staging_collection.upsert(ids=ids[start:stop], documents=documents,
+                                          embeddings=embeddings, metadatas=corpus["metadatas"][start:stop])
+            if not self._has_ids(staging_collection, ids):
+                raise RuntimeError("Staging index is incomplete; active generation unchanged")
+            manifest = {**manifest, "collection_name": staging_name,
+                        "embedding_model_digest_observed_at": self._require_embedding_identity(digest)}
+            self._write_manifest(manifest)
+        except Exception:
+            with suppress(Exception):
+                self.chroma_client.delete_collection(staging_name)
+            raise
+        self._generation = manifest, staging_collection
+        return len(ids)
 
     def index(self) -> int:
         """Index the current corpus and update its persistence manifest."""
-        corpus = self._load_corpus()
-        return self._index_corpus(corpus, self._manifest_for(corpus))
+        with self._build_lock:
+            corpus = self._load_build_corpus()
+            return self._index_corpus(corpus, self._manifest_for(corpus))
 
     def query(self, rule_id: str, description: str, top_k: int = 3,
-              max_distance: float | None = None) -> list:
-        """Tra cứu context liên quan cho 1 rule/behavior."""
+              max_distance: float | None = None, *, mitre_ids=None,
+              include_provenance: bool = False, exact_lookup: bool = True):
+        """Exact IDs first, then thresholded semantic evidence; top_k bounds all chunks."""
         if isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= MAX_TOP_K:
             raise ValueError(f"top_k phải là số nguyên trong khoảng 1..{MAX_TOP_K}")
-
+        if not isinstance(rule_id, str) or not isinstance(description, str):
+            raise ValueError("rule_id and description must be strings")
+        if not isinstance(exact_lookup, bool):
+            raise ValueError("exact_lookup must be a boolean")
+        if mitre_ids is None:
+            mitre_ids = []
+        if (not isinstance(mitre_ids, list) or len(mitre_ids) > MAX_TOP_K
+                or any(not isinstance(mid, str) or not MITRE_TECHNIQUE_ID.fullmatch(mid)
+                       for mid in mitre_ids)):
+            raise ValueError("mitre_ids must contain at most 10 MITRE technique IDs")
         threshold = self.relevance_threshold if max_distance is None else _validated_distance(
             max_distance, "max_distance"
         )
-        query_text = f"Rule {rule_id}: {description}"
-        query_embedding = self._embed(query_text)
-        results = self.collection.query(query_embeddings=[query_embedding], n_results=top_k)
-        if not isinstance(results, dict):
-            raise ValueError("Chroma query response không hợp lệ")
+        generation = self._generation
+        if generation is None:
+            raise RuntimeError("No compatible RAG index is available")
+        manifest, collection = generation
+        provenance = {"status": "no_match", "exact_count": 0, "semantic_count": 0,
+                      "filtered_count": 0, "top_k": top_k, "max_distance": threshold,
+                      "policy_version": RETRIEVAL_POLICY_VERSION,
+                      "exact_lookup": exact_lookup,
+                      "index": self._index_metadata(manifest)}
+        output, seen = [], set()
 
-        columns = []
-        for key in ("documents", "metadatas", "distances"):
-            value = results.get(key)
-            if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], list):
-                raise ValueError(f"Chroma query response thiếu {key}[0]")
-            columns.append(value[0])
-        docs, metas, dists = columns
-        if not (len(docs) == len(metas) == len(dists)):
-            raise ValueError("Chroma query response có số phần tử không khớp")
+        def add(document, metadata, distance, method, lookup_basis=None):
+            if not isinstance(document, str) or not isinstance(metadata, dict):
+                raise ValueError("Chroma response contains invalid document/metadata")
+            reference_id = metadata.get("rule_id", metadata.get("technique_id", ""))
+            document_id = metadata.get("document_id") or (
+                ("rule-" if metadata.get("source") == "wazuh_rule" else "mitre-") + str(reference_id)
+            )
+            if document_id in seen or len(output) >= top_k:
+                return
+            seen.add(document_id)
+            result = {"source": str(metadata.get("source", "?")),
+                      "reference_id": _safe_reference_id(reference_id), "text": document,
+                      "distance": distance, "document_id": document_id,
+                      "retrieval_method": method, "corpus_digest": manifest.get("corpus_digest", "")}
+            result.update({key: metadata[key] for key in (
+                "source_file", "section", "record_sha256", "corpus_version", "fields", "chunk", "section_truncated",
+            ) if key in metadata})
+            if lookup_basis:
+                result["lookup_basis"] = lookup_basis
+            if "visible_mitre_ids" in metadata:
+                result["mapped_mitre_ids"] = normalize_mitre_ids(json.loads(metadata["visible_mitre_ids"]))
+            output.append(result)
 
-        output = []
-        for doc, meta, dist in zip(docs, metas, dists):
-            if not isinstance(doc, str) or not isinstance(meta, dict):
-                raise ValueError("Chroma query response chứa dữ liệu sai kiểu")
-            if isinstance(dist, bool) or not isinstance(dist, (int, float)):
-                raise ValueError("Chroma query response chứa distance sai kiểu")
-            distance = _validated_distance(dist, "Chroma query response distance")
-            if distance > threshold:
-                continue
-            reference_id = meta.get("rule_id", meta.get("technique_id", ""))
-            output.append({
-                "source": str(meta.get("source", "?")),
-                "reference_id": _safe_reference_id(reference_id),
-                "text": doc,
-                "distance": distance,
-            })
-        return output
+        def exact_rows(response):
+            if not isinstance(response, dict):
+                raise ValueError("Invalid Chroma get response")
+            docs, metas = response.get("documents"), response.get("metadatas")
+            if not isinstance(docs, list) or not isinstance(metas, list) or len(docs) != len(metas):
+                raise ValueError("Invalid Chroma get columns")
+            if any(not isinstance(doc, str) or not isinstance(meta, dict) for doc, meta in zip(docs, metas)):
+                raise ValueError("Invalid Chroma get rows")
+            return list(zip(docs, metas))
+
+        root = f"rule-{rule_id}"
+        rule_ids = [root] + [key for key in manifest.get("document_ids", []) if key.startswith(root + ":")]
+        rules = exact_rows(collection.get(ids=rule_ids, include=["documents", "metadatas"])) if rule_id and exact_lookup else []
+        rules.sort(key=lambda row: row[1].get("chunk", 0))
+        techniques = list(dict.fromkeys(mitre_ids))
+        for document, metadata in rules:
+            if not metadata.get("chunk", 0):
+                add(document, metadata, None, "exact_rule")
+            mapped = json.loads(metadata.get("mitre_ids", "[]"))
+            if not isinstance(mapped, list):
+                raise ValueError("Invalid indexed MITRE mapping")
+            techniques.extend(mid for mid in normalize_mitre_ids(mapped) if mid not in techniques)
+        techniques = techniques[:MAX_TOP_K]
+        if techniques and exact_lookup:
+            rows = exact_rows(collection.get(where={"technique_id": {"$in": techniques}},
+                                                  include=["documents", "metadatas"]))
+            section_order = {"overview": 0, "detection": 1, "mitigations": 2}
+            rows.sort(key=lambda row: (row[1].get("chunk", 0) > 0,
+                                      section_order.get(row[1].get("section"), 3),
+                                      row[1].get("chunk", 0),
+                                      techniques.index(row[1]["technique_id"])))
+            for document, metadata in rows:
+                basis = "alert_annotation" if metadata["technique_id"] in mitre_ids else "kb_mapping"
+                add(document, metadata, None, "exact_mitre", basis)
+        for document, metadata in rules:
+            add(document, metadata, None, "exact_rule")
+        provenance["exact_count"] = len(output)
+        try:
+            query_text = f"Rule {rule_id[:128]}: {description[:1000]}"
+            results = self._semantic_query(query_text, top_k, generation)
+            if not isinstance(results, dict):
+                raise ValueError("Chroma query response không hợp lệ")
+            columns = []
+            for key in ("documents", "metadatas", "distances"):
+                value = results.get(key)
+                if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], list):
+                    raise ValueError(f"Chroma query response thiếu {key}[0]")
+                columns.append(value[0])
+            docs, metas, dists = columns
+            if not (len(docs) == len(metas) == len(dists)):
+                raise ValueError("Chroma query response có số phần tử không khớp")
+            for doc, meta, dist in zip(docs, metas, dists):
+                distance = _validated_distance(dist, "Chroma query response distance")
+                if not isinstance(doc, str) or not isinstance(meta, dict):
+                    raise ValueError("Chroma query response chứa dữ liệu sai kiểu")
+                if distance > threshold:
+                    provenance["filtered_count"] += 1
+                else:
+                    add(doc, meta, distance, "semantic")
+            provenance["status"] = "used" if output else (
+                "filtered_out" if provenance["filtered_count"] else "no_match"
+            )
+        except Exception as exc:
+            if not output:
+                raise
+            provenance.update(status="partial", error_type=type(exc).__name__)
+        provenance["semantic_count"] = len(output) - provenance["exact_count"]
+        context, references = self._render_context(output)
+        provenance["references"] = references
+        provenance["context_chars"] = len(context)
+        provenance["context_truncated"] = len(references) < len(output)
+        return (output, provenance) if include_provenance else output
 
     def format_context(self, results: list) -> str:
-        """Format RAG results thành text nhét vào prompt LLM."""
-        if not results:
-            return ""
-        lines = []
-        for r in results:
-            source = _safe_reference_id(r.get("source", "?")) or "unknown"
-            reference_id = _safe_reference_id(r.get("reference_id", ""))
-            lines.append(
-                f"[REFERENCE source={source} id={reference_id}] "
-                f"{_safe_context_text(r.get('text', ''))}"
-            )
-        return "\n".join(lines)
+        """Bound context, keeping section/index provenance beside untrusted text."""
+        return self._render_context(results)[0]
+
+    @staticmethod
+    def _render_context(results: list) -> tuple[str, list[dict]]:
+        lines, references, remaining = [], [], MAX_CONTEXT_CHARS
+        for result in results[:MAX_TOP_K]:
+            rendered = render_reference(result, remaining - bool(lines))
+            if rendered:
+                row, reference = rendered
+                remaining -= len(row) + bool(lines)
+                lines.append(row)
+                references.append(reference)
+        return "\n".join(lines), references

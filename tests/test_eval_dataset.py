@@ -119,6 +119,59 @@ def test_eval_runner_writes_versioned_metadata_without_overwriting(tmp_path):
         runner.open_results(result_path)
 
 
+def test_eval_runner_keeps_all_rows_when_retrieval_fails(tmp_path, monkeypatch):
+    import sys
+
+    spec = importlib.util.spec_from_file_location("run_eval_rows", EVAL_DIR / "run_eval.py")
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    records = [{"case_id": case, "rule": {"id": rule, "mitre": {"id": "T1110.001"}}}
+               for case, rule in (("before", "1"), ("error", "2"), ("after", "3"))]
+    queried = []
+
+    class RAG:
+        def __init__(self, *, data_dir, persist_dir, in_memory, **kwargs):
+            assert in_memory is True
+            self.store = Path(persist_dir)
+            assert not self.store.is_relative_to(Path(data_dir))
+
+        def close(self):
+            assert self.store.is_dir()
+
+        def ensure_indexed(self):
+            pass
+
+        def query(self, rule_id, description, *, mitre_ids, **kwargs):
+            queried.append(mitre_ids)
+            if rule_id == "2":
+                raise TimeoutError("private error detail")
+            return [], {"status": "no_match"}
+
+        def format_context(self, results):
+            return ""
+
+    output = tmp_path / "new.csv"
+    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--results", str(output)])
+    monkeypatch.setattr(runner, "load_config", lambda path: {
+        "ollama": {"model": "local-model", "base_url": "http://localhost:11434"},
+        "extractor": {"fields": ["rule.id", "rule.mitre.id"]},
+        "rag": {"enabled": True, "data_dir": str(tmp_path), "embedding_model": "embed"},
+    })
+    monkeypatch.setattr(runner, "RuleRAG", RAG)
+    monkeypatch.setattr(runner, "load_manifest", lambda limit: records)
+    monkeypatch.setattr(runner, "load_case", lambda item: item)
+    monkeypatch.setattr(runner, "analyze_alert", lambda **kwargs: ({"mitre": "T1110.001"}, {}))
+    runner.main()
+
+    with output.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert queried == [["T1110.001"]] * 3
+    assert [row["case_id"] for row in rows] == ["before", "error", "after"]
+    assert rows[1]["error"] == "RAG: TimeoutError"
+    assert json.loads(rows[1]["provenance_json"])["rag"] == {"status": "error", "error_type": "TimeoutError"}
+    assert "private error detail" not in output.read_text(encoding="utf-8")
+
+
 def test_eval_schema_remains_legacy_five_fields():
     runner_path = ROOT / "eval" / "run_eval.py"
     spec = importlib.util.spec_from_file_location("run_eval_schema", runner_path)

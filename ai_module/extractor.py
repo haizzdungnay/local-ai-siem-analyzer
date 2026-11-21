@@ -2,9 +2,22 @@
 
 KHÔNG ném raw JSON vào LLM — giảm token, tăng chính xác.
 """
+import re
 from pathlib import Path
 
 import yaml
+
+
+MITRE_TECHNIQUE_ID = re.compile(r"T[0-9]{4}(?:\.[0-9]{3})?")
+
+
+def normalize_mitre_ids(value) -> list[str]:
+    """Accept a Wazuh scalar or list, and keep only literal technique IDs."""
+    values = value if isinstance(value, list) else [value]
+    return list(dict.fromkeys(
+        item.strip() for item in values
+        if isinstance(item, str) and MITRE_TECHNIQUE_ID.fullmatch(item.strip())
+    ))
 
 
 def load_config(path: str = str(Path(__file__).resolve().parent / "config.yaml")) -> dict:

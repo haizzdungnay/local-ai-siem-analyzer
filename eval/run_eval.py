@@ -3,15 +3,17 @@ import csv
 import json
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 AI_MODULE_DIR = Path(__file__).resolve().parents[1] / "ai_module"
 sys.path.insert(0, str(AI_MODULE_DIR))
 
-from extractor import extract_fields, format_for_llm
-from llm import OUTPUT_KEYS, OUTPUT_SEVERITIES, SOC_PROMPT_VERSION, analyze_alert
+from extractor import extract_fields, format_for_llm, normalize_mitre_ids
+from llm import OUTPUT_KEYS, OUTPUT_SEVERITIES, SOC_PROMPT_VERSION, analyze_alert, mitre_grounding
 from playbooks import get_playbook
-from rag import RuleRAG
+from rag import DEFAULT_RELEVANCE_THRESHOLD, MAX_TOP_K, RuleRAG
 from reader import load_config
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -105,34 +107,47 @@ def main():
         EVAL_DIR / f"results-{SOC_PROMPT_VERSION}{'-playbook' if args.playbooks else ''}-{args.language}.csv"
     )
     rag_enabled = bool(cfg.get("rag", {}).get("enabled")) and not args.no_rag
-    rule_rag = None
-    if rag_enabled:
-        data_dir = Path(cfg["rag"]["data_dir"])
-        if not data_dir.is_absolute():
-            data_dir = AI_MODULE_DIR / data_dir
-        rule_rag = RuleRAG(
-            data_dir=str(data_dir),
-            embedding_model=cfg["rag"]["embedding_model"],
-            base_url=cfg["ollama"]["base_url"],
-            timeout=timeout,
-        )
-        rule_rag.ensure_indexed()
+    with ExitStack() as cleanup:
+        rule_rag = None
+        if rag_enabled:
+            store = cleanup.enter_context(TemporaryDirectory(prefix="siem-alert-eval-"))
+            data_dir = Path(cfg["rag"]["data_dir"])
+            if not data_dir.is_absolute():
+                data_dir = AI_MODULE_DIR / data_dir
+            rule_rag = RuleRAG(
+                data_dir=str(data_dir),
+                embedding_model=cfg["rag"]["embedding_model"],
+                base_url=cfg["ollama"]["base_url"],
+                timeout=timeout, persist_dir=store, in_memory=True,
+                relevance_threshold=cfg["rag"].get("relevance_threshold", DEFAULT_RELEVANCE_THRESHOLD),
+            )
+            cleanup.callback(rule_rag.close)
+            rule_rag.ensure_indexed()
 
-    handle, writer = open_results(results_path, overwrite=args.overwrite)
-    manifest = load_manifest(args.limit)
-    try:
+        handle, writer = open_results(results_path, overwrite=args.overwrite)
+        cleanup.enter_context(handle)
+        manifest = load_manifest(args.limit)
         for index, item in enumerate(manifest, 1):
             alert = load_case(item)
             extracted = extract_fields(alert, cfg["extractor"]["fields"])
             alert_text = format_for_llm(extracted)
             rag_context = ""
-            if rule_rag:
-                rag_context = rule_rag.format_context(rule_rag.query(
-                    str(extracted.get("rule.id", "")),
-                    str(extracted.get("rule.description", "")),
-                ))
-            started = time.perf_counter()
+            rag_provenance = {"status": "disabled"}
             error = ""
+            if rule_rag:
+                try:
+                    rag_results, rag_provenance = rule_rag.query(
+                        str(extracted.get("rule.id", "")), str(extracted.get("rule.description", "")),
+                        mitre_ids=normalize_mitre_ids(extracted.get("rule.mitre.id"))[:MAX_TOP_K],
+                        include_provenance=True,
+                    )
+                    rag_context = rule_rag.format_context(rag_results)
+                    if rag_provenance.get("status") == "partial":
+                        error = "RAG: " + rag_provenance["error_type"]
+                except Exception as exc:
+                    rag_provenance = {"status": "error", "error_type": type(exc).__name__}
+                    error = "RAG: " + type(exc).__name__
+            started = time.perf_counter()
             result = None
             provenance = {}
             try:
@@ -149,8 +164,12 @@ def main():
                     extracted=extracted,
                 )
             except Exception as exc:
-                error = f"{type(exc).__name__}: {exc}"
+                error = ", ".join(filter(None, (error, "analysis: " + type(exc).__name__)))
             latency = time.perf_counter() - started
+            provenance["rag"] = rag_provenance
+            provenance["mitre_grounding"] = mitre_grounding(
+                (result or {}).get("mitre"), extracted.get("rule.mitre.id"), rag_provenance.get("references", []),
+            )
             writer.writerow({
                 "case_id": item["case_id"], "model": model,
                 "rag_enabled": str(rag_enabled).lower(), "language": args.language,
@@ -169,8 +188,6 @@ def main():
             })
             handle.flush()
             print(f"[{index}/{len(manifest)}] {item['case_id']}: {latency:.2f}s")
-    finally:
-        handle.close()
 
 
 if __name__ == "__main__":

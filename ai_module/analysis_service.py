@@ -4,18 +4,20 @@ import json
 import re
 from collections import Counter
 from threading import Lock
+from time import monotonic
 
-from extractor import _get_nested, extract_fields, format_for_llm
+from extractor import _get_nested, extract_fields, format_for_llm, normalize_mitre_ids
 from playbooks import playbook_for_config, window_playbook_findings
 from reader import resolve_config_paths
 from llm import (
     analyze_alert,
     analyze_window,
     analyze_ip_profile,
+    mitre_grounding,
     normalize_trusted_wazuh_evidence,
     trusted_wazuh_summary_prefix,
 )
-from rag import RuleRAG
+from rag import RuleRAG, MAX_TOP_K, render_reference
 
 
 ANALYSIS_VERSION = "dashboard-v3"
@@ -25,6 +27,7 @@ MIN_ECHO_REDACTION_CHARS = 16
 MAX_WINDOW_RAG_RULES = 20
 MAX_RAG_QUERY_DESCRIPTION_CHARS = 1000
 MAX_WINDOW_RAG_CONTEXT_CHARS = 12000
+RAG_RETRY_SECONDS = 30
 
 
 def _safe_rag_text(value, limit: int) -> str:
@@ -40,14 +43,20 @@ def _safe_rag_identifier(value) -> str:
     return re.sub(r"[^A-Za-z0-9._:-]+", "_", str(value or ""))[:128]
 
 
+def _window_rag_queries(aggregate: dict):
+    for group in aggregate.get("groups", []):
+        if not isinstance(group, dict):
+            continue
+        rule_id = _safe_rag_identifier(group.get("rule_id"))
+        description = _safe_rag_text(group.get("description", ""), MAX_RAG_QUERY_DESCRIPTION_CHARS)
+        for ids in group.get("mitre_sets", [group.get("mitre")]):
+            mitre_ids = sorted(normalize_mitre_ids(ids))[:MAX_TOP_K]
+            if rule_id or mitre_ids:
+                yield rule_id, description, mitre_ids
+
+
 def _text(value) -> str:
     return value.strip() if isinstance(value, str) else ""
-
-
-def _list_text(value) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value if str(item).strip()]
-    return [str(value)] if value not in (None, "") else []
 
 
 def _group_key(source: dict) -> str:
@@ -110,7 +119,8 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
                 "max_level": rule_level,
                 "rule_id": rule_id,
                 "description": str(_get_nested(source, "rule.description") or ""),
-                "mitre": _list_text(_get_nested(source, "rule.mitre.id")),
+                "mitre": [],
+                "mitre_sets": {},
                 "agent": agent,
                 "source_ip": source_ip,
                 "syscheck_path": str(_get_nested(source, "syscheck.path") or ""),
@@ -119,6 +129,8 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
                 **_playbook_sample_fields(source),
                 "playbook_samples": [],
             }
+        mitre_ids = tuple(sorted(normalize_mitre_ids(_get_nested(source, "rule.mitre.id"))))
+        group["mitre_sets"][mitre_ids] = None
         # Giữ tối đa N alert KHÁC NHAU mỗi nhóm cho playbook: chỉ lấy alert đầu tiên thì một ca
         # nguy hiểm (www-data su) bị che bởi lỗi SSH vô hại đến trước (lab 2026-11-20).
         # So trùng theo nội dung (bỏ chữ số: giờ, PID, port) để 20 chỗ không bị một đợt
@@ -146,6 +158,10 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
             "source_ip": source_ip,
             "group_key": group_key,
         })
+
+    for group in groups.values():
+        group["mitre_sets"] = [list(ids) for ids in group["mitre_sets"]]
+        group["mitre"] = sorted({mid for ids in group["mitre_sets"] for mid in ids})
 
     ordered_groups = sorted(
         groups.values(),
@@ -184,7 +200,7 @@ def aggregate_rule_buckets(fetched: dict) -> dict:
             "max_level": bucket.get("max_level", 0),
             "rule_id": rule_id,
             "description": str(_get_nested(sample, "rule.description") or ""),
-            "mitre": _list_text(_get_nested(sample, "rule.mitre.id")),
+            "mitre": normalize_mitre_ids(_get_nested(sample, "rule.mitre.id")),
             "agent": str(_get_nested(sample, "agent.name") or _get_nested(sample, "agent.id") or ""),
             "source_ip": str(_get_nested(sample, "data.srcip") or ""),
             "syscheck_path": str(_get_nested(sample, "syscheck.path") or ""),
@@ -357,6 +373,7 @@ class AnalysisService:
         self.rag = None
         self._rag_attempted = False
         self._rag_error = ""
+        self._rag_retry_at = 0.0
         # Indexing can be slow; one analysis owns initialization while status reads
         # remain non-blocking and report the transition accurately.
         self._rag_lock = Lock()
@@ -364,13 +381,17 @@ class AnalysisService:
 
     def _ensure_rag(self):
         rag_cfg = self.cfg.get("rag", {})
-        if self.rag is not None or not rag_cfg.get("enabled"):
+        if not rag_cfg.get("enabled"):
+            return None
+        if self.rag is not None and not self._rag_error:
             return self.rag
         with self._rag_lock:
-            if self.rag is not None or self._rag_attempted:
+            if (self._rag_initializing or monotonic() < self._rag_retry_at
+                    or (self.rag is not None and not self._rag_error)):
                 return self.rag
             self._rag_attempted = True
             self._rag_initializing = True
+        candidate = self.rag
         try:
             kwargs = {
                 "data_dir": rag_cfg["data_dir"],
@@ -380,13 +401,17 @@ class AnalysisService:
             }
             if "relevance_threshold" in rag_cfg:
                 kwargs["relevance_threshold"] = rag_cfg["relevance_threshold"]
-            self.rag = RuleRAG(**kwargs)
-            self.rag.ensure_indexed()
+            if candidate is None:
+                candidate = RuleRAG(**kwargs)
+            candidate.ensure_indexed()
         except Exception as exc:
-            # RAG is enrichment. Dashboard output must truthfully continue without
-            # it rather than turning a stale local corpus into a failed analysis.
-            self.rag = None
+            self.rag = candidate if candidate is not None and getattr(candidate, "collection", None) is not None else None
             self._rag_error = type(exc).__name__
+            self._rag_retry_at = monotonic() + RAG_RETRY_SECONDS
+        else:
+            self.rag = candidate
+            self._rag_error = ""
+            self._rag_retry_at = 0.0
         finally:
             self._rag_initializing = False
         return self.rag
@@ -397,7 +422,7 @@ class AnalysisService:
         if not self.cfg.get("rag", {}).get("enabled"):
             return "disabled"
         if self.rag is not None:
-            return "ready"
+            return "degraded" if self._rag_error else "ready"
         if self._rag_initializing:
             return "initializing"
         return "unavailable" if self._rag_attempted else "not_initialized"
@@ -430,106 +455,80 @@ class AnalysisService:
 
         rag = self._ensure_rag()
         if rag is None:
-            provenance["status"] = "unavailable"
+            provenance["status"] = "error"
             provenance["reason"] = self._rag_error or "not_initialized"
             return "", provenance
 
-        manifest_metadata = getattr(rag, "manifest_metadata", None)
-        if callable(manifest_metadata):
-            try:
-                manifest = manifest_metadata()
-            except Exception as exc:
-                provenance["index"] = {"status": "unavailable", "reason": type(exc).__name__}
-            else:
-                if isinstance(manifest, dict):
-                    provenance["index"] = {
-                        key: value for key, value in manifest.items()
-                        if key in {
-                            "schema_version", "embedding_model", "embedding_model_digest",
-                            "embedding_model_digest_source", "embedding_model_digest_observed_at",
-                            "collection_name", "document_count", "corpus_digest",
-                            "embedding_schema_digest",
-                        }
-                        and isinstance(value, (str, int, float)) and not isinstance(value, bool)
-                    }
-
+        if self._rag_error:
+            provenance["rebuild_error"] = self._rag_error
         max_rules = rag_cfg.get("max_window_rag_rules", 8)
         if isinstance(max_rules, bool) or not isinstance(max_rules, int) or not 1 <= max_rules <= MAX_WINDOW_RAG_RULES:
             raise ValueError(f"rag.max_window_rag_rules must be 1..{MAX_WINDOW_RAG_RULES}")
 
-        seen_queries = set()
-        seen_references = set()
-        context_rows = []
+        seen_queries, seen_references = set(), set()
+        context_rows, query_errors = [], []
         context_chars = 0
-        successful_queries = 0
-        query_errors = []
-        for group in aggregate.get("groups", []):
-            if len(seen_queries) >= max_rules or not isinstance(group, dict):
+        for rule_id, description, mitre_ids in _window_rag_queries(aggregate):
+            query_key = (rule_id, tuple(mitre_ids))
+            if query_key in seen_queries:
                 continue
-            rule_id = _safe_rag_identifier(group.get("rule_id"))
-            if not rule_id or rule_id in seen_queries:
-                continue
-            description = _safe_rag_text(
-                group.get("description", ""), MAX_RAG_QUERY_DESCRIPTION_CHARS
-            )
-            seen_queries.add(rule_id)
+            if len(seen_queries) >= max_rules:
+                provenance["query_budget_reached"] = True
+                break
+            seen_queries.add(query_key)
             query_info = {
-                "rule_id": rule_id,
-                "description_sha256": hashlib.sha256(
-                    description.encode("utf-8")
-                ).hexdigest(),
+                "rule_id": rule_id, "mitre_ids": mitre_ids,
+                "description_sha256": hashlib.sha256(description.encode("utf-8")).hexdigest(),
                 "match_count": 0,
             }
             provenance["queries"].append(query_info)
             provenance["query_count"] += 1
             try:
-                matches = rag.query(rule_id, description)
+                matches, retrieval = rag.query(rule_id, description, mitre_ids=mitre_ids,
+                                               include_provenance=True)
                 if not isinstance(matches, list):
                     raise ValueError("invalid_query_result")
-                successful_queries += 1
+                query_info.update({key: retrieval[key] for key in (
+                    "status", "exact_count", "semantic_count", "filtered_count", "policy_version", "error_type", "index",
+                ) if key in retrieval})
+                if retrieval.get("status") == "partial":
+                    query_errors.append(retrieval.get("error_type", "retrieval_error"))
             except Exception as exc:
                 query_errors.append(type(exc).__name__)
+                query_info.update(status="error", error_type=type(exc).__name__)
                 continue
 
             for match in matches:
-                if not isinstance(match, dict):
-                    continue
-                source = _safe_rag_identifier(match.get("source")) or "unknown"
-                reference_id = _safe_rag_identifier(match.get("reference_id"))
-                text = _safe_rag_text(match.get("text"), MAX_WINDOW_RAG_CONTEXT_CHARS)
-                distance = match.get("distance")
-                if not text or isinstance(distance, bool) or not isinstance(distance, (int, float)):
-                    continue
-                key = (source, reference_id, text)
+                key = (retrieval.get("index", {}).get("collection_name"), match.get("document_id") or
+                       (match.get("source"), match.get("reference_id")))
                 if key in seen_references:
                     continue
-                prefix = f"[REFERENCE source={source} id={reference_id} distance={float(distance):.6g}] "
-                remaining = MAX_WINDOW_RAG_CONTEXT_CHARS - context_chars
-                if remaining <= len(prefix) + 1:
-                    break
-                row = prefix + text[:remaining - len(prefix) - 1]
-                if not row.strip():
+                remaining = MAX_WINDOW_RAG_CONTEXT_CHARS - context_chars - bool(context_rows)
+                rendered = render_reference(match, remaining)
+                if not rendered:
+                    provenance["context_truncated"] = True
                     continue
+                row, metadata = rendered
                 seen_references.add(key)
                 query_info["match_count"] += 1
-                provenance["match_count"] += 1
-                provenance["references"].append({
-                    "source": source,
-                    "reference_id": reference_id,
-                    "distance": float(distance),
-                })
+                provenance["references"].append(metadata)
+                context_chars += len(row) + bool(context_rows)
                 context_rows.append(row)
-                context_chars += len(row) + 1
 
+        indexes = [query["index"] for query in provenance["queries"] if "index" in query]
+        if indexes and all(index == indexes[0] for index in indexes):
+            provenance["index"] = indexes[0]
         if context_rows:
-            provenance["status"] = "partial" if query_errors else "used"
-        elif successful_queries:
-            provenance["status"] = "no_matches"
-        elif query_errors:
-            provenance["status"] = "unavailable"
-            provenance["reason"] = query_errors[0]
+            provenance["status"] = "partial" if query_errors or "rebuild_error" in provenance else "used"
+        elif query_errors or "rebuild_error" in provenance:
+            provenance.update(status="error", reason=query_errors[0] if query_errors else provenance["rebuild_error"])
+        elif seen_queries:
+            provenance["status"] = "filtered_out" if any(
+                query.get("status") == "filtered_out" for query in provenance["queries"]
+            ) else "no_match"
         else:
             provenance["status"] = "no_eligible_rules"
+        provenance["match_count"] = len(provenance["references"])
         provenance["context_chars"] = context_chars
         return "\n".join(context_rows), provenance
 
@@ -550,12 +549,22 @@ class AnalysisService:
         rag_context = ""
         rag_results = []
         rag = self._ensure_rag()
+        rag_provenance = {"status": "disabled"}
         if rag:
-            rag_results = rag.query(
-                str(extracted.get("rule.id", "")),
-                str(extracted.get("rule.description", "")),
-            )
-            rag_context = rag.format_context(rag_results)
+            try:
+                rag_results, rag_provenance = rag.query(
+                    str(extracted.get("rule.id", "")),
+                    str(extracted.get("rule.description", "")),
+                    mitre_ids=normalize_mitre_ids(extracted.get("rule.mitre.id"))[:MAX_TOP_K], include_provenance=True,
+                )
+                rag_context = rag.format_context(rag_results)
+                if self._rag_error:
+                    rag_provenance["rebuild_error"] = self._rag_error
+                    rag_provenance["status"] = "partial" if rag_context else "error"
+            except Exception as exc:
+                rag_provenance = {"status": "error", "error_type": type(exc).__name__}
+        elif self.cfg.get("rag", {}).get("enabled"):
+            rag_provenance = {"status": "error", "error_type": self._rag_error or "not_initialized"}
         result, provenance = analyze_alert(
             alert_text=format_for_llm(extracted),
             rag_context=rag_context,
@@ -569,6 +578,10 @@ class AnalysisService:
             playbook=playbook_for_config(self.cfg, extracted.get("rule.id", "")),
             extracted=extracted,
         )
+        provenance["mitre_grounding"] = mitre_grounding(
+            result.get("mitre"), extracted.get("rule.mitre.id"), rag_provenance.get("references", []),
+        )
+        provenance["rag"] = rag_provenance
         return {
             "analysis": result,
             "extracted": extracted,
@@ -622,6 +635,11 @@ class AnalysisService:
         )
         provenance = dict(provenance)
         provenance["rag"] = rag_provenance
+        included_groups = aggregate["groups"][:coverage["included_groups"]]
+        provenance["mitre_grounding"] = mitre_grounding(
+            result.get("mitre"), [mid for group in included_groups for mid in normalize_mitre_ids(group.get("mitre"))],
+            rag_provenance["references"],
+        )
         provenance["redacted_exact_sample_log_echoes"] = echo_redaction_count
         # Playbook cho các nhóm đứng đầu: code-only, không gọi thêm LLM, không đổi severity
         # của phân tích cửa sổ (nhánh chỉ là hướng điều tra chưa xác minh).

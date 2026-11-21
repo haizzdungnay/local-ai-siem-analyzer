@@ -10,10 +10,10 @@ import argparse
 import json
 import sys
 
-from extractor import extract_fields, format_for_llm
+from extractor import extract_fields, format_for_llm, normalize_mitre_ids
 from playbooks import playbook_for_config
-from llm import analyze_alert
-from rag import RuleRAG
+from llm import analyze_alert, mitre_grounding
+from rag import DEFAULT_RELEVANCE_THRESHOLD, MAX_TOP_K, RuleRAG
 from reader import MODULE_DIR, fetch_alerts_api, load_config, load_sample_alerts, resolve_config_paths
 
 
@@ -134,6 +134,7 @@ def main():
     rag_runtime = {
         "configured": bool(cfg.get("rag", {}).get("enabled")),
         "state": "disabled",
+        "status": "disabled",
         "fallback": "rag_disabled",
     }
     if cfg.get("rag", {}).get("enabled"):
@@ -143,6 +144,7 @@ def main():
                 embedding_model=cfg["rag"]["embedding_model"],
                 base_url=cfg["ollama"]["base_url"],
                 timeout=ollama_timeout,
+                relevance_threshold=cfg["rag"].get("relevance_threshold", DEFAULT_RELEVANCE_THRESHOLD),
             )
             indexed_count = rag.ensure_indexed()
             rag_runtime = {
@@ -158,6 +160,7 @@ def main():
             rag_runtime = {
                 "configured": True,
                 "state": "unavailable",
+                "status": "error",
                 "fallback": "initialization_failed",
                 "error_type": e,
             }
@@ -179,11 +182,14 @@ def main():
         alert_rag_provenance = dict(rag_runtime)
         if rag:
             try:
-                results = rag.query(
+                results, retrieval = rag.query(
                     str(extracted.get("rule.id", "")),
                     str(extracted.get("rule.description", "")),
+                    mitre_ids=normalize_mitre_ids(extracted.get("rule.mitre.id"))[:MAX_TOP_K],
+                    include_provenance=True,
                 )
                 rag_context = rag.format_context(results)
+                alert_rag_provenance.update(retrieval)
                 alert_rag_provenance.update({
                     "state": "context_used" if rag_context else "no_matching_context",
                     "result_count": len(results),
@@ -196,6 +202,7 @@ def main():
                     "state": "query_failed",
                     "fallback": "query_failed",
                     "error_type": e,
+                    "status": "error",
                 })
                 print(f"[!] RAG query lỗi (bỏ qua context): {e}")
 
@@ -213,6 +220,9 @@ def main():
                 extracted=extracted,
             )
             safe_provenance = dict(provenance) if isinstance(provenance, dict) else {}
+            safe_provenance["mitre_grounding"] = mitre_grounding(
+                analysis.get("mitre"), extracted.get("rule.mitre.id"), alert_rag_provenance.get("references", []),
+            )
             safe_provenance["rag"] = alert_rag_provenance
             result = {"analysis": analysis, "provenance": safe_provenance}
             console_result = _redact_console_value(

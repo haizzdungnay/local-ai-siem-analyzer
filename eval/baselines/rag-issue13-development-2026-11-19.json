@@ -1,0 +1,58 @@
+{
+  "analysis_options_sha256": "f481af6633b697091fe969a06128f4c4310ee55eaf6e672c25b6c99a4ad9ab6a",
+  "config_sha256": "50c6afff74c8f5442148144edcb36318bf21af2393ec9d92e41c467a31708459",
+  "corpus_sources": {
+    "mitre_techniques.json": "64cd06d5817309613399d1573b6495fa9450dc2fc49a26fd26e096bd6fa0df22",
+    "wazuh_rules.json": "db9d448ca2d07142d0afad428e11e892be9cdd1830559e017be79bd60d76ed6a"
+  },
+  "corpus_version": "rule-mitre-sections-v2",
+  "created_at": "2026-11-19T07:18:23.049978+00:00",
+  "development_cases_sha256": "b5405885b1b7fe4aae8c507ba21baddec4838c0964024221644e7d39da0c6781",
+  "embedding_model": "nomic-embed-text",
+  "embedding_model_digest": "",
+  "file_sha256": {
+    "ai_module/analysis_service.py": "b895d0ca0ff1346e33f2db33c529b68ab32d002ade20fe1106f6440e2bca605f",
+    "ai_module/extractor.py": "4d4b62af2cff5895e948cec695df346c1371740779ebb1b7fe5b6cc704ddd81e",
+    "ai_module/llm.py": "c32c123ec7c4077a61da0b422b8109ea4e9b7ec22d3c553ff5203f7841b31eb8",
+    "ai_module/main.py": "aa8e3f528344fb11a2921c5f91a61b0231bff7e98a81a9d496c4f1c04886c6c4",
+    "ai_module/playbooks.py": "61d8b5603e7b31f92804ade511334ef5ab859bc0fdf905dd2d200c80b6c54a35",
+    "ai_module/rag.py": "2352523f14cc9ec8b2af4a5b1af0c91abe717a73251da1256e2f5d6c69ed7025",
+    "ai_module/rag_data/playbooks.yaml": "d918cf9895e67cf701acf65a9db54f16deefe87d28b48337ddd1bc3adb341982",
+    "eval/rag_retrieval_eval.py": "1f7061a6a61848b04ca96a1759382020dec8e8811f7a0a2e7a18ef5db7e40d7e",
+    "eval/run_eval.py": "a036ec013606b2f1ec1f1eb45b7c0a1f93a6bdfea242b7f01eeb7938287592bd"
+  },
+  "formal_baseline_ready": false,
+  "generator_model": "qwen2.5:7b",
+  "generator_model_digest": "",
+  "git_sha": "441db2388106d5ef71cdf590f59f335804713359",
+  "held_out": {
+    "existing_lock_sha256": "f97e9fd403de13e82e24d338e62b4b5e08bacea0c8ecc9e540bc7e711b73bf66",
+    "version": "pending-independent-review"
+  },
+  "index_schema_version": 2,
+  "kind": "development_snapshot",
+  "limitations": [
+    "Synthetic development data; not independent held-out evidence.",
+    "Final playbook freeze and reviewer agreement pending (#23/#27/#29).",
+    "No generator, Indexer, browser or SOC acceptance implied (#32)."
+  ],
+  "playbook_policy_version": "playbook-evidence-v2",
+  "prompt_sha256": "86947ca332a197c1506ba6701056b9ddcdc9be5e7118a38f1c116f3338a978f0",
+  "prompt_version": "soc-contract-v2",
+  "protocol": {
+    "sha256": "84c0daa7f5b36172416c44b3e20790057de8192d3d1695756511761e867ae0de",
+    "version": "rag-r0.3-v1"
+  },
+  "retrieval_config": {
+    "max_distance": 1.0,
+    "top_k_values": [
+      1,
+      3,
+      5,
+      10
+    ]
+  },
+  "retrieval_policy_version": "exact-semantic-v1",
+  "schema_version": 1,
+  "working_tree_dirty": true
+}
