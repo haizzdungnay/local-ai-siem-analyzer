@@ -5,6 +5,7 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ---
 ## [Unreleased]
 
+- Đưa lên repo hai file còn lại trên máy bàn theo yêu cầu (2026-11-25): `eval/rag-benchmark-results.json` (kết quả `eval/rag_benchmark.py` trên 33 ca, KB production 5.080 doc, ngưỡng 1.0–500) và `e` (bản `git diff` playbooks.yaml có mã màu ANSI, giữ nguyên trạng).
 - Bảng kịch bản lab có kỳ vọng ghi trước (2026-11-23, 2026-11-25): `docs/lab-run-2026-11-23.md` (13 kịch bản SSH/sudo/su/FIM/SUID, ca âm CUPS/apt) và `docs/lab-run-2026-11-25.md` (thêm #14 DVWA burst, rule tùy chỉnh 100121). Placeholder IP/user; chưa điền kết quả. Đồng bộ các thay đổi chưa commit trên máy bàn (phiên 2026-11-23: preload model, RAG nền, `Star.py`/`Start.md`, nội dung issue #34) lên nhánh riêng; không đưa tệp diff rác `e`.
 - Soạn nội dung issue RAG/context/latency (2026-11-23) tại `docs/issue-rag-context-latency.md`: đo thời gian từng giai đoạn, pre/post-flight bảo đảm model local/cloud nhận đủ ngữ cảnh, canary đầu/giữa/cuối, và yêu cầu `qwen35-9b-pentest-v5` không được thua `qwen2.5:7b`. Đã tạo [issue #34](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/34) (nhãn `enhancement`); chưa đổi code.
 - Dashboard thêm nút **Nạp model trước** cho model phân tích đã chọn (2026-11-23). Dùng cùng cấu hình runner với job phân tích cửa sổ, yêu cầu Ollama giữ model 15 phút và hiển thị riêng thời gian nạp model, đọc prompt, sinh báo cáo.
