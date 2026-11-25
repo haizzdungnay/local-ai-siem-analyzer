@@ -3,6 +3,14 @@
 Ngày cập nhật: 2026-11-23
 
 
+
+## Lab 25/11 — kết quả (2026-11-25 tối)
+
+- `docs/lab-run-2026-11-25.md`: P0 16:18:07, kết thúc 19:48 (nghỉ 17:37–19:05). 14/14 kịch bản ra đúng loại alert (#1 dùng lần chạy lại 16:52 sau khi tắt journald). Kỳ vọng số lượng sai ở #1 (PAM chỉ ghi lần sai đầu) và #5 (39 alert 5710 cho 15 username). Nhánh dashboard chưa đánh giá.
+- Lab đã đổi: FIM victim (report_changes sudoers.d/systemd/cron.d/crontab; nodiff shadow/gshadow/opasswd); khối `<localfile>` journald bị comment (backup `ossec.conf.bak-20261125-journald`). Dữ liệu agent 001 từ 13:09 đến 16:46 hôm nay bị thu trùng — không dùng.
+- Cần quyết: `/etc/sudoers.d/99-claude-lab` (trnguyn NOPASSWD: ALL, tạo 2026-07-28; có alert 554 nhưng không được xử lý).
+- Next: export CSV 16:18–19:48; YAML 5710/550 (regex diff `(?m)^>.*…`, SUID qua full_log), sửa 5503 (V3/V5, logname), câu srcip 5715/5760, playbook 100121; code đưa `syscheck.diff` vào mẫu nhóm dashboard; ghi `docs/manual-test.md` (suspend → restart Docker, kiểm `wazuh-remoted.state`, journald trùng); chạy dashboard trên cửa sổ lab.
+
 ## Đồng bộ máy bàn lên GitHub + lab 25/11 (2026-11-25)
 
 - Nhánh `nguyen/desktop-sync-2026-11-25` từ `f4a8cb9`: gom thay đổi chưa commit của phiên 2026-11-23 trên máy bàn (các mục ngay bên dưới) cùng hai bảng kịch bản lab. Bỏ tệp `e` (bản `git diff` có mã màu). Verification trên clone sạch Linux/Python 3: **618 passed, 3 skipped**; `git diff --check`, secret scan, `node --check` đạt.
