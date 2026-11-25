@@ -1030,7 +1030,7 @@ def analyze_window(window_text: str, model: str = "qwen2.5:3b",
                     base_url: str = "http://localhost:11434", timeout: float = 120,
                     language: str = "vi", include_provenance: bool = False,
                     allow_remote: bool = False, llm_parameters=None,
-                    trusted_evidence=None):
+                    trusted_evidence=None, keep_alive: str | None = None):
     """Analyze a bounded aggregate; the input remains untrusted evidence."""
     _assert_language(language)
     validate_ollama_base_url(base_url, allow_remote=allow_remote)
@@ -1055,6 +1055,7 @@ def analyze_window(window_text: str, model: str = "qwen2.5:3b",
                   {"role": "user", "content": user_msg}],
         format=WINDOW_OUTPUT_SCHEMA,
         options=options,
+        **({"keep_alive": keep_alive} if keep_alive is not None else {}),
     )
     content = _response_content(response)
     if not isinstance(content, str):

@@ -3,13 +3,14 @@ import hashlib
 import json
 import re
 from collections import Counter
-from threading import Lock
+from threading import Lock, Thread
 from time import monotonic
 
 from extractor import _get_nested, extract_fields, format_for_llm, normalize_mitre_ids
 from playbooks import playbook_for_config, window_playbook_findings
 from reader import resolve_config_paths
 from llm import (
+    adaptive_pacing_options,
     analyze_alert,
     analyze_window,
     analyze_ip_profile,
@@ -28,6 +29,7 @@ MAX_WINDOW_RAG_RULES = 20
 MAX_RAG_QUERY_DESCRIPTION_CHARS = 1000
 MAX_WINDOW_RAG_CONTEXT_CHARS = 12000
 RAG_RETRY_SECONDS = 30
+DASHBOARD_MODEL_KEEP_ALIVE = "15m"
 
 
 def _safe_rag_text(value, limit: int) -> str:
@@ -367,9 +369,10 @@ def _redact_exact_sample_log_echoes(value, samples: list[str]) -> tuple[object, 
 class AnalysisService:
     """Own one process-lifetime RAG instance and expose reusable analysis methods."""
 
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, *, background_rag: bool = False):
         self.cfg = resolve_config_paths(cfg)
         self.timeout = self.cfg["ollama"].get("timeout", 120)
+        self._background_rag = background_rag
         self.rag = None
         self._rag_attempted = False
         self._rag_error = ""
@@ -378,6 +381,10 @@ class AnalysisService:
         # remain non-blocking and report the transition accurately.
         self._rag_lock = Lock()
         self._rag_initializing = False
+
+    def warm_rag(self):
+        """Start warming the index without holding up dashboard analysis."""
+        self._ensure_rag()
 
     def _ensure_rag(self):
         rag_cfg = self.cfg.get("rag", {})
@@ -391,7 +398,21 @@ class AnalysisService:
                 return self.rag
             self._rag_attempted = True
             self._rag_initializing = True
+            if self._background_rag:
+                # ponytail: one build per process; use an external builder for shared deployments.
+                try:
+                    Thread(target=self._initialize_rag, name="dashboard-rag", daemon=True).start()
+                except RuntimeError as exc:
+                    self._rag_error = type(exc).__name__
+                    self._rag_retry_at = monotonic() + RAG_RETRY_SECONDS
+                    self._rag_initializing = False
+                return self.rag
+        return self._initialize_rag()
+
+    def _initialize_rag(self):
+        rag_cfg = self.cfg["rag"]
         candidate = self.rag
+        error = ""
         try:
             kwargs = {
                 "data_dir": rag_cfg["data_dir"],
@@ -405,16 +426,15 @@ class AnalysisService:
                 candidate = RuleRAG(**kwargs)
             candidate.ensure_indexed()
         except Exception as exc:
-            self.rag = candidate if candidate is not None and getattr(candidate, "collection", None) is not None else None
-            self._rag_error = type(exc).__name__
-            self._rag_retry_at = monotonic() + RAG_RETRY_SECONDS
-        else:
+            error = type(exc).__name__
+            if candidate is not None and getattr(candidate, "collection", None) is None:
+                candidate = None
+        with self._rag_lock:
             self.rag = candidate
-            self._rag_error = ""
-            self._rag_retry_at = 0.0
-        finally:
+            self._rag_error = error
+            self._rag_retry_at = monotonic() + RAG_RETRY_SECONDS if error else 0.0
             self._rag_initializing = False
-        return self.rag
+            return self.rag
 
     @property
     def rag_status(self) -> str:
@@ -455,8 +475,10 @@ class AnalysisService:
 
         rag = self._ensure_rag()
         if rag is None:
-            provenance["status"] = "error"
-            provenance["reason"] = self._rag_error or "not_initialized"
+            if self._rag_error:
+                provenance.update(status="error", reason=self._rag_error)
+            else:
+                provenance["status"] = "initializing"
             return "", provenance
 
         if self._rag_error:
@@ -564,7 +586,10 @@ class AnalysisService:
             except Exception as exc:
                 rag_provenance = {"status": "error", "error_type": type(exc).__name__}
         elif self.cfg.get("rag", {}).get("enabled"):
-            rag_provenance = {"status": "error", "error_type": self._rag_error or "not_initialized"}
+            rag_provenance = (
+                {"status": "error", "error_type": self._rag_error}
+                if self._rag_error else {"status": "initializing"}
+            )
         result, provenance = analyze_alert(
             alert_text=format_for_llm(extracted),
             rag_context=rag_context,
@@ -590,6 +615,10 @@ class AnalysisService:
             "provenance": provenance,
         }
 
+    @staticmethod
+    def window_llm_parameters(model: str, llm_parameters=None) -> dict:
+        return {**adaptive_pacing_options(model_name=model), **(llm_parameters or {})}
+
     def analyze_aggregate(self, aggregate: dict, model: str, language: str = "vi",
                           llm_parameters=None, timeout_seconds=None) -> dict:
         if isinstance(self.timeout, bool) or not isinstance(self.timeout, (int, float)) or self.timeout < 1:
@@ -611,14 +640,6 @@ class AnalysisService:
         rag_context, rag_provenance = self._window_rag_context(aggregate)
         prompt = self._append_window_rag_context(prompt, rag_context, rag_provenance)
         trusted_evidence = security_test_evidence_contract(aggregate)
-        # Adaptive hardware resource pacing:
-        # Prioritize response fidelity/quality and smooth GPU memory bandwidth over rushed generation
-        enriched_params = dict(llm_parameters or {})
-        from llm import adaptive_pacing_options
-        pacing = adaptive_pacing_options(model_name=model)
-        for k, v in pacing.items():
-            enriched_params.setdefault(k, v)
-
         result, provenance = analyze_window(
             prompt,
             model=model,
@@ -627,8 +648,9 @@ class AnalysisService:
             language=language,
             include_provenance=True,
             allow_remote=self.cfg["ollama"].get("allow_remote", False),
-            llm_parameters=enriched_params,
+            llm_parameters=self.window_llm_parameters(model, llm_parameters),
             trusted_evidence=trusted_evidence,
+            keep_alive=DASHBOARD_MODEL_KEEP_ALIVE,
         )
         result, echo_redaction_count = _redact_exact_sample_log_echoes(
             result, _sample_log_redactors(aggregate),

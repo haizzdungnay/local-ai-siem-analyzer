@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+from threading import Event
+from time import monotonic, sleep
 from types import SimpleNamespace
 
 import pytest
@@ -850,6 +852,53 @@ def test_status_reports_rag_lifecycle_without_initializing_on_health_check(monke
     service = app.config["DASHBOARD_RUNTIME"].analysis_service
     assert service._ensure_rag() is not None
     assert app.test_client().get("/api/status").get_json()["rag"] == "ready"
+
+
+def test_job_finishes_while_cold_rag_index_is_building(monkeypatch, tmp_path):
+    cfg = make_cfg(tmp_path)
+    cfg["rag"] = {"enabled": True, "data_dir": "rag_data", "embedding_model": "embed"}
+    build_started = Event()
+    finish_build = Event()
+
+    class ColdRAG:
+        def __init__(self, **kwargs):
+            pass
+
+        def ensure_indexed(self):
+            build_started.set()
+            assert finish_build.wait(10)
+
+    monkeypatch.setattr("analysis_service.RuleRAG", ColdRAG)
+    monkeypatch.setattr("dashboard_worker.fetch_alerts_range", lambda *args, **kwargs: {
+        "total": 1, "alerts": [{"_source": {"rule": {"id": "5503", "level": 5}}}], "timeline": [],
+    })
+    monkeypatch.setattr("analysis_service.analyze_window", lambda *args, **kwargs: (
+        {"severity": "medium", "mitre": []},
+        {"output_origin": "ollama_model", "language_compliance": "full"},
+    ))
+
+    app = dashboard.create_app(cfg=cfg)
+    try:
+        assert build_started.wait(3)
+        client = app.test_client()
+        assert client.get("/api/status").json["rag"] == "initializing"
+        submitted = client.post("/api/jobs", json={"preset_seconds": 300, "model": "qwen2.5:3b"})
+        assert submitted.status_code == 202
+        route = f"/api/jobs/{submitted.json['job_id']}"
+        deadline = monotonic() + 4
+        job = client.get(route).json
+        while job["status"] in {"pending", "running"} and monotonic() < deadline:
+            sleep(0.02)
+            job = client.get(route).json
+        assert job["status"] == "succeeded", job["error"]
+        assert job["metrics"]["total_alerts"] == 1
+        result, = job["results"]
+        assert result["provenance"]["output_origin"] == "ollama_model"
+        assert result["provenance"]["rag"]["status"] == "initializing"
+        assert result["warnings"] == ["RAG đang khởi tạo. Kết quả này dựa trên alert Wazuh."]
+    finally:
+        finish_build.set()
+        app.config["DASHBOARD_RUNTIME"].stop()
 
 
 def test_status_reports_disabled_and_sanitized_rag_initialization_failure(monkeypatch, tmp_path):

@@ -924,11 +924,13 @@ function renderProvenance(job, windowResult) {
     ollama_model: 'JSON hợp lệ parse từ phản hồi Ollama',
     local_fallback: 'Fallback do ứng dụng tạo vì phản hồi model không hợp lệ',
   };
+  const duration = key => Number.isFinite(provenance[key]) ? `${(provenance[key] / 1e9).toFixed(1)} giây` : '—';
   const rows = recorded ? [
     ['Nguồn', `${provenance.provider || 'unknown'} · ${provenance.transport || 'transport chưa ghi'} `],
     ['Model', `${job.model}${provenance.response_model ? ` · Ollama trả ${provenance.response_model}` : ''}`],
     ['Nguồn output', originLabels[provenance.output_origin] || provenance.output_origin || 'unknown'],
     ['Wall latency', `${Number(windowResult.latency_s || 0).toFixed(3)} giây`],
+    ['Thời gian Ollama', `Nạp model ${duration('load_duration')} · Đọc prompt ${duration('prompt_eval_duration')} · Sinh báo cáo ${duration('eval_duration')}`],
     ['Tokens', `prompt ${provenance.prompt_eval_count ?? '—'} · output ${provenance.eval_count ?? '—'}`],
     ['Thời điểm', provenance.response_created_at || windowResult.created_at || '—'],
     ['SHA-256 phản hồi', provenance.response_content_sha256 || '—'],
@@ -1561,6 +1563,26 @@ $('preset').addEventListener('change', () => {
   document.querySelectorAll('.custom-field').forEach(element => {
     element.classList.toggle('visible', $('preset').value === 'custom');
   });
+});
+
+$('model-preload').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  const model = $('model').value;
+  const status = $('model-preload-status');
+  if (!model) {
+    text(status, 'Chọn model để nạp.');
+    return;
+  }
+  button.disabled = true;
+  text(status, `Đang nạp ${model}…`);
+  try {
+    await api('/api/models/preload', {method: 'POST', body: JSON.stringify({model})});
+    text(status, `Đã nạp ${model}.`);
+  } catch (error) {
+    text(status, error.message);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 $('job-form').addEventListener('submit', async event => {

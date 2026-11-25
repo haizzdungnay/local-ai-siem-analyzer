@@ -1,6 +1,60 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-11-21
+Ngày cập nhật: 2026-11-23
+
+
+## Đồng bộ máy bàn lên GitHub + lab 25/11 (2026-11-25)
+
+- Nhánh `nguyen/desktop-sync-2026-11-25` từ `f4a8cb9`: gom thay đổi chưa commit của phiên 2026-11-23 trên máy bàn (các mục ngay bên dưới) cùng hai bảng kịch bản lab. Bỏ tệp `e` (bản `git diff` có mã màu). Verification trên clone sạch Linux/Python 3: **618 passed, 3 skipped**; `git diff --check`, secret scan, `node --check` đạt.
+- Lưu ý cho review: `Star.py` ép `security_tests.enabled = True`, không tắt được qua config/CLI — runner DVWA có thể SSH tới Kali khi khởi động bằng launcher; quyết định giữ hay thêm cờ tắt thuộc nhóm. Trong lúc RAG `initializing`, job phân tích chạy không có RAG (có cảnh báo và provenance) → loại các job này khỏi số liệu RAG/no-RAG.
+- Lab 25/11: FIM victim sửa lại (report_changes cho sudoers.d/systemd/cron.d/crontab; nodiff /etc/shadow, gshadow, bản `-`, opasswd; log xác nhận nodiff 12:50). Agent 001 Disconnected sau suspend SIEM: docker-proxy 1514 nhận TCP nhưng không chuyển vào container manager (`wazuh-remoted.state` tcp_sessions 0, recv_bytes 0) dù 9200 (container indexer) vẫn 401; victim báo "Duplicate agent name" là triệu chứng phụ. Sửa: `systemctl restart docker`. Cần ghi vào `docs/manual-test.md` 2.4.
+- Next: chạy `docs/lab-run-2026-11-25.md` (có một lần chạy nhầm ssh root trên chính victim ~13:10 cần ghi chú); sửa playbook 5503/5760/5715 theo phát hiện lab; tín hiệu 5710/550; playbook 100121.
+
+## Nạp trước model phân tích trên dashboard (2026-11-23)
+
+- Job #278 đổi sang 9B mất 69,2 giây ở bước AI. Ollama ghi 34,7 giây nạp model, 15,3 giây đọc prompt và 7,5 giây sinh báo cáo. RAG `filtered_out`.
+- `blueprints/ui.py` thêm `POST /api/models/preload`, áp dụng giới hạn origin, allowlist model, một yêu cầu nạp đồng thời và kiểm tra queue rỗng trước khi gửi chat rỗng đến Ollama. `analysis_service.py` dùng chung cấu hình runner cho preload và phân tích cửa sổ. `llm.py` chuyển `keep_alive=15m` khi dashboard gọi phân tích cửa sổ. UI và README có nút, trạng thái nạp và số đo riêng theo từng giai đoạn Ollama.
+- Verification live sau khi khởi động lại `Star.py`: preload 9B đã resident trả HTTP 200 trong 0,09 giây, Ollama báo TTL 900 giây. Replay #279 thành công trong 9,17 giây ở bước AI và nạp model mất 0,008 giây. Preload `qwen2.5:7b` khi chưa resident mất 6,55 giây, replay #280 thành công trong 3,42 giây và nạp model mất 0,01 giây. Cả hai job có 1 alert, output Ollama và delivery `none`.
+- Kiểm thử endpoint với cấu hình ngữ cảnh, allowlist, origin và queue bận đạt. Suite ngoài nhóm Security Tests runner đạt **604 passed, 2 skipped**, gồm một test endpoint dùng trong lúc kiểm tra. `node --check` và `git diff --check` đạt. Preload 9B được đo khi runner đã resident, còn đường preload lạnh đã kiểm chứng bằng 7B. Ollama có thể thu hồi model sớm khi thiếu bộ nhớ. Khi đổi model, chọn **Nạp model trước** trong **Phân tích mới** rồi tiếp tục chọn khoảng log.
+
+## Khôi phục phân tích alert trên dashboard (2026-11-23)
+
+- Luồng live Wazuh Indexer cổng 9200, gom nhóm alert, tùy chọn RAG, Ollama `qwen2.5:7b`, rồi lưu SQLite. Job #276 lấy được 1 alert, chờ dựng 6.251 tài liệu RAG trong bước hiển thị gọi Ollama và hoàn tất sau 628 giây kể từ khi vào bước AI. Ollama sinh báo cáo trong 9,9 giây. Job #275 đã sinh báo cáo nhưng ở trạng thái `partial` do kiểm tra chất lượng bằng chứng Security Tests.
+- `analysis_service.py` và `dashboard.py` chuyển khởi tạo RAG của dashboard sang một luồng nền. Khi RAG đang khởi tạo, job gửi alert đến Ollama và `dashboard_worker.py` ghi cảnh báo cùng provenance `initializing`. Khi sẵn sàng, job sau tra cứu chỉ mục. README và test API/worker đã cập nhật.
+- Verification: test hồi quy ban đầu fail vì fixture thiếu `_source`, đã sửa và chạy lại đạt. Suite cục bộ ngoài nhóm Security Tests runner đạt **603 passed, 2 skipped**. Dashboard đã khởi động lại qua `Star.py`. Job #277 chạy lại cùng cửa sổ, lưu 1 kết quả `ollama_model` tiếng Việt sau 16,6 giây, trạng thái `succeeded`, RAG `ready` và kết quả retrieval `filtered_out`. Job kiểm thử dùng delivery `none`. Test lúc chỉ mục đang dựng dùng một build giả giữ bằng sự kiện, còn lượt live dùng chỉ mục đã có.
+- Bước tiếp theo khi cần nghiệm thu cold build toàn corpus: kiểm tra một job trong lúc `initializing`, rồi kiểm tra một alert có rule khớp corpus sau khi RAG `ready`.
+
+## Issue RAG/context/latency — bản nháp (2026-11-23)
+
+- Đã làm: `docs/issue-rag-context-latency.md` (vấn đề, mục tiêu, yêu cầu, tiêu chí nghiệm thu) dựa trên code hiện tại: `num_ctx` lệch giữa 8192 (`llm.py:40`), 16384 (config) và pacing 4096/8192/16384; prompt cửa sổ 64k ký tự + RAG 12k ký tự không so với `num_ctx`; `prompt_eval_count` có ghi nhưng không đối chiếu; chưa có thời gian riêng cho embedding/Chroma; chưa có adapter cloud.
+- Đã tạo [issue #34](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/34) (nhãn `enhancement`; các nhãn `rag`/`performance` chưa tồn tại trong repo). Không đổi code. Ngưỡng thời gian trong issue là đề xuất, chưa đo.
+- Next: triển khai theo #34 — bắt đầu bằng bảng thời gian theo giai đoạn và pre/post-flight `num_ctx`, rồi so 9b với 7b.
+
+## Star.py luôn bật Security Tests (2026-11-23)
+
+- `Star.py` ép `security_tests.enabled = True` (merge vào khối config, không thay bằng `{"enabled": True}` vì runner cần `attacker_host`/`victim_host`/`ssh_identity_path`). Giá trị cố định, không đổi được qua config/CLI. Hướng dẫn chạy thủ công: `Start.md`; README đã sửa câu cũ "tắt runner DVWA".
+- Verification: dừng phiên cũ giữ cổng 8765 (runner tắt), chạy lại `python Star.py`; `GET /api/security-tests/catalog` trả `enabled: true`, 18 kịch bản, 4 kịch bản `enabled` (phần còn lại chưa có telemetry contract). `Wazuh Indexer: ok`. Chưa chạy lượt Security Test thật tới Kali/victim và chưa chạy lại pytest cho thay đổi này.
+- Lưu ý: `Star.py`, `Start.md` chưa commit (Star.py vốn untracked). Mục "Launcher Star.py" bên dưới còn câu "Runner DVWA tắt" đã lỗi thời.
+- Next: thử một kịch bản có contract (qua UI `/security-tests`) để xác nhận SSH tới lab; quyết định commit `Star.py`/`Start.md`.
+
+## Launcher Star.py (2026-11-23)
+
+- Từ thư mục repo, chạy `python Star.py`. Launcher đọc config cục bộ, chạy dashboard và các worker, dùng lại Ollama hoặc mở Ollama local khi cần. Khi thoát, launcher dừng tiến trình Ollama do nó mở. Wazuh chạy riêng trên máy SIEM, launcher kiểm tra trạng thái Indexer. Runner DVWA tắt trong tiến trình dashboard.
+- Kiểm thử Windows với Waitress 3.0.2: đã kiểm tra khởi động Ollama thật trên cổng thử, HTTP dashboard và SQLite tạm, rồi xác nhận tiến trình Ollama thử dừng khi thoát. Nhánh Ollama đang chạy dùng lại tiến trình. Indexer báo `ok`. Dashboard đang chạy giữ cổng mặc định và launcher từ chối phiên thứ hai trước khi mở SQLite. Suite API/UI đạt **97 passed**.
+
+## Khởi động lại dashboard và kiểm tra thao tác thủ công (2026-11-23)
+
+- `main` vẫn khớp `origin/main` tại `f4a8cb9`. Dashboard chạy trên loopback cổng 8765. `/`, `/security-tests`, API trạng thái và API model trả HTTP 200. SQLite, Ollama và Wazuh Indexer báo `ok`. Hàng đợi 0, lịch tự động đang tắt, job cũ #274 có trạng thái `cancelled` sau khởi động.
+- Đã xác nhận form **Phân tích mới** có nút **Đưa vào hàng đợi**. Suite `tests/test_dashboard_api.py` và `tests/test_dashboard_ui.py` đạt **97 passed**. Kiểm tra live chỉ đọc trang và API sức khỏe. Có thể chọn khoảng alert và chạy lại từ form khi cần.
+- Tiến trình hiện tại tắt DVWA runner và gửi Telegram/Gmail qua cấu hình runtime. Catalog báo 0 kịch bản DVWA khả dụng. Các nút DVWA gọi script tấn công qua SSH nên lượt này chưa bật hoặc nghiệm thu phần đó. Lệnh khởi động ẩn bằng `Start-Process` bị tool từ chối. Tiến trình phục vụ hiện tại chạy trong phiên shell.
+- Replay alert mẫu trước khi khởi động lại: hai CSV `defensive-replay-20261123-192238-qwen25-7b.csv` và `defensive-replay-20261123-192455-qwen25-7b-rag.csv` trong `eval/raw_exports/` khớp đủ 33 ID manifest. Cả hai có 33/33 schema hợp lệ, output Ollama và 0 lỗi. No-RAG có 30/33 ca đáp ứng đầy đủ tiếng Việt, RAG có 33/33 và trạng thái `used` cho 33 ca.
+- Suite cục bộ trước đó đạt **602 passed, 2 skipped**, loại nhóm Security Tests runner. Hai skip là benchmark live legacy cần opt-in và kiểm tra tên model dùng tag không có `:latest`.
+
+## Khởi chạy dashboard local (2026-11-23)
+
+- `git fetch origin` thành công, `main` khớp `origin/main` tại `f4a8cb9`. Dashboard chạy tại `http://127.0.0.1:8765`. Tắt Security Tests riêng cho tiến trình này.
+- Lượt đầu kiểm tra Indexer báo `ProxyError`. Sau khi khởi động lại dashboard, `/` và `/api/status` trả HTTP 200, worker, scheduler và SQLite hoạt động, queue 0. `/api/dependencies` báo Ollama `ok` (7 model) và Indexer HTTP 200, cluster `green`.
+- RAG đang `not_initialized`. Lần kiểm thử phân tích đầu tiên cần xác nhận thêm luồng đọc alert và sinh kết quả.
 
 ## Bàn giao code RAG R0.3 (2026-11-21)
 

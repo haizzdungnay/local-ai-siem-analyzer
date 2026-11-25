@@ -76,7 +76,7 @@ ollama pull nomic-embed-text                         # embedding cho RAG
 pip install -r ai_module/requirements.txt
 cp ai_module/config.example.yaml ai_module/config.yaml  # điền credential Indexer
 python ai_module/main.py --demo                         # lần đầu tự index dữ liệu RAG
-python ai_module/dashboard.py                           # http://127.0.0.1:8765
+python Star.py                                          # http://127.0.0.1:8765
 
 # --- Sinh cảnh báo (từ Kali .30) ---
 bash scripts/attacks/ssh-bruteforce.sh 192.168.100.20
@@ -97,7 +97,9 @@ Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
 
 ### Dashboard AI local
 
-`python ai_module/dashboard.py` mở `http://127.0.0.1:8765`. App chỉ phục vụ trên máy chính, đọc alert từ Indexer `:9200`, không proxy credential xuống browser. Chức năng MVP:
+`python Star.py` mở `http://127.0.0.1:8765`, dùng Ollama đang chạy hoặc tự bật Ollama local qua `PATH`. Lệnh khởi động dashboard, SQLite, worker, scheduler và delivery worker. Wazuh Indexer `:9200` cần chạy sẵn trên máy SIEM. Launcher kiểm tra kết nối Indexer và luôn bật Security Tests (`security_tests.enabled = True`, cố định, giữ các khóa lab khác từ `config.yaml`); xem [`Start.md`](Start.md). Nhấn Ctrl+C để dừng dashboard và tiến trình Ollama do launcher khởi động.
+
+Dashboard đọc alert từ Indexer và giữ credential phía server. Chức năng MVP:
 
 - Preset `5m/15m/30m/1h/2h/6h/12h/24h` hoặc custom range tối đa 24 giờ.
 - Chọn model, ngôn ngữ AI `Tiếng Việt/English` và giao diện `Tối/Sáng`; ngôn ngữ yêu cầu, ngôn ngữ phản hồi và mức tuân thủ đều được ghi cùng kết quả.
@@ -105,7 +107,8 @@ Test dùng mock cho Ollama, ChromaDB và Wazuh nên không cần bật lab SIEM.
 - Theo dõi phase thật `queued → fetching_alerts → preparing_analysis → calling_ollama → saving_result`; không chèn delay/loading giả.
 - Timeline mật độ alert theo thời gian; chọn bucket để lọc hoặc tạo batch con drill-down.
 - Dưới detail cap: deterministic grouping, alert reference và alert-detail DTO đã redact (không trả raw `_source`). Vượt cap: tự chuyển aggregate-only từ count/histogram/rule code, không tải full log hàng loạt; unique cardinality được ghi rõ là xấp xỉ.
-- Dashboard retrieval dùng RAG theo rule group đã sanitize, có relevance threshold, corpus/index provenance và trạng thái effective (`not_initialized`, `ready`, `unavailable`, `disabled`); không có context phù hợp sẽ được ghi rõ thay vì giả RAG success.
+- Dashboard khởi tạo chỉ mục RAG ở nền. Job vẫn phân tích alert Wazuh trong lúc RAG `initializing` và ghi trạng thái này trong báo cáo. Khi chỉ mục sẵn sàng, dashboard tra cứu theo rule group đã làm sạch, áp dụng ngưỡng phù hợp và lưu nguồn tham chiếu.
+- Khi đổi model trong **Phân tích mới**, dùng **Nạp model trước** rồi chọn khoảng log. Ollama được yêu cầu giữ model 15 phút sau lần dùng gần nhất và có thể giải phóng sớm khi thiếu bộ nhớ. Báo cáo hiển thị riêng thời gian nạp model, đọc prompt và sinh kết quả.
 - Mỗi job có **Xuất JSON v2** gồm analysis, SOC trace, metrics/timeline, alert references và provenance Ollama; có nút JSON v1 cho consumer cũ khi endpoint hỗ trợ. Kết quả cũ thiếu evidence được ghi `unknown_legacy`.
 - Panel **Dấu vết phân tích SOC** chỉ trình bày fact, inference, uncertainty và limitation có thể kiểm toán; không hiển thị chain-of-thought/suy luận nội bộ model.
 - Một fixed-window schedule, ingest delay và bounded catch-up; SQLite giữ job/watermark tại `ai_module/dashboard_data/` (gitignored).

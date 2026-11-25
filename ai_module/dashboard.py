@@ -539,7 +539,7 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
     if not database_path.is_absolute():
         database_path = MODULE_DIR / database_path
     store = DashboardStore(database_path)
-    analysis_service = AnalysisService(cfg)
+    analysis_service = AnalysisService(cfg, background_rag=start_runtime)
     runtime = DashboardRuntime(
         store, cfg, analysis_service,
         poll_seconds=dashboard_cfg.get("worker_poll_seconds", 1),
@@ -632,6 +632,7 @@ def create_app(config_path=DEFAULT_CONFIG, *, cfg=None, start_runtime=True):
     app.register_blueprint(maintenance_bp)
 
     if start_runtime:
+        analysis_service.warm_rag()
         runtime.start()
         atexit.register(runtime.stop)
     return app
