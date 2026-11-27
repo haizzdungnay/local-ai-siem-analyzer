@@ -1,8 +1,15 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật: 2026-11-23
+Ngày cập nhật 2026-11-27
 
 
+
+## Review playbook #29 (2026-11-27)
+
+- Base `a6e8907`, nhánh `codex/issue-29-playbook-review`. Sáu câu trả lời nằm trong `docs/approval-remediation-implementation-guide.md`. Sửa tín hiệu 5402 và 5503, bỏ `full_log` bị cắt khi chạy regex window. Hồi quy tại `tests/test_playbook_trusted.py` và `tests/test_window_playbooks.py`.
+- Codex CLI review tĩnh trên diff và đoạn mã đã lọc vì Windows sandbox lỗi package identity. Review phát hiện một P2 về ranh giới `COMMAND` và hai P3 về mẫu `full_log` bị cắt và mô tả heuristic. Lượt kiểm lại xác nhận hai P3 đã xử lý và tìm thêm ca `PWD` có `; COMMAND=`. Kiểm cuối xác nhận mẫu `USER=root` với `TSID` tùy chọn xử lý ca đó và giữ đúng trường lệnh đầu tiên.
+- Kiểm chứng cục bộ bằng `python -B -m pytest tests -q -p no:cacheprovider --tb=short -rs` với `SIEM_RUN_LIVE_RAG_BENCHMARK=0`. **633 passed, 2 skipped** do Ollama chưa chạy và benchmark live chưa opt-in. Hồi quy mới đã fail trước sửa và đạt sau sửa. Kiểm placeholder từng báo nhóm regex tên `prefix`; đổi sang nhóm số và suite cuối đã đạt. `git diff --check`, secret scan và `node --check ai_module/web/app.js` đạt.
+- B0 giữ draft/high để ưu tiên điều tra. Phần duyệt của SOC và kết quả Indexer/model/dashboard thật theo #32. Đo bất đồng, false positive/false negative và baseline held-out theo #27. #23 còn quyết định chốt phiên bản playbook.
 
 ## Lab 25/11 — kết quả (2026-11-25 tối)
 

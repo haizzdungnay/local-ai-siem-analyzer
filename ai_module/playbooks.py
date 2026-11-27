@@ -315,7 +315,9 @@ def group_extracted(group: dict) -> dict:
         "rule.id": group.get("rule_id"), "agent.id": group.get("agent_id"),
         "data.srcip": group.get("source_ip"), "data.srcuser": group.get("srcuser"),
         "data.dstuser": group.get("dstuser"), "syscheck.path": group.get("syscheck_path"),
-        "timestamp": group.get("sample_timestamp"), "full_log": group.get("sample_log"),
+        "timestamp": group.get("sample_timestamp"),
+        # ponytail: treat partial logs as missing for regex. Evaluate full source before capping if needed.
+        "full_log": None if group.get("sample_log_truncated") else group.get("sample_log"),
     }
     return {key: str(value) for key, value in mapping.items() if value not in (None, "")}
 

@@ -5,6 +5,8 @@ Ghi nhận mọi thay đổi quan trọng của repo. Format: [Keep a Changelog]
 ---
 ## [Unreleased]
 
+- Rà soát sáu câu hỏi của #29 (2026-11-27). Rule 5402 nhận trường `COMMAND` theo `USER=root` và `TSID` tùy chọn. Rule 5503 ưu tiên `ruser` trước UID và yêu cầu thêm bằng chứng trước đề xuất cô lập. Tín hiệu cần `full_log` trên dashboard nhận `unknown` khi mẫu bị cắt.
+
 - Kết quả lab 2026-11-25 (16:18–19:48) trong `docs/lab-run-2026-11-25.md`: 14/14 kịch bản ra đúng loại alert; nhật ký theo phút và 14 phát hiện (log auth thu trùng journald + auth.log đã tắt journald; agent mất kết nối sau suspend do docker-proxy 1514; alert 554 ngày 28/07 cho `/etc/sudoers.d/99-claude-lab` không được xử lý; field username srcuser/dstuser; đếm cardinality cho 5710; `syscheck.diff` không nằm trong full_log; regex diff chỉ xét dòng `>`; tín hiệu SUID đọc dòng "Permissions changed" của full_log; access.log Ubuntu `%O` gồm header). Chưa sửa YAML/code theo các phát hiện.
 - Đưa lên repo hai file còn lại trên máy bàn theo yêu cầu (2026-11-25): `eval/rag-benchmark-results.json` (kết quả `eval/rag_benchmark.py` trên 33 ca, KB production 5.080 doc, ngưỡng 1.0–500) và `e` (bản `git diff` playbooks.yaml có mã màu ANSI, giữ nguyên trạng).
 - Bảng kịch bản lab có kỳ vọng ghi trước (2026-11-23, 2026-11-25): `docs/lab-run-2026-11-23.md` (13 kịch bản SSH/sudo/su/FIM/SUID, ca âm CUPS/apt) và `docs/lab-run-2026-11-25.md` (thêm #14 DVWA burst, rule tùy chỉnh 100121). Placeholder IP/user; chưa điền kết quả. Đồng bộ các thay đổi chưa commit trên máy bàn (phiên 2026-11-23: preload model, RAG nền, `Star.py`/`Start.md`, nội dung issue #34) lên nhánh riêng; không đưa tệp diff rác `e`.
