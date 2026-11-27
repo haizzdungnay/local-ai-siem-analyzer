@@ -111,6 +111,12 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
         if source_ip:
             source_ips.add(source_ip)
 
+        full_log = str(source.get("full_log") or "")
+        sample = {
+            **_playbook_sample_fields(source),
+            "sample_log": full_log[:sample_log_chars],
+            "sample_log_truncated": len(full_log) > sample_log_chars,
+        }
         group = groups.get(group_key)
         if group is None:
             group = groups[group_key] = {
@@ -126,9 +132,7 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
                 "agent": agent,
                 "source_ip": source_ip,
                 "syscheck_path": str(_get_nested(source, "syscheck.path") or ""),
-                "sample_log": str(source.get("full_log") or "")[:sample_log_chars],
-                # Field của alert mẫu cho playbook (truy vấn DQL + regex tín hiệu); không vào prompt.
-                **_playbook_sample_fields(source),
+                **sample,
                 "playbook_samples": [],
             }
         mitre_ids = tuple(sorted(normalize_mitre_ids(_get_nested(source, "rule.mitre.id"))))
@@ -137,10 +141,10 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
         # nguy hiểm (www-data su) bị che bởi lỗi SSH vô hại đến trước (lab 2026-11-20).
         # So trùng theo nội dung (bỏ chữ số: giờ, PID, port) để 20 chỗ không bị một đợt
         # brute-force cùng user chiếm hết.
-        sample = {**_playbook_sample_fields(source),
-                  "sample_log": str(source.get("full_log") or "")[:sample_log_chars]}
-        sample_key = "\x1f".join((sample["agent_id"], sample["srcuser"], sample["dstuser"],
-                                   re.sub(r"\d+", "#", sample["sample_log"])))
+        sample_key = (
+            sample["agent_id"], sample["srcuser"], sample["dstuser"],
+            sample["sample_log_truncated"], re.sub(r"\d+", "#", sample["sample_log"]),
+        )
         seen = sample_keys.setdefault(group_key, set())
         if len(group["playbook_samples"]) < MAX_PLAYBOOK_SAMPLES_PER_GROUP and sample_key not in seen:
             seen.add(sample_key)

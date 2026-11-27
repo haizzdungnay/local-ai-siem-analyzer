@@ -611,6 +611,41 @@ def test_regex_does_not_overmatch_common_commands():
     assert ans("S_security_change", "/usr/bin/journalctl -u ssh") == "no"
 
 
+@pytest.mark.parametrize("command,signal_id,expected", [
+    ("/usr/bin/systemctl restart curl-exporter", "S_security_change", "no"),
+    ("/usr/bin/apt install wget", "S_security_change", "no"),
+    ("/usr/bin/printf '; COMMAND=/usr/bin/curl example'", "S_security_change", "no"),
+    ("/usr/bin/printf '; USER=root ; COMMAND=/bin/bash example'", "S_root_shell", "no"),
+    ("/usr/bin/curl --version", "S_security_change", "yes"),
+    ("/usr/bin/wget --version", "S_security_change", "yes"),
+])
+def test_sudo_signals_check_command_position(command, signal_id, expected):
+    entry = playbooks.get_playbook("5402")
+    answers = playbooks.normalize_signals(
+        None, entry, {"full_log": f"USER=root ; COMMAND={command}"},
+    )
+    assert answers[signal_id]["rule_answer"] == expected
+    if expected == "no":
+        assert playbooks.select_branch(entry, answers) == "B_unknown"
+
+
+@pytest.mark.parametrize("actor,expected,branch_id", [
+    ("uid=33 ruser=alice", "no", "B_unknown"),
+    ("ruser=alice uid=33", "no", "B_unknown"),
+    ("uid=33 ruser=", "yes", "B0_service_account_su"),
+    ("uid=33", "yes", "B0_service_account_su"),
+    ("euid=33 ruser=", "no", "B_unknown"),
+    ("uid=1000 ruser=www-data", "yes", "B0_service_account_su"),
+])
+def test_5503_service_actor_uses_uid_only_without_ruser(actor, expected, branch_id):
+    entry = playbooks.get_playbook("5503")
+    answers = playbooks.normalize_signals(
+        None, entry, {"full_log": f"pam_unix(su:auth): authentication failure; {actor} rhost= user=root"},
+    )
+    assert answers["S_service_actor"]["rule_answer"] == expected
+    assert playbooks.select_branch(entry, answers) == branch_id
+
+
 def test_signal_prompt_hides_regex():
     system = playbooks.build_trusted_playbook_block(playbooks.get_playbook("5402"))
     assert "match:" not in system and "regex:" not in system and "COMMAND=(" not in system

@@ -48,6 +48,35 @@ def test_window_findings_use_agent_id_not_name_and_regex_signals():
     assert "model:" not in " ".join(sudo["next_steps"])    # code-only: không có câu trả lời model
 
 
+def test_sudo_command_uses_field_boundary_in_window():
+    for directory, tsid, command, signal_id in [
+        ("/srv/COMMAND=notes", "", "/bin/bash", "S_root_shell"),
+        ("/srv/x; COMMAND=notes", "", "/bin/bash", "S_root_shell"),
+        ("/srv/x; COMMAND=notes", " ; TSID=0000UM", "/usr/bin/curl --version", "S_security_change"),
+    ]:
+        record = f"sudo: deploy : TTY=pts/1 ; PWD={directory} ; USER=root{tsid} ; COMMAND={command}"
+        hit = _hit("5402", record)
+        aggregate = analysis_service.aggregate_alerts([hit])
+        finding = playbooks.window_playbook_findings(aggregate, _lookup)[0]
+        assert finding["signals"][signal_id]["rule_answer"] == "yes"
+        assert finding["branch_id"] == "B2_unusual_sudo_command_or_context"
+
+
+def test_truncated_window_log_cannot_hide_an_explicit_pam_actor():
+    prefix = "pam_unix(su:auth): authentication failure; uid=33 "
+    hit = _hit("5503", prefix + "ruser=alice")
+    aggregate = analysis_service.aggregate_alerts([hit], sample_log_chars=len(prefix))
+    finding = playbooks.window_playbook_findings(aggregate, _lookup)[0]
+    assert finding["signals"]["S_service_actor"]["rule_answer"] is None
+    assert finding["branch_id"] == "B_unknown"
+
+    complete = _hit("5503", prefix)
+    aggregate = analysis_service.aggregate_alerts([hit, complete], sample_log_chars=len(prefix))
+    finding = playbooks.window_playbook_findings(aggregate, _lookup)[0]
+    assert finding["samples_evaluated"] == 2
+    assert finding["branch_id"] == "B0_service_account_su"
+
+
 def test_aggregate_mode_without_full_log_stays_unknown():
     # Chế độ aggregate không tải full_log → regex 5402 không có dữ liệu → không chọn nhánh.
     aggregate = analysis_service.aggregate_alerts([SUDO_BASH])

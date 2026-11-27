@@ -442,20 +442,18 @@ Quyết định trong hướng dẫn bổ sung các phần dưới vào kế ho�
 
 Không cần dừng #11 hoặc formatter RAG chỉ vì chưa chốt assignee window. Tuy nhiên, chưa chốt contract thì không merge hai thay đổi schema mâu thuẫn. Khi tiếp nhận PR từ bên playbook, review theo invariant của #12, không chỉ dựa vào số lượng signals đã chuyển đổi.
 
-### Issue 29: hướng review và nơi đưa kết quả
+### Review playbook và chế độ tín hiệu (#29)
 
-[#29](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/29) mô tả v6.1 và hỏi sáu nhóm vấn đề. Các dòng dưới là **đề xuất review/test**, không phải khẳng định đã sửa hoặc đã có kết quả held-out.
+Review trên `main@a6e8907`. Trong 28 playbook có bước tra cứu, 4 rule dùng tín hiệu (`5715`, `5760`, `5503`, `5402`). Dashboard cửa sổ dùng regex trên alert mẫu. Phân tích từng alert kết hợp regex và câu trả lời model. [#29](https://github.com/haizzdungnay/local-ai-siem-analyzer/issues/29)
 
-| Nội dung review | Đề xuất xử lý | Issue nhận việc |
-|---|---|---|
-| Có thể rơi low khi chưa đủ bằng chứng? | Test v5 enum, `B_unknown`, thứ tự nhánh, severity override và floor ở đường gọi cuối; tách valid ID với verified evidence | #12 |
-| Regex bắt nhầm/bỏ sót? | Bộ development/held-out có command đúng ngữ cảnh, đường dẫn, khoảng trắng, wrapper và ca benign; đánh giá theo field, không thêm regex chỉ để khớp smoke | #12, #27 |
-| Model yes / regex no có an toàn? | Lưu disagreement và false-positive rate; kết quả OR có thể kích hoạt nhánh high ở rule 5503, không mặc định chỉ medium. Không lấy model-only yes làm quyền ghi | #12, #17, #27 |
-| `B_unknown` nên dùng severity nào? | Giữ trạng thái chưa xác định, sàn rule và provenance; không tự đóng. Nếu cần severity xếp hàng, policy phải minh bạch và được kiểm trên held-out | #12 |
-| Nhánh `B0_service_account_su` có phù hợp? | Reviewer SOC xem trigger/field, công việc dịch vụ hợp lệ và post-exploitation evidence; chưa review thì giữ draft, không suy “service account su = xác nhận compromise” | #12, #29 |
-| Schema có dùng query result được không? | Thêm signal source/evidence refs và evaluator có coverage; giữ backward compatibility. DQL render cho người và DSL thực thi phải tương đương về nghĩa | #14, #15, #23 |
+1. **Chọn nhánh và mức cảnh báo.** V5 giữ `B_unknown` khi model đề xuất nhánh. Với tín hiệu, code chọn nhánh mức medium trở lên có `select_if` khớp, lấy mức cao nhất và giữ thứ tự YAML khi bằng nhau. Nhánh cần truy vấn chỉ xuất hiện trong danh sách chờ đối chiếu. `branch_verified=false` và `needs_evidence` vẫn áp dụng. Narrative vẫn có thể đề xuất đóng. Nhãn chưa xác minh hướng người đọc kiểm chứng nhận định.
+2. **Regex 5402.** Lấy trường `COMMAND=` theo mẫu `USER=root ; COMMAND=` hoặc `USER=root ; TSID=… ; COMMAND=` của Wazuh 5402. Chữ `COMMAND=` trong tên thư mục `PWD` được bỏ qua. Đường regex hiện đọc syslog dạng văn bản. Khi log thiếu dấu phân cách có thể cần đối chiếu `data.command` trong alert. Tên dịch vụ `curl-exporter`, tên gói `wget` và chuỗi `COMMAND=` nằm trong đối số từng làm nhánh điều tra được chọn sai. Gọi trực tiếp shell, `curl` hoặc `wget` vẫn cho tín hiệu. Regex chưa phân tích wrapper như `env` và điều kiện tương tác. Kiểm vị trí executable cho shell và `curl`/`wget`. Từ khóa quản trị như `usermod` và đường dẫn nhạy cảm vẫn có thể khớp trong đối số của lệnh đọc. Giữ các giới hạn này khi chấm false positive/false negative. [Rule 5402 trong Wazuh 4.14](https://github.com/wazuh/wazuh/blob/v4.14.0/ruleset/rules/0020-syslog_rules.xml)
+3. **OR và bất đồng.** Giữ OR để ưu tiên điều tra. Model có thể kích hoạt cả nhánh high ở 5503. Provenance từng alert đã có `model_answer`, `rule_answer`, `conflict` và nguồn tín hiệu. Khi đo ở #27, báo riêng hai chiều bất đồng trên các tín hiệu có câu trả lời rõ từ cả hai nguồn, số ca chỉ model báo yes khi thiếu dữ liệu regex, và false positive/false negative của từng phương án trên nhãn người. Các tỷ lệ này chưa được đo độc lập.
+4. **`B_unknown`.** Giữ trạng thái thiếu bằng chứng độc lập với severity xếp hàng. Giữ mức model nếu chưa có tín hiệu cao hơn. Sàn Wazuh hiện có nâng low/medium lên high tại level từ 12. Giá trị `unknown` vẫn biểu thị thiếu căn cứ. Hiển thị nguồn severity và trạng thái cần bằng chứng cho người đọc báo cáo.
+5. **Nhánh 5503 `B0_service_account_su`.** Giữ high, trạng thái draft và yêu cầu cả dấu hiệu su/sudo lẫn tài khoản dịch vụ. Regex dùng UID 33 làm gợi ý khi thiếu `ruser` trong log đầy đủ. Đối chiếu mapping tài khoản trên host. Với dashboard, tín hiệu cần `full_log` nhận `unknown` khi mẫu log bị cắt. Các tín hiệu dựa trên field độc lập vẫn dùng được. Lab 25/11 cho thấy thao tác qua tài khoản dịch vụ cũng có thể xuất phát từ người vận hành. Kiểm phiên 5501, change ticket và kết quả sau alert; `logname` trống có thể do cách cấp terminal. SOC cần duyệt severity và hành động đề xuất.
+6. **Tín hiệu từ truy vấn ở R1.** Giữ `signals` và `select_if` cho alert hiện có. Bổ sung nguồn kết quả truy vấn cùng query ID/version, agent/thời gian, receipt và coverage ở evaluator #14/#15. Kết quả thiếu, partial hoặc chưa chạy giữ `unknown` cho kết luận cần truy vấn. Ánh xạ query đã review sang OpenSearch DSL trong code. Provenance do service dựng từ receipt.
 
-Đề xuất đóng #29 khi các câu hỏi đã có quyết định có lý do, liên kết regression/PR và giới hạn thực nghiệm. Không cần đợi toàn bộ executor; cũng không dùng việc #29 đóng để thay nghiệm thu #12/#27.
+Các ca hồi quy dùng dữ liệu tổng hợp cho vị trí lệnh, thứ tự ưu tiên `ruser`/UID và nhóm alert có mẫu `full_log` bị cắt. Xem `tests/test_playbook_trusted.py` và `tests/test_window_playbooks.py`. Đây là kiểm tra hồi quy regex và chọn nhánh. Đo held-out độc lập thuộc #27. Biến thể B/C đổi cả schema lẫn cách dựng output, nên so sánh hai biến thể chỉ phản ánh chênh lệch của cả hai cấu hình.
 
 ## 5. Chia PR, kiểm tra và bằng chứng đóng issue
 
