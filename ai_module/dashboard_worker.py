@@ -379,6 +379,8 @@ class DashboardRuntime:
                 warnings.append("Đã loại trích đoạn sample log bị model lặp lại khỏi kết quả lưu")
             if provenance.get("overclaim_check", {}).get("status") == "flagged":
                 warnings.append("overclaim_unverified_branch")
+            if provenance.get("contradiction_check", {}).get("status") == "flagged":
+                warnings.append("contradicts_rule_outcome")
             provenance.setdefault("requested_language", job.get("language", "vi"))
             provenance.setdefault(
                 "effective_language",

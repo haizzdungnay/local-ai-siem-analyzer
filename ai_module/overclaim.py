@@ -10,6 +10,24 @@ import unicodedata
 SUCCESS_EVIDENCE_RULE_IDS = frozenset({"5303", "5304"})
 MAX_CLAUSE_CHARS = 200
 
+# Kết quả theo định nghĩa rule Wazuh stock (0095-sshd, 0085-pam, 0020-syslog, 0100-sudo/su rules).
+# Chỉ giữ id chắc chắn; id không có trong bảng thì không được suy ra kết quả.
+FAILURE_RULE_IDS = frozenset({
+    "2501", "2502",                       # syslog: authentication failure / sai mật khẩu nhiều lần
+    "5301", "5302",                       # su: sai mật khẩu
+    "5401", "5404",                       # sudo: sai mật khẩu / 3 lần sai
+    "5503", "5551",                       # PAM: đăng nhập thất bại / nhiều lần
+    "5710", "5712", "5716",               # sshd: user không tồn tại, brute force, xác thực thất bại
+    "5758", "5760", "5763",               # sshd: vượt số lần thử, xác thực thất bại, brute force
+})
+SUCCESS_RULE_IDS = frozenset({
+    "5303", "5304",                       # su thành công (lên root / user khác)
+    "5402", "5403", "5407",               # sudo thành công
+    "5501",                               # PAM: session opened
+    "5715",                               # sshd: xác thực thành công
+    "40112",                              # nhiều lần thất bại rồi thành công
+})
+
 _FLAGS = re.IGNORECASE
 _SPLIT = re.compile(r"[.;,\n!?]|\b(?:nhưng|tuy nhiên|but|however)\b", _FLAGS)
 _TOPIC = re.compile(r"leo thang|nâng quyền|quyền root|lên root|privilege escalation|\broot\b", _FLAGS)
@@ -93,3 +111,34 @@ def overclaim_check(result: dict, findings: list, aggregate: dict) -> dict:
         out["failure_mentions"].extend(found["failure_mentions"])
     out["status"] = "flagged" if out["overclaims"] else "clean"
     return out
+
+
+# Mâu thuẫn kết quả: câu nói "thành công" nhưng trích dẫn rule thất bại. Chỉ cảnh báo.
+_CONTRA_SPLIT = re.compile(r"\.(?=\s|$)|[;\n!?]|\b(?:nhưng|tuy nhiên|but|however)\b", _FLAGS)
+_SUCCESS_WORD = re.compile(
+    r"thành\s+công|đăng nhập được|successful(?:ly)?|succeeded|accepted", _FLAGS)
+_RULE_CITE = re.compile(r"(?<![\w.])(\d{4,6})(?![\w]|\.\d)")
+
+
+def find_contradictions(text: str) -> list:
+    flagged = []
+    if not isinstance(text, str):
+        return flagged
+    text = unicodedata.normalize("NFC", text)
+    for clause in (c.strip() for c in _CONTRA_SPLIT.split(text) if c and c.strip()):
+        if _FAILURE.search(clause):
+            continue
+        matches = list(_SUCCESS_WORD.finditer(clause))
+        if not matches or all(_negated(clause, m) for m in matches):
+            continue
+        if any(i in FAILURE_RULE_IDS for i in _RULE_CITE.findall(clause)):
+            flagged.append(clause[:MAX_CLAUSE_CHARS])
+    return flagged
+
+
+def contradiction_check(result: dict, aggregate=None) -> dict:
+    """Trả provenance["contradiction_check"]; status: clean | flagged."""
+    clauses = []
+    for text in analysis_texts(result):
+        clauses.extend(find_contradictions(text))
+    return {"status": "flagged" if clauses else "clean", "clauses": clauses}

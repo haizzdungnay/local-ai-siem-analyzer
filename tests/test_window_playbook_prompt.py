@@ -45,7 +45,8 @@ def test_550_branch_is_in_prompt_but_diff_is_not(monkeypatch, tmp_path):
     assert "branch=B2_unverified_config_modification" in prompt
     assert "S_suspicious_diff_content" in prompt
     assert "UNVERIFIED hypotheses" in prompt
-    assert "NOPASSWD" not in prompt
+    # "NOPASSWD" có thể xuất hiện trong câu hỏi tín hiệu do tác giả viết; dòng diff thì không.
+    assert "lab_nouser" not in prompt and "NOPASSWD: ALL" not in prompt
     assert output["provenance"]["playbook_prompt_chars"] > 0
     assert output["analysis"]["playbooks"][0]["branch_id"] == "B2_unverified_config_modification"
 
@@ -63,7 +64,7 @@ def test_helper_never_emits_user_or_diff_or_next_steps():
         if f["rule_id"] == "5710":
             f["branch_id"], f["branch_severity"] = "B4_x", "medium"
     block = analysis_service.format_playbook_branches_for_llm(findings, aggregate)
-    assert "Fake@Pass2026" not in block and "NOPASSWD" not in block
+    assert "Fake@Pass2026" not in block and "lab_nouser" not in block and "NOPASSWD: ALL" not in block
     assert "next_steps" not in block and "sample_log" not in block
     assert "path=/etc/sudoers.d/99-lab" in block
     assert len(block) <= analysis_service.MAX_PLAYBOOK_PROMPT_CHARS

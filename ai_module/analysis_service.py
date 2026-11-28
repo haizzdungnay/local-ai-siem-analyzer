@@ -8,7 +8,7 @@ from time import monotonic
 
 from extractor import _get_nested, extract_fields, format_for_llm, normalize_mitre_ids
 from playbooks import UNKNOWN_BRANCH, playbook_for_config, window_playbook_findings
-from overclaim import overclaim_check
+from overclaim import FAILURE_RULE_IDS, SUCCESS_RULE_IDS, contradiction_check, overclaim_check
 from reader import resolve_config_paths
 from llm import (
     adaptive_pacing_options,
@@ -383,58 +383,104 @@ def _redact_exact_sample_log_echoes(value, samples: list[str]) -> tuple[object, 
 
 
 MAX_PLAYBOOK_PROMPT_LINES = 12
-MAX_PLAYBOOK_PROMPT_CHARS = 1500
+MAX_PLAYBOOK_PROMPT_CHARS = 3000
+MAX_SIGNAL_TEXT_CHARS = 100
+MAX_PLAYBOOK_TITLE_CHARS = 80
+MAX_OUTCOME_LEGEND_CHARS = 600
 _PLAYBOOK_PROMPT_HEADER = (
     "Code-selected investigation branches (regex signals only, UNVERIFIED hypotheses, "
     "not confirmed findings). Use them to name concrete suspicious activity in "
-    "summary/key_findings; do not treat them as proof and do not copy them as verdicts:"
+    "summary/key_findings; do not treat them as proof and do not copy them as verdicts. "
+    "Mention every high/critical branch below in key_findings as an unverified hypothesis. "
+    "Signal texts describe the pattern each regex checks; a match means one of the listed "
+    "patterns occurred, not all of them. V1/V2/... verification queries have NOT been run:"
 )
+_BRANCH_PRIORITY = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
 def _prompt_token(value) -> str:
     return re.sub(r"[^\w.\-/:]", "_", str(value))[:120]
 
 
-def format_playbook_branches_for_llm(findings, aggregate=None) -> str:
+def _prompt_text(value, limit: int) -> str:
+    """Văn bản do tác giả playbook viết (YAML): gộp khoảng trắng/xuống dòng, cắt độ dài."""
+    return re.sub(r"\s+", " ", str(value or "")).strip()[:limit]
+
+
+def format_playbook_branches_for_llm(findings, aggregate=None, lookup=None) -> str:
     """Khối prompt ngắn từ nhánh playbook do code chọn (bỏ B_unknown).
 
-    Chỉ ghi id/số đếm/id tín hiệu trả lời "yes" và syscheck.path (đã có trong prompt).
+    Ngoài id/số đếm còn có nghĩa ngắn do tác giả playbook viết (tiêu đề playbook, `question` của
+    tín hiệu "yes"; KHÔNG đưa `when` vì mô tả kết quả truy vấn V1/V2... chưa chạy) tra qua
+    `lookup(rule_id) -> entry`; chỉ lấy từ YAML.
     Không bao giờ ghi diff, sample_log, user, next_steps hay giá trị tín hiệu.
-    Trả "" khi không có nhánh nào đã chọn.
+    Nhánh nặng nhất xếp trước để không bị cắt. Trả "" khi không có nhánh nào đã chọn.
     """
     paths = {}
     for group in (aggregate or {}).get("groups") or []:
         if isinstance(group, dict) and group.get("syscheck_path"):
             paths[str(group.get("group_key", ""))] = group["syscheck_path"]
-    lines = []
-    for finding in findings or []:
-        if finding.get("branch_id") in (None, UNKNOWN_BRANCH):
-            continue
-        yes = ",".join(
-            _prompt_token(sid) for sid, item in (finding.get("signals") or {}).items()
+    selected = [f for f in findings or [] if f.get("branch_id") not in (None, UNKNOWN_BRANCH)]
+    selected.sort(key=lambda f: _BRANCH_PRIORITY.get(f.get("branch_severity"), 9))  # sort ổn định
+    entries = []
+    for finding in selected[:MAX_PLAYBOOK_PROMPT_LINES]:
+        yes_ids = [
+            sid for sid, item in (finding.get("signals") or {}).items()
             if isinstance(item, dict) and item.get("answer") == "yes"
-        )
-        line = (
-            f"- rule={_prompt_token(finding.get('rule_id'))} "
-            f"branch={_prompt_token(finding.get('branch_id'))} "
+        ]
+        entry = {}
+        if lookup is not None:
+            try:
+                entry = lookup(str(finding.get("rule_id", ""))) or {}
+            except Exception:  # noqa: BLE001 - tra cứu lỗi chỉ làm mất phần chữ, không hỏng khối
+                entry = {}
+        questions = {str(s.get("id")): s.get("question") for s in entry.get("signals") or []}
+        title = _prompt_text(finding.get("title") or entry.get("title"), MAX_PLAYBOOK_TITLE_CHARS)
+        head = f"- rule={_prompt_token(finding.get('rule_id'))}"
+        if title:
+            head += f' ("{title}")'
+        head += (
+            f" branch={_prompt_token(finding.get('branch_id'))} "
             f"severity={_prompt_token(finding.get('branch_severity', 'unknown'))} "
             f"matched={finding.get('samples_matched', 0)}/{finding.get('samples_evaluated', 0)} "
-            f"signals_yes={yes or 'none'}"
+            f"signals_yes={','.join(_prompt_token(s) for s in yes_ids) or 'none'}"
         )
         path = paths.get(str(finding.get("group_key", "")))
         if path:
-            line += f" path={_prompt_token(path)}"
-        lines.append(line)
-        if len(lines) >= MAX_PLAYBOOK_PROMPT_LINES:
-            break
-    if not lines:
+            head += f" path={_prompt_token(path)}"
+        compact = head
+        signal_texts = [
+            f'{_prompt_token(sid)}: "{_prompt_text(questions.get(sid), MAX_SIGNAL_TEXT_CHARS)}"'
+            for sid in yes_ids if questions.get(sid)
+        ]
+        full = compact + (" | regex checks that matched: " + "; ".join(signal_texts) if signal_texts else "")
+        entries.append((full, compact))
+    if not entries:
         return ""
     block = _PLAYBOOK_PROMPT_HEADER
-    for line in lines:
-        if len(block) + 1 + len(line) > MAX_PLAYBOOK_PROMPT_CHARS:
+    for full, compact in entries:
+        line = next((c for c in (full, compact) if len(block) + 1 + len(c) <= MAX_PLAYBOOK_PROMPT_CHARS), None)
+        if line is None:
             break
         block += "\n" + line
     return block if "\n" in block else ""
+
+
+def format_outcome_legend_for_llm(aggregate) -> str:
+    """Chú giải kết quả (thành công/thất bại) của các rule id có mặt trong cửa sổ; từ bảng cố định."""
+    present = {str(g.get("rule_id")) for g in (aggregate or {}).get("groups") or [] if isinstance(g, dict)}
+    failures = sorted(present & FAILURE_RULE_IDS)
+    successes = sorted(present & SUCCESS_RULE_IDS)
+    if not failures and not successes:
+        return ""
+    parts = []
+    if failures:
+        parts.append("failed authentication/attempt: " + ", ".join(failures))
+    if successes:
+        parts.append("successful authentication/privilege use: " + ", ".join(successes))
+    text = ("Rule outcome legend (from rule definitions, authoritative): " + "; ".join(parts)
+            + ". Never describe a failure rule as a success.")
+    return text[:MAX_OUTCOME_LEGEND_CHARS]
 
 
 class AnalysisService:
@@ -715,9 +761,13 @@ class AnalysisService:
             aggregate, lambda rule_id: playbook_for_config(self.cfg, rule_id), language,
             max_items=int(dashboard_cfg.get("max_playbook_groups", 20)),
         )
-        playbook_block = format_playbook_branches_for_llm(findings, aggregate)
+        playbook_block = format_playbook_branches_for_llm(
+            findings, aggregate, lambda rule_id: playbook_for_config(self.cfg, rule_id))
         if playbook_block:
             prompt = f"{prompt}\n\n{playbook_block}"
+        outcome_legend = format_outcome_legend_for_llm(aggregate)
+        if outcome_legend:
+            prompt = f"{prompt}\n\n{outcome_legend}"
         trusted_evidence = security_test_evidence_contract(aggregate)
         result, provenance = analyze_window(
             prompt,
@@ -748,12 +798,14 @@ class AnalysisService:
         if findings:
             result = {**result, "playbooks": findings}
         provenance["playbook_prompt_chars"] = len(playbook_block)
+        provenance["outcome_legend_chars"] = len(outcome_legend)
         provenance["playbooks"] = [
             {"rule_id": f["rule_id"], "branch_id": f["branch_id"], "sha256": f["sha256"],
              "version": f["version"]} for f in findings
         ]
         # Chỉ cảnh báo trong provenance; không sửa summary/severity (chạy trên result đã redact).
         provenance["overclaim_check"] = overclaim_check(result, findings, aggregate)
+        provenance["contradiction_check"] = contradiction_check(result, aggregate)
         warning = result["severity"] == "unknown" or echo_redaction_count > 0
         return {
             "analysis": result,

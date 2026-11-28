@@ -5,6 +5,14 @@ Ngày cập nhật 2026-11-28
 
 
 
+## Khối nhánh đọc được, chú giải kết quả, kiểm tra mâu thuẫn (2026-11-28)
+
+- Vì sao: job #282 (`qwen2.5:7b`, cửa sổ 2026-11-25 16:47–19:48) bỏ qua khối nhánh chỉ có id máy, không nêu nhánh B0 high (su từ www-data lên root) mà viết mơ hồ "checksum changed", và ghi 5503/5760 (thất bại) là "đăng nhập thành công".
+- Đã xong: `ai_module/analysis_service.py` (khối nhánh kèm tiêu đề playbook và `question` tín hiệu yes từ YAML (nhãn "regex checks that matched"; header nói rõ V1/V2... chưa chạy; KHÔNG đưa `when` vì mô tả kết quả truy vấn chưa chạy, dễ bị model nói như sự thật); xếp high trước; 3000 ký tự/12 dòng; `format_outcome_legend_for_llm`; `provenance.outcome_legend_chars`, `provenance.contradiction_check`), `ai_module/overclaim.py` (`FAILURE_RULE_IDS`, `SUCCESS_RULE_IDS`, `contradiction_check`), `ai_module/dashboard_worker.py` (warning `contradicts_rule_outcome`), `tests/test_window_semantics.py` (16 test), sửa 2 assert trong `tests/test_window_playbook_prompt.py`.
+- Verification (Linux, Python 3): `python -m pytest -q` **682 passed, 3 skipped** (nền 666/3); `git diff --check` sạch. Chưa chạy model thật.
+- Giới hạn: kiểm tra mâu thuẫn là heuristic từ khóa (Việt + Anh), chỉ bắt khi mệnh đề trích rule id số; mệnh đề tách theo `. ; ! ?` và "nhưng/but" (không tách theo dấu phẩy để giữ danh sách rule); chú giải chỉ phủ các rule id đã liệt kê trong `overclaim.py`, rule khác không có nhãn. Khối dài ~400 ký tự/dòng nên ngân sách giữ 3000 (chứa ~6 dòng đầy đủ); dòng không vừa dùng bản rút gọn (không có câu hỏi tín hiệu), nhánh thấp nhất bị bỏ trước.
+- Next: chạy lại cửa sổ 2026-11-25 16:47–19:48 với `qwen2.5:7b` thành job #283 và so với #282 (B0 có được nêu trong key_findings không, còn câu "thành công" cho 5503/5760 không, warning `contradicts_rule_outcome`).
+
 ## Nhánh playbook vào prompt cửa sổ + sửa rò SQLite (2026-11-28)
 
 - Đã xong: `ai_module/dashboard_store.py` (`_GROUP_RAW_KEYS` loại `sample_log`, `playbook_samples`, `syscheck_diff` khỏi `job_groups`); `ai_module/analysis_service.py` (`format_playbook_branches_for_llm`, findings tính trước `analyze_window`, `provenance.playbook_prompt_chars`); test `tests/test_window_playbook_prompt.py` (4) và `test_store_never_persists_playbook_samples_or_syscheck_diff`.
