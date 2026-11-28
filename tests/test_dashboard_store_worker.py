@@ -1365,3 +1365,30 @@ def test_attack_chain_is_merged_into_the_same_job_and_single_delivery(monkeypatc
     first = store.claim_next_delivery()
     assert first["job_id"] == window_job_id
     assert store.claim_next_delivery() is None
+
+
+def test_store_never_persists_playbook_samples_or_syscheck_diff(tmp_path):
+    store = DashboardStore(tmp_path / "dashboard.db")
+    job_id = store.create_job(
+        "manual_window", "2026-07-30T11:00:00.000Z", "2026-07-30T12:00:00.000Z",
+        "qwen2.5:7b", "dashboard-v1",
+    )
+    aggregate = {
+        "alerts": [],
+        "groups": [{
+            "group_key": "group", "count": 2, "rule_id": "5710", "syscheck_path": "/etc/x",
+            "syscheck_diff_truncated": False,
+            "sample_log": "RAW_GROUP_SENTINEL",
+            "syscheck_diff": "> secret_token=abc",
+            "playbook_samples": [{"sample_log": "x", "srcuser": "Fake@Pass2026"}],
+        }],
+    }
+    store.replace_job_data(job_id, aggregate)
+    with closing(sqlite3.connect(tmp_path / "dashboard.db")) as connection:
+        stored = connection.execute("SELECT group_json FROM job_groups").fetchone()[0]
+    for text in ("Fake@Pass2026", "secret_token=abc", "RAW_GROUP_SENTINEL", "playbook_samples"):
+        assert text not in stored
+    group = store.get_job_detail(job_id)["groups"][0]
+    assert group["rule_id"] == "5710" and group["count"] == 2
+    assert group["syscheck_path"] == "/etc/x" and group["syscheck_diff_truncated"] is False
+    assert "playbook_samples" not in group and "syscheck_diff" not in group

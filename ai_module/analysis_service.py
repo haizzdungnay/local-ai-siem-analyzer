@@ -7,7 +7,8 @@ from threading import Lock, Thread
 from time import monotonic
 
 from extractor import _get_nested, extract_fields, format_for_llm, normalize_mitre_ids
-from playbooks import playbook_for_config, window_playbook_findings
+from playbooks import UNKNOWN_BRANCH, playbook_for_config, window_playbook_findings
+from overclaim import overclaim_check
 from reader import resolve_config_paths
 from llm import (
     adaptive_pacing_options,
@@ -381,6 +382,61 @@ def _redact_exact_sample_log_echoes(value, samples: list[str]) -> tuple[object, 
     return value, count
 
 
+MAX_PLAYBOOK_PROMPT_LINES = 12
+MAX_PLAYBOOK_PROMPT_CHARS = 1500
+_PLAYBOOK_PROMPT_HEADER = (
+    "Code-selected investigation branches (regex signals only, UNVERIFIED hypotheses, "
+    "not confirmed findings). Use them to name concrete suspicious activity in "
+    "summary/key_findings; do not treat them as proof and do not copy them as verdicts:"
+)
+
+
+def _prompt_token(value) -> str:
+    return re.sub(r"[^\w.\-/:]", "_", str(value))[:120]
+
+
+def format_playbook_branches_for_llm(findings, aggregate=None) -> str:
+    """Khối prompt ngắn từ nhánh playbook do code chọn (bỏ B_unknown).
+
+    Chỉ ghi id/số đếm/id tín hiệu trả lời "yes" và syscheck.path (đã có trong prompt).
+    Không bao giờ ghi diff, sample_log, user, next_steps hay giá trị tín hiệu.
+    Trả "" khi không có nhánh nào đã chọn.
+    """
+    paths = {}
+    for group in (aggregate or {}).get("groups") or []:
+        if isinstance(group, dict) and group.get("syscheck_path"):
+            paths[str(group.get("group_key", ""))] = group["syscheck_path"]
+    lines = []
+    for finding in findings or []:
+        if finding.get("branch_id") in (None, UNKNOWN_BRANCH):
+            continue
+        yes = ",".join(
+            _prompt_token(sid) for sid, item in (finding.get("signals") or {}).items()
+            if isinstance(item, dict) and item.get("answer") == "yes"
+        )
+        line = (
+            f"- rule={_prompt_token(finding.get('rule_id'))} "
+            f"branch={_prompt_token(finding.get('branch_id'))} "
+            f"severity={_prompt_token(finding.get('branch_severity', 'unknown'))} "
+            f"matched={finding.get('samples_matched', 0)}/{finding.get('samples_evaluated', 0)} "
+            f"signals_yes={yes or 'none'}"
+        )
+        path = paths.get(str(finding.get("group_key", "")))
+        if path:
+            line += f" path={_prompt_token(path)}"
+        lines.append(line)
+        if len(lines) >= MAX_PLAYBOOK_PROMPT_LINES:
+            break
+    if not lines:
+        return ""
+    block = _PLAYBOOK_PROMPT_HEADER
+    for line in lines:
+        if len(block) + 1 + len(line) > MAX_PLAYBOOK_PROMPT_CHARS:
+            break
+        block += "\n" + line
+    return block if "\n" in block else ""
+
+
 class AnalysisService:
     """Own one process-lifetime RAG instance and expose reusable analysis methods."""
 
@@ -654,6 +710,14 @@ class AnalysisService:
         )
         rag_context, rag_provenance = self._window_rag_context(aggregate)
         prompt = self._append_window_rag_context(prompt, rag_context, rag_provenance)
+        # Playbook code-only tính trước để đưa nhánh đã chọn vào prompt (giả thuyết chưa xác minh).
+        findings = window_playbook_findings(
+            aggregate, lambda rule_id: playbook_for_config(self.cfg, rule_id), language,
+            max_items=int(dashboard_cfg.get("max_playbook_groups", 20)),
+        )
+        playbook_block = format_playbook_branches_for_llm(findings, aggregate)
+        if playbook_block:
+            prompt = f"{prompt}\n\n{playbook_block}"
         trusted_evidence = security_test_evidence_contract(aggregate)
         result, provenance = analyze_window(
             prompt,
@@ -680,16 +744,16 @@ class AnalysisService:
         provenance["redacted_exact_sample_log_echoes"] = echo_redaction_count
         # Playbook cho các nhóm đứng đầu: code-only, không gọi thêm LLM, không đổi severity
         # của phân tích cửa sổ (nhánh chỉ là hướng điều tra chưa xác minh).
-        findings = window_playbook_findings(
-            aggregate, lambda rule_id: playbook_for_config(self.cfg, rule_id), language,
-            max_items=int(dashboard_cfg.get("max_playbook_groups", 20)),
-        )
+        # (findings đã tính trước analyze_window.)
         if findings:
             result = {**result, "playbooks": findings}
+        provenance["playbook_prompt_chars"] = len(playbook_block)
         provenance["playbooks"] = [
             {"rule_id": f["rule_id"], "branch_id": f["branch_id"], "sha256": f["sha256"],
              "version": f["version"]} for f in findings
         ]
+        # Chỉ cảnh báo trong provenance; không sửa summary/severity (chạy trên result đã redact).
+        provenance["overclaim_check"] = overclaim_check(result, findings, aggregate)
         warning = result["severity"] == "unknown" or echo_redaction_count > 0
         return {
             "analysis": result,

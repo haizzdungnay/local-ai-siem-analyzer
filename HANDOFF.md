@@ -1,9 +1,17 @@
 # Handoff — local-ai-siem-analyzer
 
-Ngày cập nhật 2026-11-27
+Ngày cập nhật 2026-11-28
 
 
 
+
+## Nhánh playbook vào prompt cửa sổ + sửa rò SQLite (2026-11-28)
+
+- Đã xong: `ai_module/dashboard_store.py` (`_GROUP_RAW_KEYS` loại `sample_log`, `playbook_samples`, `syscheck_diff` khỏi `job_groups`); `ai_module/analysis_service.py` (`format_playbook_branches_for_llm`, findings tính trước `analyze_window`, `provenance.playbook_prompt_chars`); test `tests/test_window_playbook_prompt.py` (4) và `test_store_never_persists_playbook_samples_or_syscheck_diff`.
+- Verification (Linux, Python 3): `python -m pytest -q` **647 passed, 3 skipped**; `git diff --check` sạch. Đã grep: không nơi nào đọc `playbook_samples`/`syscheck_diff` từ job đã lưu; worker truyền aggregate trong bộ nhớ, retry tải lại từ Indexer.
+- Giới hạn: chỉ đổi prompt phân tích cửa sổ dashboard; không đổi GĐ4 per-alert (`analyze_alert`), `format_window_for_llm()` hay định dạng SFT. Severity vẫn không bị hậu xử lý. Chưa đo tác dụng với model thật; job cũ trong SQLite có thể còn `playbook_samples`/`syscheck_diff` (không migrate).
+- Overclaim check: `ai_module/overclaim.py` + gọi trong `analyze_aggregate` (provenance) + `dashboard_worker` thêm warning `overclaim_unverified_branch` khi `status==flagged`; test `tests/test_overclaim_check.py`. Verification: `python -m pytest -q` **666 passed, 3 skipped**; `git diff --check` sạch. Giới hạn: heuristic từ khóa Việt+Anh, bỏ sót diễn đạt khác ("kiểm soát máy"); chỉ cảnh báo, không viết lại text/severity; bằng chứng thành công chỉ tính 5303/5304. Cụm vắng bằng chứng ("không phát hiện", "chưa có bằng chứng", "no evidence"...) đứng trước ASSERT trong mệnh đề thì không bị gắn cờ.
+- Next: chạy lại cửa sổ dashboard 2026-11-25 16:47–19:48 với `qwen2.5:7b` và so summary/key_findings với job #281.
 
 ## Playbook theo lab 25/11 (2026-11-28)
 

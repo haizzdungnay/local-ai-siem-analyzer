@@ -203,6 +203,11 @@ def _search_terms(aggregate):
     return sorted(terms)[:60]
 
 
+# Dữ liệu thô của nhóm chỉ dùng trong bộ nhớ khi phân tích; không ghi xuống SQLite
+# (playbook_samples chứa srcuser/dstuser, syscheck_diff là diff FIM có thể chứa bí mật).
+_GROUP_RAW_KEYS = frozenset({"sample_log", "playbook_samples", "syscheck_diff"})
+
+
 class DashboardStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -1390,7 +1395,7 @@ class DashboardStore:
             connection.executemany(
                 "INSERT INTO job_groups(job_id,group_key,group_json) VALUES(?,?,?)",
                 [(job_id, group["group_key"], json.dumps(
-                    {key: value for key, value in group.items() if key != "sample_log"},
+                    {key: value for key, value in group.items() if key not in _GROUP_RAW_KEYS},
                     ensure_ascii=False,
                 ))
                  for group in aggregate["groups"]],

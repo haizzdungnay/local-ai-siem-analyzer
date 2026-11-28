@@ -377,6 +377,8 @@ class DashboardRuntime:
                 warnings.append("RAG đang khởi tạo. Kết quả này dựa trên alert Wazuh.")
             if provenance.get("redacted_exact_sample_log_echoes", 0):
                 warnings.append("Đã loại trích đoạn sample log bị model lặp lại khỏi kết quả lưu")
+            if provenance.get("overclaim_check", {}).get("status") == "flagged":
+                warnings.append("overclaim_unverified_branch")
             provenance.setdefault("requested_language", job.get("language", "vi"))
             provenance.setdefault(
                 "effective_language",
