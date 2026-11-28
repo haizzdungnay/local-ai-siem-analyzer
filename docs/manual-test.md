@@ -200,6 +200,21 @@ exit
 
 ---
 
+### 2.5 Sau khi suspend/resume máy ảo và kiểm agent gửi log (lab 2026-11-25)
+
+- Sau mỗi lần suspend máy SIEM: chạy `sudo systemctl restart docker` rồi đợi Indexer về `GREEN` trước khi làm lab (gặp 3/3 lần). Không suy ra "mạng Docker ổn" từ `curl :9200` trả `401`: cổng 9200 thuộc container indexer, còn agent gửi log qua cổng 1514 vào container manager, hai đường NAT riêng.
+- Agent có gửi được log hay không: kiểm trên SIEM, không chỉ `systemctl is-active` trên victim.
+
+```bash
+docker exec single-node-wazuh.manager-1 /var/ossec/bin/agent_control -l
+docker exec single-node-wazuh.manager-1 grep -E 'tcp_sessions|recv_bytes' /var/ossec/var/run/wazuh-remoted.state
+```
+
+  Đạt khi agent `Active`, `tcp_sessions` ≥ 1, `recv_bytes` > 0. `nc -zv <SIEM> 1514` báo `succeeded` không đủ: docker-proxy nhận TCP kể cả khi không chuyển được vào container. Victim báo `Duplicate agent name` / `Requesting a key` là triệu chứng phụ của việc không kết nối được, không xóa agent rồi đăng ký lại (mất `agent.id` 001).
+- Log xác thực bị thu trùng nếu `ossec.conf` của victim có cả `<location>journald</location>` lẫn `/var/log/auth.log`: mỗi dòng ra 2 alert, một bản giờ địa phương và một bản giờ UTC trong `full_log`. Kiểm `agent.id:"001" and location:"journald"` trong Discover; lab giữ `auth.log` và comment khối journald.
+- Sau khi khôi phục snapshot victim: kiểm lại `agent_control -l` và cấu hình FIM (`report_changes`, `nodiff`) vì có thể quay về cấu hình cũ.
+- Lab có `/etc/sudoers.d/99-claude-lab` (`trnguyn ALL=(ALL) NOPASSWD: ALL`, tạo 2026-07-28): sudo không hỏi mật khẩu nên không sinh dòng xác thực sudo (5401/5404/5503 cho sudo). Ghi rõ khi trình bày kết quả.
+
 ## 3. Kiểm tra Victim Ubuntu `.20`
 
 **Máy chạy:** Host Windows

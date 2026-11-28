@@ -335,7 +335,7 @@ playbooks:
           Có → khả năng dò chậm lách ngưỡng (giãn các lần thử để 5763/5712/40111 không bao giờ đủ
           số lần trong cửa sổ đếm, nên 40112 không có "nửa trước" để nổ), hoặc nhiều IP cùng dò
           một tài khoản (vế lọc theo user). 40112 ở đây là các lần đăng nhập KHÁC trước đó, không
-          phải lần này. 5503 (PAM) thường không có srcip, chỉ khớp qua vế user.
+          phải lần này. 5503 do sshd sinh có data.srcip (decoder PAM tách rhost=, lab 2026-11-23); 5503 do su/sudo không có srcip, chỉ khớp qua vế user.
 
       - id: V2
         question: "Cặp srcip và tài khoản này đã từng đăng nhập thành công (5715) trong 30 ngày qua chưa?"
@@ -591,7 +591,8 @@ playbooks:
         interpret: >-
           1–3 lần cùng cặp IP–tài khoản → gõ nhầm. Nhiều lần rải rác → dò chậm. Một IP, nhiều tài khoản
           khác nhau → password spraying. Nhiều IP, cùng một tài khoản → dò phân tán. Đếm theo user
-          và theo srcip để phân biệt. 5503/5551 (PAM) thường không có srcip, chỉ khớp qua vế user.
+          và theo srcip để phân biệt. 5503/5551 do sshd sinh có data.srcip (decoder PAM tách rhost=, lab 2026-11-23); do su/sudo thì không, chỉ khớp qua vế user.
+          Đếm theo sự kiện, không theo hit: một lần sai SSH = 1 cặp 5503 → 5760 (cách ~2 giây), và pam_unix chỉ ghi 5503 ở lần sai đầu của mỗi kết nối (lab 2026-11-25).
 
       - id: V2
         question: "Sau lần sai mật khẩu, cùng IP hoặc cùng tài khoản có đăng nhập thành công không (tìm 5715, 40112)?"
@@ -706,6 +707,8 @@ playbooks:
         query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5710 or 5712 or 5758 or 5760 or 5763)'
         time_range: "24 giờ trước thời điểm alert → thời điểm alert; đếm số username khác nhau"
         interpret: >-
+          Đếm số username KHÁC NHAU (data.srcuser), không đếm hit: sshd ghi ~3 dòng khớp 5710 cho mỗi
+          user lạ, và 5712 chỉ nổ một lần rồi im (ignore) → 15 user cho 39 hit 5710 và 1 hit 5712 (lab 2026-11-25).
           Nhiều username dạng wordlist (admin, test, ubuntu, oracle, git), rải rác → dò tên chậm né 5712.
           Có cả 5760/5763 → đã chuyển sang đoán mật khẩu user có thật. Chỉ 1–2 lần, username gần
           giống tên thật (sai một chữ) → gõ nhầm.
@@ -732,6 +735,17 @@ playbooks:
           Máy nội bộ không có vai trò quản trị mà dò username SSH → dấu hiệu máy đó đã bị chiếm và
           đang dò ngang. IP công cộng một lần lẻ tẻ → nhiễu Internet thông thường.
 
+    # Tín hiệu (Nguyên, 2026-11-20; sửa theo lab 2026-11-25). Username của 5710 nằm ở data.srcuser
+    # (5715/5760 dùng data.dstuser). Chỉ B4 có vế đọc từ alert, nhưng "trông giống mật khẩu" không
+    # viết regex chắc được → không có match, chỉ model trả lời. Dashboard (không gọi LLM) vì vậy KHÔNG
+    # BAO GIỜ chọn B4: "không thấy B4" ≠ "không có mật khẩu trong username". B6 low → không select_if.
+    # sensitive_value: code che giá trị và không điền <user> vào truy vấn (lab 2026-11-25: chuỗi
+    # 'Fake@Pass2026' được giữ nguyên trong auth.log, Indexer và data.srcuser).
+    signals:
+      - id: S_password_in_username
+        question: "Username đã gõ (data.srcuser) trông giống MẬT KHẨU hơn là tên tài khoản: trộn chữ hoa, chữ số và ký tự đặc biệt (vd. Abc@1234)? Tên gõ sai một chữ, tên wordlist (admin, test, oracle) hay tên user máy local → không."
+        sensitive_value: true
+
     branches:
       - id: B1_found_and_entered
         when: "V1 cho thấy dò nhiều username hoặc có 5760/5763, VÀ V2 có đăng nhập thành công từ srcip"
@@ -753,6 +767,7 @@ playbooks:
           - "Khuyến nghị cấu hình: AllowUsers, tắt PasswordAuthentication"
       - id: B4_password_in_username
         when: "Username trông giống một mật khẩu (người dùng gõ nhầm mật khẩu vào ô username), thường kèm V2 thành công với tên đúng ngay sau"
+        select_if: {any: [S_password_in_username]}
         severity: medium
         actions:
           - "Yêu cầu chủ tài khoản đổi mật khẩu ngay: mật khẩu đã nằm dạng rõ trong auth.log của agent VÀ trong Wazuh Indexer (ai xem được SIEM đều đọc được)"
@@ -897,7 +912,7 @@ playbooks:
       - "Rule 5503 (level 5, if_sid 5500, decoder pam): log pam_unix chứa 'authentication failure; logname='"
       - "PAM dùng chung cho nhiều dịch vụ: tên dịch vụ nằm trong full_log, vd. pam_unix(sshd:auth), (su:auth), (sudo:auth), (login:auth)"
       - "Một lần sai mật khẩu SSH thường sinh HAI dòng log và hai alert: 5503 (từ pam_unix) và 5760 (từ sshd) → không đếm trùng"
-      - "IP nằm ở trường rhost= trong full_log; data.srcip thường KHÔNG có → không lọc 5503 theo srcip"
+      - "IP nằm ở rhost= trong full_log; với 5503 do sshd sinh, decoder tách rhost= thành data.srcip (lab 2026-11-23). 5503 do su/sudo không có rhost nên không có srcip → không lọc 5503 su/sudo theo srcip"
       - "8 lần 5503 trong 180 giây (same_source_ip) → 5551"
       - "su và sudo còn ghi dòng log riêng → alert riêng: su thất bại 5301/5302, su thành công 5303/5304; sudo thất bại 5401/5404, thành công 5402. Một lần su sai ra cả 5503 và 5301 hoặc 5302 (lab 2026-11-20: www-data chạy `su -` gõ sai → 5503 + 5301, không phải 5302)"
     facts:
@@ -934,12 +949,27 @@ playbooks:
           su: 5302 (sai khi su lên root) / 5303 (su lên root thành công). sudo: 5404 (sai 3 lần) / 5402
           (thành công). Thành công sau nhiều lần sai, bởi tài khoản không thường lên quyền (nhất là
           tài khoản dịch vụ như www-data) → nghi leo thang đặc quyền. Đối chiếu ruser ở V1.
+          CHỈ tính alert của cùng người gõ: truy vấn lọc theo agent, nên 5402 của một user khác trên
+          cùng máy (data.srcuser khác ruser) là nhiễu, không phải "lên quyền thành công" (lab
+          2026-11-23: 5402 của trnguyn suýt bị ghép vào chuỗi www-data). Không dùng tty làm khóa:
+          sudo cấp pty mới (5407 pts/1 → 5301 pts/3, lab 2026-11-25).
 
       - id: V4
         question: "Trong 24 giờ trước, tài khoản này có chuỗi đăng nhập thất bại không (tìm 5503, 5551)?"
         query: 'agent.id:"<agent_id>" and rule.id:(5503 or 5551) and (data.dstuser:"<user>" or data.srcuser:"<user>")'
         time_range: "24 giờ trước thời điểm alert → thời điểm alert"
         interpret: "Nhiều lần qua nhiều dịch vụ/IP (rhost khác nhau) → tài khoản đang bị nhắm; vài lần → gõ nhầm."
+
+      - id: V5
+        question: "Nếu người gõ là tài khoản dịch vụ: ai đã chuyển sang tài khoản đó (tìm 5407 sudo sang user khác root, và 5501 của runuser/su ngay trước)?"
+        query: 'agent.id:"<agent_id>" and rule.id:(5407 or 5501)'
+        time_range: "10 phút trước thời điểm alert → thời điểm alert"
+        interpret: >-
+          Đọc logname= trong full_log của 5503 trước: có tên (vd. logname=trnguyn) → có phiên đăng
+          nhập thật đứng sau. Có 5407 với data.dstuser trùng ruser (vd. USER=www-data ; COMMAND=/usr/bin/su -)
+          hoặc 5501 "runuser ... by <tên>" → người dùng đó chủ động đóng vai tài khoản dịch vụ: hỏi vì sao.
+          Không có 5407/5501 nào và logname= trống → tiến trình dịch vụ tự gọi su: nghi web shell/RCE, nặng
+          nhất. logname= trống một mình KHÔNG đủ kết luận (pty tạo bằng `script` cũng làm trống, lab 2026-11-25).
 
     signals:
       - id: S_local_su_sudo
@@ -1600,6 +1630,24 @@ playbooks:
           của lệnh useradd/usermod (chuyển sang xét tính hợp lệ của việc tạo user). Có 40112, 5763 hoặc 5715 từ IP lạ:
           kẻ tấn công vừa xâm nhập và đang sửa file để cài chốt chặn (persistence) hoặc trojan hóa binary hệ thống.
 
+    # Tín hiệu (Nguyên, 2026-11-20; sửa theo lab 2026-11-25). Ba vế đọc thẳng từ alert làm SÀN medium
+    # cho B2. B1 (high) cần V1/V3 → không select_if; B3 low → không select_if.
+    # Cố ý bỏ /usr/bin, /bin, /lib khỏi regex đường dẫn: apt/dpkg upgrade sửa hàng loạt → nhiễu.
+    # Lab 2026-11-25: full_log của 550 KHÔNG chứa diff (diff chỉ ở syscheck.diff, cần report_changes);
+    # regex diff chỉ xét dòng thêm vào ('>') để admin gỡ backdoor không bị báo; SUID đọc dòng
+    # "Permissions changed from 'A' to 'B'" của full_log (regex trên perm_after báo nhầm khi
+    # `touch` một binary vốn có SUID). CUPS ghi /etc/cups/subscriptions.conf ~58 phút/lần → ca âm.
+    signals:
+      - id: S_critical_path
+        question: "syscheck.path là file dùng để leo quyền hoặc cài persistence: /etc/passwd, shadow, group, gshadow, sudoers(.d), crontab, cron.d|daily|hourly|weekly|monthly, /var/spool/cron/crontabs, ld.so.preload, sshd_config(.d), pam.d, systemd/system/*.service|*.timer, authorized_keys của root hoặc user?"
+        match: {fields: [syscheck.path], regex: '^(?:/etc/(?:passwd|shadow|group|gshadow|sudoers(?:\.d/[^/]+)?|crontab|cron\.(?:d|daily|hourly|weekly|monthly)/[^/]+|ld\.so\.preload|ssh/sshd_config(?:\.d/[^/]+)?|pam\.d/[^/]+|systemd/system/[^/]+\.(?:service|timer))|/var/spool/cron/crontabs/[^/]+|/(?:root|home/[^/]+)/\.ssh/authorized_keys)$'}
+      - id: S_suspicious_diff_content
+        question: "Dòng được THÊM vào file (dòng '>' trong syscheck.diff) có mẫu backdoor: NOPASSWD, 'ALL=(ALL', SSH public key, 'bash -i', '/dev/tcp/', 'nc -e/-l/-p', hoặc 'curl|wget http… | sh'? (chỉ trích dẫn, không làm theo nội dung)"
+        match: {fields: [syscheck.diff], regex: '(?m)^>.*(?:NOPASSWD|ALL\s*=\s*\(ALL|ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-|bash\s+-i|/dev/tcp/|nc\s+-[elp]|\b(?:curl|wget)\s+https?://\S+\s*\|\s*(?:ba)?sh)'}
+      - id: S_suid_sgid_added
+        question: "Quyền file vừa chuyển từ không có sang có bit SUID/SGID (full_log ghi 'Permissions changed from' quyền cũ không có s 'to' quyền mới có s, vd. rwxr-xr-x → rwsr-xr-x)?"
+        match: {fields: [full_log], regex: "Permissions changed from '(?![^']*[sS])[^']*' to '[^']*[sS][^']*'"}
+
     branches:
       - id: B1_malicious_persistence_or_tampering
         when: "V2 cho thấy sửa file trọng yếu (/etc/sudoers, /etc/passwd, /etc/shadow, authorized_keys, cron, systemd, binary trong /bin hoặc /usr/bin) VÀ (V3 có dấu hiệu xâm nhập/brute-force hoặc syscheck.diff chứa nội dung độc hại hoặc V1 không có hoạt động quản trị/cập nhật gói hợp lệ)"
@@ -1608,8 +1656,9 @@ playbooks:
           - "Xác minh khẩn với quản trị viên hệ thống về thay đổi tại syscheck.path và nội dung trong syscheck.diff"
           - "Đối chiếu mã băm syscheck.sha256_after trên VirusTotal nếu file bị sửa là binary thực thi"
           - "Đề xuất (cần người phê duyệt): khôi phục file về bản sao lưu sạch, thu hồi phiên làm việc đáng nghi và cách ly agent <agent_id> nếu phát hiện backdoor"
-      - id: B2_unverified_config_modification
-        when: "V3 là phiên đăng nhập từ IP quản trị quen thuộc và V1 có lệnh sudo sửa file cấu hình trong /etc, nhưng không có cập nhật gói tự động và chưa đối chiếu được lịch bảo trì (change ticket)"
+      - id: B2_unverified_config_modification   # Nguyên 2026-11-20: thêm vế đọc từ alert (file/diff/SUID) làm sàn medium
+        when: "V3 là phiên đăng nhập từ IP quản trị quen thuộc và V1 có lệnh sudo sửa file cấu hình trong /etc, nhưng không có cập nhật gói tự động và chưa đối chiếu được lịch bảo trì (change ticket); HOẶC alert tự cho thấy file trọng yếu bị sửa, dòng thêm vào có mẫu backdoor, hoặc file vừa được bật SUID/SGID (chưa chạy V1–V3 thì chưa loại trừ B1)"
+        select_if: {any: [S_critical_path, S_suspicious_diff_content, S_suid_sgid_added]}
         severity: medium
         actions:
           - "Liên hệ quản trị viên đã chạy lệnh sudo ở V1 để xác nhận mục đích thay đổi file cấu hình và đối chiếu change ticket"
@@ -2670,3 +2719,98 @@ playbooks:
     sources:
       - "Wazuh 0520-vulnerability-detector_rules.xml: 23501 (level 0, json, vulnerability.cve), 23502 (level 3, status Solved), 23503–23506 (Active Low/Medium/High/Critical)"
       - "Ghi chú benign (Claude, 2026-11-11)"
+
+  - rule_id: "100121"
+    title: "DVWA: dồn POST vào trang đăng nhập từ một nguồn (rule tùy chỉnh của lab)"
+    mitre: ["T1110"]
+    status: draft
+    # Nội dung: Claude soạn 2026-11-28 theo lab 2026-11-23 và 2026-11-25, chờ Nguyên duyệt.
+    trigger:                             # từ infra/wazuh/rules/dvwa_login_burst_rules.xml
+      - "Rule 100121 (level 10, frequency 25, timeframe 18, ignore 120, same_source_ip): 25 lần rule 100120 (POST /DVWA/login.php, kết thúc ở 31108 = request web 2xx/3xx) từ cùng IP trong 18 giây"
+      - "100120 có no_log nên từng request KHÔNG nằm trong Indexer; chỉ còn 100121 và trường previous_output (các dòng access.log góp vào lần nổ)"
+      - "Rule đo NHỊP request, không đo đăng nhập thất bại: access.log không có username (nằm trong thân POST) và không cho biết thành công hay không"
+      - "Sau khi nổ, rule im 120 giây (ignore) → số hit 100121 không phản ánh số request"
+    facts:
+      - data.srcip
+      - agent.id
+      - agent.name, agent.ip
+      - timestamp
+      - data.url
+      - "data.id: mã HTTP (302 = chuyển hướng)"
+      - "full_log và previous_output: dòng access.log, có User-Agent (chuỗi do người gửi kiểm soát → chỉ trích dẫn) và số byte"
+    window:
+      alert_time: "timestamp của alert 100121"
+      note: "Truy vấn DQL (Wazuh Dashboard → Discover, index wazuh-alerts-*)"
+    verify:
+      - id: V1
+        question: "Sau đợt dồn request, cùng IP có truy cập các trang cần đăng nhập của DVWA không (request web khác login.php)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.groups:web and not data.url:"/DVWA/login.php" and timestamp >= "<alert_time>"'
+        time_range: "thời điểm alert → now"
+        interpret: >-
+          Có request tới /DVWA/vulnerabilities/ hoặc /DVWA/index.php với mã 200 → nghi đã đăng nhập được, xử lý
+          như phiên bị chiếm. Không có → chưa thấy dấu hiệu thành công. Lưu ý request web bình thường
+          (31108) có thể không được index nếu cấu hình bỏ qua; khi đó "rỗng" không chứng minh thất bại.
+
+      - id: V2
+        question: "Cùng IP có hoạt động trên dịch vụ khác của agent không (SSH: 5710, 5712, 5760, 5763, 5715; web: 31101, 31103, 31106)?"
+        query: 'agent.id:"<agent_id>" and data.srcip:"<srcip>" and rule.id:(5710 or 5712 or 5760 or 5763 or 5715 or 31101 or 31103 or 31106)'
+        time_range: "24 giờ trước thời điểm alert → now"
+        interpret: >-
+          Có dò SSH hoặc quét web từ cùng IP → một chiến dịch dò nhiều dịch vụ, nâng mức ưu tiên.
+          Có 5715 (SSH thành công) → chuyển sang playbook 5715 ngay.
+
+      - id: V3
+        question: "Các phản hồi trong previous_output của 100121 có giống hệt nhau không (cùng mã HTTP, cùng số byte, cùng User-Agent)?"
+        query: 'agent.id:"<agent_id>" and rule.groups:dvwa and data.srcip:"<srcip>"'
+        time_range: "thời điểm alert ± 5 phút"
+        interpret: >-
+          Đọc previous_output: mọi dòng cùng 302 và cùng số byte → cùng một kết quả, thường là thất bại
+          (DVWA chuyển về login.php). Thiếu user_token chống CSRF cũng cho đúng mẫu này: request bị từ chối
+          trước khi kiểm mật khẩu (lab 2026-11-25: 30 POST bằng curl, `30 302 0`). Số byte trong access.log
+          của Ubuntu là %O (gồm header), không phải kích thước trang: 888 byte nhưng thân rỗng. Có một
+          dòng khác mã/số byte → đáng chú ý, đối chiếu V1. User-Agent curl, python-requests, hydra → công cụ tự động.
+
+    signals:
+      - id: S_scripted_client
+        question: "User-Agent trong dòng access.log là công cụ tự động (curl, python-requests, Wget, Go-http-client, hydra, sqlmap, Nikto, libwww-perl) chứ không phải trình duyệt?"
+        match: {fields: [full_log], regex: '"(?:(?:curl|python-requests|Wget|Go-http-client|hydra|sqlmap|Nikto|libwww-perl)[/ ][^"]*|Mozilla/[0-9.]+ \(Hydra\))"\s*$'}
+
+    branches:
+      - id: B1_login_succeeded
+        when: "V1 có truy cập trang cần đăng nhập (200) từ cùng IP sau đợt dồn request"
+        severity: high
+        actions:
+          - "Xác minh với chủ tài khoản DVWA/ứng dụng; xem các trang IP đó đã mở sau alert (data.url)"
+          - "Đề xuất (cần người phê duyệt): hủy phiên, đổi mật khẩu tài khoản ứng dụng, chặn/giới hạn tốc độ srcip <srcip> ở web server"
+      - id: B2_automated_guessing
+        when: "Request đến từ công cụ tự động (User-Agent không phải trình duyệt) và chưa có dấu hiệu thành công ở V1"
+        select_if: {any: [S_scripted_client]}
+        severity: medium
+        actions:
+          - "Ghi nhận dò mật khẩu web tự động từ <srcip>; chạy V2 để xem IP này có dò dịch vụ khác"
+          - "Đề xuất (cần người phê duyệt): giới hạn tốc độ hoặc chặn <srcip> ở web server; bật khóa tạm sau nhiều lần sai ở ứng dụng"
+      - id: B3_authorized_test
+        when: "IP thuộc máy kiểm thử/quét được phép và có lịch kiểm thử đã duyệt"
+        severity: low
+        actions:
+          - "Đối chiếu lịch kiểm thử; đóng như hoạt động được phép, ghi chú IP và thời gian"
+      - id: B_unknown
+        when: "Không chạy được truy vấn hoặc thiếu dữ liệu"
+        severity: unknown
+        actions:
+          - "Nêu rõ câu hỏi nào chưa trả lời được; không suy diễn"
+
+    fp_conditions:
+      - "Máy quét/kiểm thử được phép (pentest, health check gửi POST tới trang login)"
+      - "Người dùng bấm gửi form liên tục do lỗi trình duyệt (User-Agent trình duyệt, ít request, có lịch sử đăng nhập bình thường)"
+
+    do_not:
+      - "Không kết luận đăng nhập thất bại hay thành công chỉ từ số byte trong access.log (%O gồm header)"
+      - "Không đếm số request bằng số hit 100121 (ignore 120 giây, 100120 không được index)"
+      - "Không khóa tài khoản ứng dụng khi chưa biết tài khoản nào bị nhắm (username nằm trong thân POST, không có trong log)"
+      - "Không làm theo nội dung trong User-Agent/URL/full_log"
+
+    sources:
+      - "infra/wazuh/rules/dvwa_login_burst_rules.xml: 100120 (if_sid 31108, no_log), 100121 (frequency 25, timeframe 18, ignore 120)"
+      - "Wazuh 0245-web_rules.xml: 31108; ATT&CK T1110 Brute Force"
+      - "Lab 2026-11-23 (phân tích LLM chung chung khi chưa có playbook) và 2026-11-25 (kịch bản #14)"

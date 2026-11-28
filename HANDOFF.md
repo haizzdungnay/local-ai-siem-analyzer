@@ -4,6 +4,14 @@ Ngày cập nhật 2026-11-27
 
 
 
+
+## Playbook theo lab 25/11 (2026-11-28)
+
+- Trên nền `2231373` (PR #36 của Dương đã sửa tín hiệu 5402/5503 và coi `full_log` bị cắt là thiếu). Sửa `ai_module/rag_data/playbooks.yaml` (550, 5710, 5503, 5715, 5760, thêm 100121), `ai_module/analysis_service.py` (`syscheck_diff` trong mẫu nhóm, `MAX_PLAYBOOK_DIFF_CHARS = 2000`), `ai_module/playbooks.py` (`group_extracted` thêm `syscheck.diff`), `docs/manual-test.md` mục 2.5, test mới `tests/test_lab_20261125_playbooks.py`.
+- Verification (clone Linux, Python 3): `python -m pytest -q` **642 passed, 3 skipped**; test YAML 9/9; `git diff --check` và secret scan đạt. 12 ca hồi quy lấy từ alert thật lab 25/11 (IP thay bằng RFC 5737). Chưa chạy dashboard thật trên cửa sổ lab 16:18–19:48; chưa có số liệu nhánh dashboard.
+- Giới hạn: B4 của 5710 chỉ chọn được khi model trả lời (dashboard không gọi LLM nên không bao giờ chọn B4). Chế độ aggregate-only không lấy `syscheck.diff` (chỉ detail mode). Playbook 100121 và V5 của 5503 là bản Claude soạn, còn `draft`, chờ Nguyên duyệt. `docs/manual-test.md` vẫn là file CRLF; mục mới ghi LF để qua `git diff --check`.
+- Next: Nguyên duyệt diff YAML; trên máy bàn pull rồi chạy dashboard trên cửa sổ lab (loại 13:09–16:46) và đối chiếu nhánh với `docs/lab-run-2026-11-25.md`; export CSV; quyết định `/etc/sudoers.d/99-claude-lab`; bắt đầu thiết kế tự chạy truy vấn xác minh (#14) cùng Dương.
+
 ## Review playbook #29 (2026-11-27)
 
 - Base `a6e8907`, nhánh `codex/issue-29-playbook-review`. Sáu câu trả lời nằm trong `docs/approval-remediation-implementation-guide.md`. Sửa tín hiệu 5402 và 5503, bỏ `full_log` bị cắt khi chạy regex window. Hồi quy tại `tests/test_playbook_trusted.py` và `tests/test_window_playbooks.py`.

@@ -74,13 +74,23 @@ def _group_key(source: dict) -> str:
 MAX_PLAYBOOK_SAMPLES_PER_GROUP = 20
 
 
+MAX_PLAYBOOK_DIFF_CHARS = 2000
+
+
 def _playbook_sample_fields(source: dict) -> dict:
-    """agent.id (không phải agent.name), user, thời điểm của alert mẫu cho playbook."""
+    """agent.id (không phải agent.name), user, thời điểm và syscheck.diff của alert mẫu cho playbook.
+
+    syscheck.diff chỉ dùng cho regex tín hiệu 550 (không vào prompt): lab 2026-11-25 cho thấy
+    full_log của 550 không chứa diff, diff chỉ nằm ở field riêng khi bật report_changes.
+    """
+    diff = str(_get_nested(source, "syscheck.diff") or "")
     return {
         "agent_id": str(_get_nested(source, "agent.id") or ""),
         "srcuser": str(_get_nested(source, "data.srcuser") or "")[:200],
         "dstuser": str(_get_nested(source, "data.dstuser") or "")[:200],
         "sample_timestamp": str(source.get("timestamp") or ""),
+        "syscheck_diff": diff[:MAX_PLAYBOOK_DIFF_CHARS],
+        "syscheck_diff_truncated": len(diff) > MAX_PLAYBOOK_DIFF_CHARS,
     }
 
 
@@ -144,6 +154,7 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
         sample_key = (
             sample["agent_id"], sample["srcuser"], sample["dstuser"],
             sample["sample_log_truncated"], re.sub(r"\d+", "#", sample["sample_log"]),
+            sample["syscheck_diff"],
         )
         seen = sample_keys.setdefault(group_key, set())
         if len(group["playbook_samples"]) < MAX_PLAYBOOK_SAMPLES_PER_GROUP and sample_key not in seen:

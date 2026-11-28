@@ -318,6 +318,8 @@ def group_extracted(group: dict) -> dict:
         "timestamp": group.get("sample_timestamp"),
         # ponytail: treat partial logs as missing for regex. Evaluate full source before capping if needed.
         "full_log": None if group.get("sample_log_truncated") else group.get("sample_log"),
+        # Diff bị cắt coi như thiếu (giống full_log): dòng backdoor có thể nằm ở phần bị cắt.
+        "syscheck.diff": None if group.get("syscheck_diff_truncated") else group.get("syscheck_diff"),
     }
     return {key: str(value) for key, value in mapping.items() if value not in (None, "")}
 
