@@ -332,6 +332,34 @@ def _group_samples(group: dict) -> list[dict]:
     return [{**base, **s} for s in samples] or [group]
 
 
+SUDO_COMMAND_RULE_IDS = frozenset({"5402", "5403", "5407"})
+_COMMAND_TOKEN_RE = re.compile(r"[A-Za-z0-9_./+\-]{1,120}")
+
+
+def summarize_command(command: str) -> str:
+    """data.command → "<executable> (<n> args)"; không bao giờ giữ đối số (có thể chứa mật khẩu)."""
+    tokens = str(command or "").split()
+    if not tokens:
+        return ""
+    # Token đầu không phải đường dẫn thuần (vd. VAR=secret cmd) thì không trích nguyên văn.
+    head = tokens[0] if _COMMAND_TOKEN_RE.fullmatch(tokens[0]) else "<unparsed>"
+    return f"{head} ({len(tokens) - 1} args)"
+
+
+def _matched_sample(rule_id: str, group: dict, sample: dict) -> dict:
+    """Trỏ tới alert mẫu ĐẦU TIÊN khớp nhánh đã chọn: chỉ field định vị, không nhạy cảm."""
+    pointer = {}
+    if sample.get("sample_timestamp"):
+        pointer["timestamp"] = str(sample["sample_timestamp"])[:64]
+    if rule_id in SUDO_COMMAND_RULE_IDS:
+        command = summarize_command(sample.get("command"))
+        if command:
+            pointer["command"] = command
+    if group.get("syscheck_path"):
+        pointer["syscheck_path"] = str(group["syscheck_path"])[:300]
+    return pointer
+
+
 def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
                              max_items: int = 20) -> list[dict]:
     """Code-only (cách A): với các nhóm có playbook, chạy regex tín hiệu trên TỪNG alert mẫu
@@ -355,9 +383,9 @@ def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
             branch_id = select_branch(entry, answers) if answers else UNKNOWN_BRANCH
             rank = SEVERITY_RANK.get((get_branch(entry, branch_id) or {}).get("severity"), -1) \
                 if branch_id != UNKNOWN_BRANCH else -1
-            evaluated.append((rank, branch_id, extracted, answers))
+            evaluated.append((rank, branch_id, extracted, answers, sample))
         best = max(evaluated, key=lambda item: item[0])     # cùng mức: giữ alert đến trước
-        rank, branch_id, extracted, answers = best
+        rank, branch_id, extracted, answers, _ = best
         matched = sum(1 for item in evaluated if item[1] == branch_id)
         if has_signals(entry):
             steps = render_signal_next_steps(entry, extracted, answers, branch_id, language,
@@ -365,6 +393,13 @@ def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
         else:
             steps = render_next_steps(entry, extracted, language)
         branch = get_branch(entry, branch_id) or {}
+        matched_sample = {}
+        if branch_id != UNKNOWN_BRANCH and not has_sensitive_values(entry):
+            # Mẫu đáng ngờ nhất của nhánh: nhiều tín hiệu "yes" nhất; hòa thì giữ mẫu đến trước.
+            candidates = [item for item in evaluated if item[1] == branch_id]
+            top = max(candidates, key=lambda item: sum(
+                1 for a in item[3].values() if a.get("answer") == "yes"))
+            matched_sample = _matched_sample(str(entry.get("rule_id", "")), group, top[4])
         findings.append({
             "rule_id": str(entry.get("rule_id", "")),
             "title": str(entry.get("title", "")),
@@ -384,6 +419,8 @@ def window_playbook_findings(aggregate: dict, lookup, language: str = "vi",
             "version": WINDOW_PLAYBOOK_VERSION,
             "_order": (-rank, position),
         })
+        if matched_sample:
+            findings[-1]["matched_sample"] = matched_sample
     findings.sort(key=lambda item: item["_order"])
     for item in findings:
         item.pop("_order")

@@ -162,6 +162,15 @@ def _safe_items(value: Any, *, max_items: int, item_limit: int) -> list[str]:
     return output
 
 
+def _priority_section(analysis: dict[str, Any], language: str) -> tuple[str, list[str]]:
+    """Mục "Giả thuyết ưu tiên" do code dựng (analysis["priority_hypotheses"]); rỗng nếu không có."""
+    title = ("Priority hypotheses (code, unverified)" if str(language).lower().startswith("en")
+             else "Giả thuyết ưu tiên (code, chưa xác minh)")
+    raw = analysis.get("priority_hypotheses") if isinstance(analysis, dict) else None
+    texts = [item.get("text") for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+    return title, _safe_items(texts, max_items=10, item_limit=500)
+
+
 def _safe_timeline(job: dict[str, Any], *, max_buckets: int = 48) -> list[dict[str, Any]]:
     raw_timeline = job.get("timeline") if isinstance(job.get("timeline"), list) else []
     buckets = []
@@ -334,6 +343,9 @@ def render_gmail_report(job: dict[str, Any], *, max_chars: int = DEFAULT_MAX_BOD
             f"- {rule_id}: {count} alerts (max level {level})"
             for rule_id, count, level in rule_rows
         ))
+    priority_title, priority_items = _priority_section(analysis, language)
+    if priority_items:
+        plain_lines.append(f"{priority_title}:\n" + "\n".join(f"- {value}" for value in priority_items))
     for title, value in (("Summary", summary), ("Root cause", root_cause)):
         if value:
             plain_lines.append(f"{title}: {value}")
@@ -389,6 +401,7 @@ def render_gmail_report(job: dict[str, Any], *, max_chars: int = DEFAULT_MAX_BOD
         "<table role=\"presentation\" style=\"width:100%;border-collapse:collapse;font-size:14px\"><tbody>"
         + summary_rows
         + "</tbody></table>"
+        + _html_list(priority_title, priority_items)
         + (f"<h2 style=\"font-size:16px;margin:24px 0 8px\">Summary</h2><p style=\"margin:0\">{_html_text(summary)}</p>" if summary else "")
         + (f"<h2 style=\"font-size:16px;margin:24px 0 8px\">Root cause</h2><p style=\"margin:0\">{_html_text(root_cause)}</p>" if root_cause else "")
         + rule_html

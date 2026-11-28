@@ -141,7 +141,7 @@ def build_pdf_view(job: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(job, dict):
         raise TelegramPDFError("Telegram PDF report phải là object")
     try:
-        from gmail_notifier import _count as gmail_count, _safe_items, _safe_timeline
+        from gmail_notifier import _count as gmail_count, _priority_section, _safe_items, _safe_timeline
         from telegram_notifier import _analysis_from_job, _safe_text, analysis_sha256, attack_chain_from_job
     except (ImportError, OSError) as exc:
         raise TelegramPDFError("telegram_pdf_dependency") from exc
@@ -173,7 +173,9 @@ def build_pdf_view(job: dict[str, Any]) -> dict[str, Any]:
         if chain_summary:
             chain_items.append(f"{chain_summary} ({chain_intent})" if chain_intent else chain_summary)
         chain_items.extend(_safe_items(chain.get("kill_chain_stages"), max_items=12, item_limit=400))
+        priority_title, priority_items = _priority_section(analysis, language)
         sections = [
+            (priority_title, priority_items),
             ("Summary", [summary] if summary else []),
             ("Root cause", [root_cause] if root_cause else []),
             ("Key findings", _safe_items(analysis.get("key_findings"), max_items=12, item_limit=500)),

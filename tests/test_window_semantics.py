@@ -115,6 +115,32 @@ def test_outcome_legend_lists_only_present_ids():
         analysis_service.aggregate_alerts([_hit("999999", "x")])) == ""
 
 
+def test_outcome_legend_40112_is_its_own_category():
+    aggregate = analysis_service.aggregate_alerts([
+        _hit("40112", ACCEPTED_LOG, srcip="203.0.113.9"), _hit("5715", ACCEPTED_LOG, srcip="203.0.113.9")])
+    legend = analysis_service.format_outcome_legend_for_llm(aggregate)
+    plain, after = legend.split("; ")
+    assert "40112" not in plain and "5715" in plain
+    assert after.startswith("success after multiple failures (possible successful brute force): 40112")
+    only = analysis_service.format_outcome_legend_for_llm(
+        analysis_service.aggregate_alerts([_hit("40112", ACCEPTED_LOG, srcip="203.0.113.9")]))
+    assert only.startswith("Rule outcome legend (from rule definitions, authoritative): success after")
+    assert "successful authentication/privilege use" not in only
+    assert "failed authentication" not in only
+
+
+def test_40112_is_not_in_success_or_failure_tables():
+    import overclaim
+    assert "40112" not in overclaim.SUCCESS_RULE_IDS and "40112" not in overclaim.FAILURE_RULE_IDS
+    assert overclaim.SUCCESS_AFTER_FAILURES_RULE_IDS == frozenset({"40112"})
+
+
+def test_contradiction_check_does_not_flag_success_wording_for_40112():
+    text = "Nhiều lần thất bại rồi đăng nhập thành công (rule 40112) từ 203.0.113.9"
+    assert find_contradictions(text) == []
+    assert find_contradictions("Login succeeded after repeated failures (rule 40112)") == []
+
+
 @pytest.mark.parametrize("text,flagged", [
     ("Sự kiện đăng nhập thành công từ IP 192.0.2.1 (rule 5503, 5760, 5715)", True),
     ("Đăng nhập thành công (rule 5715)", False),

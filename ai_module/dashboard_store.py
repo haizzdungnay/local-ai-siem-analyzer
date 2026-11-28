@@ -205,7 +205,7 @@ def _search_terms(aggregate):
 
 # Dữ liệu thô của nhóm chỉ dùng trong bộ nhớ khi phân tích; không ghi xuống SQLite
 # (playbook_samples chứa srcuser/dstuser, syscheck_diff là diff FIM có thể chứa bí mật).
-_GROUP_RAW_KEYS = frozenset({"sample_log", "playbook_samples", "syscheck_diff"})
+_GROUP_RAW_KEYS = frozenset({"sample_log", "playbook_samples", "syscheck_diff", "command"})
 
 
 class DashboardStore:

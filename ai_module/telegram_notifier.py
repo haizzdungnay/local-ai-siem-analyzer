@@ -334,6 +334,11 @@ def render_summary_report(job: dict[str, Any], *, max_chars: int = DEFAULT_MAX_M
             f"- {rule_id}: {count} alerts (max level {level})"
             for rule_id, (count, level) in top_rules
         ))
+    from gmail_notifier import _priority_section
+
+    priority_title, priority_items = _priority_section(analysis, language)
+    if priority_items:
+        lines.append(f"{priority_title}:\n" + "\n".join(f"- {item}" for item in priority_items))
     summary = _safe_text(analysis.get("summary", ""), 1800)
     if summary:
         lines.append(f"Summary: {summary}")

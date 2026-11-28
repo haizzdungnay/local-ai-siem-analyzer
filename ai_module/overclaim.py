@@ -11,7 +11,8 @@ SUCCESS_EVIDENCE_RULE_IDS = frozenset({"5303", "5304"})
 MAX_CLAUSE_CHARS = 200
 
 # Kết quả theo định nghĩa rule Wazuh stock (0095-sshd, 0085-pam, 0020-syslog, 0100-sudo/su rules).
-# Chỉ giữ id chắc chắn; id không có trong bảng thì không được suy ra kết quả.
+# Verified against live Wazuh 4.9 ruleset 2026-11-28 (lab SIEM); mô tả 2501 bị cắt trong output kiểm tra,
+# giả định 'User authentication failure'. Chỉ giữ id chắc chắn; id không có trong bảng thì không được suy ra kết quả.
 FAILURE_RULE_IDS = frozenset({
     "2501", "2502",                       # syslog: authentication failure / sai mật khẩu nhiều lần
     "5301", "5302",                       # su: sai mật khẩu
@@ -25,8 +26,11 @@ SUCCESS_RULE_IDS = frozenset({
     "5402", "5403", "5407",               # sudo thành công
     "5501",                               # PAM: session opened
     "5715",                               # sshd: xác thực thành công
-    "40112",                              # nhiều lần thất bại rồi thành công
 })
+# 40112 "Multiple authentication failures followed by a success": không phải thành công đơn thuần
+# (có thể là brute force thành công). Không nằm trong FAILURE_RULE_IDS nên contradiction_check
+# không cắm cờ từ "thành công" gắn với 40112.
+SUCCESS_AFTER_FAILURES_RULE_IDS = frozenset({"40112"})
 
 _FLAGS = re.IGNORECASE
 _SPLIT = re.compile(r"[.;,\n!?]|\b(?:nhưng|tuy nhiên|but|however)\b", _FLAGS)

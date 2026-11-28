@@ -5,6 +5,23 @@ Ngày cập nhật 2026-11-28
 
 
 
+## Legend 40112, biến thể regex FIM 550, matched_sample (2026-11-28)
+
+- Đã xong: `overclaim.py` thêm `SUCCESS_AFTER_FAILURES_RULE_IDS={"40112"}` (bỏ khỏi `SUCCESS_RULE_IDS`), legend có nhóm thứ ba; `playbooks.yaml` 550 mở rộng `S_suspicious_diff_content` + `S_critical_path`; `playbooks.py` thêm `summarize_command`, `matched_sample` trong `window_playbook_findings`; `analysis_service.py` thêm `command` vào mẫu nhóm, `matched_sample` vào `priority_hypotheses`, `matched_at=<ts>` vào khối prompt; `dashboard_store._GROUP_RAW_KEYS` thêm `command`. Không đổi UI, `format_window_for_llm()`, `analyze_alert()`, `eval/build_dataset.py`, `docs/manual-test.md`.
+- Rule outcome ids verified against live Wazuh 4.9 ruleset on lab SIEM 2026-11-28; 2501 description truncated in check output, assumed 'User authentication failure'.
+- Verification: `python -m pytest -q` 793 passed, 3 skipped (nền 689/3); `git diff --check` sạch. Chưa chạy model hay Indexer thật.
+- Giới hạn: câu hỏi tín hiệu chỉ 100 ký tự đầu vào prompt (`MAX_SIGNAL_TEXT_CHARS`); regex mới chưa thử trên diff thật của lab (chỉ chuỗi tổng hợp); `LD_PRELOAD=` hợp lệ (jemalloc trong unit) và one-liner python health-check có socket+connect sẽ báo dương; `matched_sample` hòa số tín hiệu "yes" thì giữ mẫu đến trước (5402 `cat /etc/sudoers.d/x` và `/bin/bash` đều 1 "yes"); 554/553/503... không có tín hiệu nội dung nên không có biến thể.
+- `matched_sample` chọn mẫu của nhánh có nhiều tín hiệu "yes" nhất (hòa → mẫu đến trước). Regex `S_suspicious_diff_content` siêu tuyến tính với token lặp bệnh lý (~0,6 s ở 20k ký tự) nhưng diff bị cắt 2000 ký tự (~7 ms), chấp nhận được.
+- Next: chạy lại cửa sổ lab với `report_changes` bật để xác nhận dương/âm trên diff thật; cân nhắc nâng `MAX_SIGNAL_TEXT_CHARS`.
+
+## Giả thuyết ưu tiên do code dựng (2026-11-28)
+
+- Vì sao: job #283 (`qwen2.5:7b`) bỏ qua nhánh B0_service_account_su (5503, high) dù prompt yêu cầu nêu mọi nhánh high; không được phụ thuộc LLM 7B để chuyển một dữ kiện code đã biết.
+- Đã xong: `priority_hypotheses()` trong `ai_module/analysis_service.py`, gắn `result["priority_hypotheses"]` + `provenance.priority_hypotheses_count`; mục mới trước Summary trong `gmail_notifier.py` (helper `_priority_section`), `telegram_notifier.py` (`render_summary_report`; `render_report` đi qua Gmail), `telegram_pdf.py`. Không đổi UI (app.js đã có thẻ `result.playbooks`), không đổi `format_window_for_llm()`, `analyze_alert()`, GĐ4, `eval/build_dataset.py`, `docs/manual-test.md`.
+- Verification: `python -m pytest -q` 689 passed, 3 skipped (nền 682/3); `git diff --check` sạch. Chưa chạy model thật.
+- Giới hạn: chỉ hiện khi `playbooks.enabled` và nhánh do regex chọn là critical/high; `playbooks` bị cắt bởi `max_playbook_groups` nên nhánh high ngoài ngưỡng đó vẫn bị mất; export JSON/UI chỉ hiển thị qua `analysis`/thẻ playbook, chưa có mục riêng trong UI.
+- Next: chạy lại cửa sổ 16:47–19:48 thành job #284 và xác nhận mục hiện B0 trong báo cáo/Telegram/Gmail; ứng viên tiếp theo: cảnh báo `omitted_high_branch` khi summary/key_findings không nhắc nhánh high.
+
 ## Khối nhánh đọc được, chú giải kết quả, kiểm tra mâu thuẫn (2026-11-28)
 
 - Vì sao: job #282 (`qwen2.5:7b`, cửa sổ 2026-11-25 16:47–19:48) bỏ qua khối nhánh chỉ có id máy, không nêu nhánh B0 high (su từ www-data lên root) mà viết mơ hồ "checksum changed", và ghi 5503/5760 (thất bại) là "đăng nhập thành công".

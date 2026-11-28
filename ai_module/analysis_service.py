@@ -7,8 +7,8 @@ from threading import Lock, Thread
 from time import monotonic
 
 from extractor import _get_nested, extract_fields, format_for_llm, normalize_mitre_ids
-from playbooks import UNKNOWN_BRANCH, playbook_for_config, window_playbook_findings
-from overclaim import FAILURE_RULE_IDS, SUCCESS_RULE_IDS, contradiction_check, overclaim_check
+from playbooks import UNKNOWN_BRANCH, has_sensitive_values, playbook_for_config, window_playbook_findings
+from overclaim import FAILURE_RULE_IDS, SUCCESS_AFTER_FAILURES_RULE_IDS, SUCCESS_RULE_IDS, contradiction_check, overclaim_check
 from reader import resolve_config_paths
 from llm import (
     adaptive_pacing_options,
@@ -76,6 +76,7 @@ MAX_PLAYBOOK_SAMPLES_PER_GROUP = 20
 
 
 MAX_PLAYBOOK_DIFF_CHARS = 2000
+MAX_PLAYBOOK_COMMAND_CHARS = 500
 
 
 def _playbook_sample_fields(source: dict) -> dict:
@@ -90,6 +91,9 @@ def _playbook_sample_fields(source: dict) -> dict:
         "srcuser": str(_get_nested(source, "data.srcuser") or "")[:200],
         "dstuser": str(_get_nested(source, "data.dstuser") or "")[:200],
         "sample_timestamp": str(source.get("timestamp") or ""),
+        # data.command của sudo (5402/5403/5407): chỉ để dựng matched_sample đã rút gọn
+        # (đường dẫn thực thi + số đối số); không vào prompt, không lưu SQLite.
+        "command": str(_get_nested(source, "data.command") or "")[:MAX_PLAYBOOK_COMMAND_CHARS],
         "syscheck_diff": diff[:MAX_PLAYBOOK_DIFF_CHARS],
         "syscheck_diff_truncated": len(diff) > MAX_PLAYBOOK_DIFF_CHARS,
     }
@@ -153,7 +157,7 @@ def aggregate_alerts(hits: list[dict], *, sample_log_chars: int = 1000) -> dict:
         # So trùng theo nội dung (bỏ chữ số: giờ, PID, port) để 20 chỗ không bị một đợt
         # brute-force cùng user chiếm hết.
         sample_key = (
-            sample["agent_id"], sample["srcuser"], sample["dstuser"],
+            sample["agent_id"], sample["srcuser"], sample["dstuser"], sample["command"],
             sample["sample_log_truncated"], re.sub(r"\d+", "#", sample["sample_log"]),
             sample["syscheck_diff"],
         )
@@ -448,6 +452,9 @@ def format_playbook_branches_for_llm(findings, aggregate=None, lookup=None) -> s
         path = paths.get(str(finding.get("group_key", "")))
         if path:
             head += f" path={_prompt_token(path)}"
+        matched_at = (finding.get("matched_sample") or {}).get("timestamp")
+        if matched_at:
+            head += f" matched_at={_prompt_token(matched_at)}"
         compact = head
         signal_texts = [
             f'{_prompt_token(sid)}: "{_prompt_text(questions.get(sid), MAX_SIGNAL_TEXT_CHARS)}"'
@@ -466,18 +473,96 @@ def format_playbook_branches_for_llm(findings, aggregate=None, lookup=None) -> s
     return block if "\n" in block else ""
 
 
+MAX_PRIORITY_HYPOTHESES = 10
+_PRIORITY_SEVERITIES = ("critical", "high")
+_PRIORITY_TEXT = {
+    "vi": ("Giả thuyết ưu tiên (chưa xác minh): rule {rule} – {title} – nhánh {branch} ({severity}), "
+           "{matched}/{evaluated} mẫu khớp; tín hiệu: {signals}."),
+    "en": ("Priority hypothesis (unverified): rule {rule} – {title} – branch {branch} ({severity}), "
+           "{matched}/{evaluated} samples matched; signals: {signals}."),
+}
+
+
+def priority_hypotheses(findings, aggregate=None, language: str = "vi", lookup=None) -> list[dict]:
+    """Giả thuyết ưu tiên do CODE dựng từ nhánh playbook critical/high, không qua LLM.
+
+    Lab job #283: qwen2.5:7b bỏ qua nhánh B0 high dù prompt yêu cầu nêu mọi nhánh high, nên
+    danh sách này được gắn thẳng vào kết quả và báo cáo. Chỉ gồm id, số đếm, tiêu đề playbook
+    (YAML), thời gian/đường dẫn nhóm; KHÔNG có user, sample_log, diff, next_steps hay giá trị
+    tín hiệu. Playbook có tín hiệu sensitive_value (vd. 5710) không kèm syscheck_path.
+    """
+    groups = {}
+    for group in (aggregate or {}).get("groups") or []:
+        if isinstance(group, dict):
+            groups.setdefault(str(group.get("group_key", "")), group)
+    template = _PRIORITY_TEXT.get(language, _PRIORITY_TEXT["vi"])
+    selected = [
+        f for f in findings or []
+        if isinstance(f, dict) and f.get("branch_id") not in (None, UNKNOWN_BRANCH)
+        and f.get("branch_severity") in _PRIORITY_SEVERITIES
+    ]
+    selected.sort(key=lambda f: _BRANCH_PRIORITY.get(f.get("branch_severity"), 9))  # sort ổn định
+    items = []
+    for finding in selected[:MAX_PRIORITY_HYPOTHESES]:
+        group = groups.get(str(finding.get("group_key", "")), {})
+        entry = {}
+        if lookup is not None:
+            try:
+                entry = lookup(str(finding.get("rule_id", ""))) or {}
+            except Exception:  # noqa: BLE001 - không tra được thì coi như nhạy cảm
+                entry = {"signals": [{"sensitive_value": True}]}
+        sensitive = has_sensitive_values(entry)
+        yes_ids = [
+            _prompt_token(sid) for sid, item in (finding.get("signals") or {}).items()
+            if isinstance(item, dict) and item.get("answer") == "yes"
+        ]
+        title = _prompt_text(finding.get("title"), MAX_PLAYBOOK_TITLE_CHARS)
+        item = {
+            "rule_id": str(finding.get("rule_id", "")),
+            "branch_id": str(finding.get("branch_id", "")),
+            "severity": str(finding.get("branch_severity", "")),
+            "title": title,
+            "samples_matched": finding.get("samples_matched", 0),
+            "samples_evaluated": finding.get("samples_evaluated", 0),
+            "group_count": finding.get("group_count", 0),
+            "first_seen": str(group.get("first_seen") or ""),
+            "last_seen": str(group.get("last_seen") or ""),
+            "syscheck_path": "" if sensitive else str(group.get("syscheck_path") or ""),
+            "signals_yes": yes_ids,
+            "status": "unverified",
+        }
+        matched_sample = finding.get("matched_sample")
+        if isinstance(matched_sample, dict) and not sensitive:
+            item["matched_sample"] = {
+                key: str(matched_sample[key])[:200]
+                for key in ("timestamp", "command") if matched_sample.get(key)
+            }
+        item["text"] = template.format(
+            rule=_prompt_token(item["rule_id"]), title=title or "-",
+            branch=_prompt_token(item["branch_id"]), severity=_prompt_token(item["severity"]),
+            matched=item["samples_matched"], evaluated=item["samples_evaluated"],
+            signals=", ".join(yes_ids) or "-",
+        )
+        items.append(item)
+    return items
+
+
 def format_outcome_legend_for_llm(aggregate) -> str:
     """Chú giải kết quả (thành công/thất bại) của các rule id có mặt trong cửa sổ; từ bảng cố định."""
     present = {str(g.get("rule_id")) for g in (aggregate or {}).get("groups") or [] if isinstance(g, dict)}
     failures = sorted(present & FAILURE_RULE_IDS)
     successes = sorted(present & SUCCESS_RULE_IDS)
-    if not failures and not successes:
+    after_failures = sorted(present & SUCCESS_AFTER_FAILURES_RULE_IDS)
+    if not failures and not successes and not after_failures:
         return ""
     parts = []
     if failures:
         parts.append("failed authentication/attempt: " + ", ".join(failures))
     if successes:
         parts.append("successful authentication/privilege use: " + ", ".join(successes))
+    if after_failures:
+        parts.append("success after multiple failures (possible successful brute force): "
+                     + ", ".join(after_failures))
     text = ("Rule outcome legend (from rule definitions, authoritative): " + "; ".join(parts)
             + ". Never describe a failure rule as a success.")
     return text[:MAX_OUTCOME_LEGEND_CHARS]
@@ -797,6 +882,12 @@ class AnalysisService:
         # (findings đã tính trước analyze_window.)
         if findings:
             result = {**result, "playbooks": findings}
+        # Không phụ thuộc LLM: nhánh critical/high do code chọn luôn có mặt trong kết quả/báo cáo.
+        hypotheses = priority_hypotheses(
+            findings, aggregate, language, lambda rule_id: playbook_for_config(self.cfg, rule_id))
+        if hypotheses:
+            result = {**result, "priority_hypotheses": hypotheses}
+        provenance["priority_hypotheses_count"] = len(hypotheses)
         provenance["playbook_prompt_chars"] = len(playbook_block)
         provenance["outcome_legend_chars"] = len(outcome_legend)
         provenance["playbooks"] = [
