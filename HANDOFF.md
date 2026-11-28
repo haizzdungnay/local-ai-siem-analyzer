@@ -5,6 +5,15 @@ Ngày cập nhật 2026-11-28
 
 
 
+## Đánh giá dashboard trên cửa sổ lab — tài liệu (2026-11-28)
+
+- Đã xong: `docs/lab-run-2026-11-25.md` mục 5 (job #281–#284: bảng phiên bản, nhánh code, tiến hóa đầu ra LLM, chi tiết #284, bài học, giới hạn). `CHANGELOG.md` Unreleased thêm 1 mục. Không đổi code.
+- Verification: `git diff --check` sạch; không chạy test (chỉ tài liệu).
+- Giới hạn: mỗi job 1 lần chạy (chưa đo độ lặp lại); chưa thử model lớn hơn; kiểm overclaim/mâu thuẫn là heuristic từ khóa.
+- Job #285 (9B `hf.co/HRB25/qwen35-9b-pentest-v5`, model công khai, cùng cửa sổ, ~67 s): high/85, nêu su www-data/SUID/persistence, MITRE rộng hơn (có suy đoán), văn bản lặp; overclaim clean, contradiction flagged do dương giả (câu trích 5402/5407 thành công + 5503 www-data). Ghi ở §5.6. 1 lần chạy, chưa đủ chọn model.
+- Backlog mới: tinh chỉnh `contradiction_check` cho mệnh đề trích lẫn rule thành công và thất bại (chỉ cờ khi rule thất bại gần "thành công" hơn rule thành công, hoặc không có rule thành công nào được trích).
+- Next action: lab noise + held-out vào thứ Hai; đếm username khác nhau cho 5710; xem lại nhãn MITRE tĩnh (CUPS T1565.001, dọn file T1485); lặp job để đo dao động; lab noise + held-out (dự kiến thứ Hai).
+
 ## Legend 40112, biến thể regex FIM 550, matched_sample (2026-11-28)
 
 - Đã xong: `overclaim.py` thêm `SUCCESS_AFTER_FAILURES_RULE_IDS={"40112"}` (bỏ khỏi `SUCCESS_RULE_IDS`), legend có nhóm thứ ba; `playbooks.yaml` 550 mở rộng `S_suspicious_diff_content` + `S_critical_path`; `playbooks.py` thêm `summarize_command`, `matched_sample` trong `window_playbook_findings`; `analysis_service.py` thêm `command` vào mẫu nhóm, `matched_sample` vào `priority_hypotheses`, `matched_at=<ts>` vào khối prompt; `dashboard_store._GROUP_RAW_KEYS` thêm `command`. Không đổi UI, `format_window_for_llm()`, `analyze_alert()`, `eval/build_dataset.py`, `docs/manual-test.md`.
